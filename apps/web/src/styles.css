@@ -1,0 +1,111 @@
+@import 'tailwindcss';
+@source "../../../packages/ui/src";
+
+/* ---------------------------------------------------------------------------
+   CafeFlow design tokens
+   Primary  #aa472b  (espresso)
+   Secondary #96a09f (stone)
+   Every component uses logical properties (start/end) so that the RTL layout
+   is designed, not mirrored.
+--------------------------------------------------------------------------- */
+@theme {
+  --color-brand-50: #fdf3ef;
+  --color-brand-100: #f8e0d7;
+  --color-brand-200: #f0c3b2;
+  --color-brand-300: #e3a088;
+  --color-brand-400: #c9795d;
+  --color-brand-500: #aa472b;
+  --color-brand-600: #953c23;
+  --color-brand-700: #7b311d;
+  --color-brand-800: #622818;
+  --color-brand-900: #4d2014;
+
+  --color-sec-100: #eef1f0;
+  --color-sec-200: #e0e5e4;
+  --color-sec-300: #96a09f;
+  --color-sec-500: #7c8785;
+  --color-sec-700: #566160;
+
+  --color-canvas: #f7f4f0;
+  --color-surface: #ffffff;
+  --color-line: #e8e2db;
+  --color-ink: #241f1c;
+  --color-muted: #6f6862;
+
+  --color-success-50: #eef8f1;
+  --color-success-200: #c8e8d3;
+  --color-success-600: #2f7d4f;
+  --color-success-700: #24613d;
+
+  --color-warning-50: #fdf6e9;
+  --color-warning-200: #f2e0b6;
+  --color-warning-600: #a4700f;
+  --color-warning-700: #82590c;
+
+  --color-danger-50: #fdf0ee;
+  --color-danger-200: #f3cdc5;
+  --color-danger-500: #c0392b;
+  --color-danger-600: #a72e22;
+  --color-danger-700: #8c251b;
+
+  --color-info-50: #eef4fb;
+  --color-info-200: #cadff4;
+  --color-info-700: #245c8d;
+
+  --font-sans:
+    'Vazirmatn Variable', 'Vazirmatn', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: 'ss02';
+    line-height: 1.7;
+  }
+
+  /* Persian digits should not be reordered by the bidi algorithm inside
+     numbers and dates. */
+  .num {
+    font-variant-numeric: tabular-nums;
+    unicode-bidi: plaintext;
+  }
+
+  :focus-visible {
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-100);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Thin, unobtrusive scrollbars that respect the RTL gutter. */
+@layer utilities {
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
+  }
+}

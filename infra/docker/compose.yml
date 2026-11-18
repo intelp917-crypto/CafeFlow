@@ -1,0 +1,69 @@
+# CafeFlow stack
+# NOTE: delivered but NOT verified in this environment (Docker is not installed).
+# Validate with `docker compose config` before relying on it.
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+    image: cafeflow/api:0.1.0
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_PATH: /data/cafeflow.db
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-cafe_session}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-168}
+      SESSION_COOKIE_SECURE: "true"
+      LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-5}
+      LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-15}
+      SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-admin}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?set SEED_ADMIN_PASSWORD in .env}
+      SMS_PROVIDER: ${SMS_PROVIDER:-}
+      SMS_API_KEY: ${SMS_API_KEY:-}
+      PRINT_BRIDGE_TOKEN: ${PRINT_BRIDGE_TOKEN:-}
+    volumes:
+      - cafeflow_data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.web
+    image: cafeflow/web:0.1.0
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+  backup:
+    image: alpine:3.20
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    volumes:
+      - cafeflow_data:/data:ro
+      - cafeflow_backups:/backups
+    environment:
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    command: >
+      sh -c "apk add --no-cache sqlite >/dev/null &&
+             while true; do
+               ts=$$(date +%Y-%m-%dT%H-%M-%S);
+               sqlite3 /data/cafeflow.db \".backup '/backups/cafeflow-$$ts.db'\";
+               find /backups -name 'cafeflow-*.db' -mtime +$$BACKUP_RETENTION_DAYS -delete;
+               sleep 86400;
+             done"
+
+volumes:
+  cafeflow_data:
+  cafeflow_backups:

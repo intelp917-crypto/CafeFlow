@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="CafeFlow">
+  <rect width="64" height="64" rx="16" fill="#aa472b" />
+  <path d="M18 24h22a8 8 0 0 1 0 16h-2v4h-12v-4H18z" fill="#fdf2ee" />
+  <path d="M40 28h2a4 4 0 0 1 0 8h-2z" fill="#96a09f" />
+  <path d="M24 16c0 3 2 3 2 6M31 16c0 3 2 3 2 6" stroke="#fdf2ee" stroke-width="2" stroke-linecap="round" fill="none" />
+</svg>

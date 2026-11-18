@@ -1,644 +1,112 @@
-\# CafeFlow ☕
-
-\### Modern Café \& Restaurant Management Platform
-
-
-
-\*\*CafeFlow\*\* is a modular, real-time café and restaurant management platform designed to simplify daily operations, improve customer experiences, and centralize restaurant management.
-
-
-
-The platform combines customer QR ordering, table management, kitchen operations, employee workflows, financial management, and customer loyalty into one unified system.
-
-
-
-> \*\*Language:\*\* The application interface is Persian (Farsi) by default, with complete RTL support and Jalali calendar localization. Source code and technical documentation are written in English.
-
-
-
-\---
-
-
-
-\## ✨ Core Features
-
-
-
-\### 🛍️ Customer Experience
-
-\- Interactive QR-based digital menu.
-
-\- Real-time order submission and tracking.
-
-\- Product customization and extras.
-
-\- Table-specific QR codes.
-
-\- Promotional QR codes and discount campaigns.
-
-\- Customer service requests.
-
-\- Reservation support.
-
-\- Mobile-first responsive interface.
-
-
-
-\### 🪑 Restaurant Management
-
-\- Real-time table management.
-
-\- Multiple floors and configurable areas.
-
-\- Visual drag-and-drop floor plan designer.
-
-\- Individual table and chair positioning.
-
-\- Table merging and transfers.
-
-\- Table occupancy monitoring.
-
-\- Waiter assignment and availability queue.
-
-
-
-\### 🍳 Kitchen \& Barista Operations
-
-\- Dedicated kitchen dashboard.
-
-\- Dedicated barista dashboard.
-
-\- Automatic order routing.
-
-\- Real-time preparation updates.
-
-\- Preparation timers.
-
-\- Delayed order alerts.
-
-\- Department-specific printing.
-
-
-
-\### 💳 Cashier \& Payments
-
-\- Cashier dashboard.
-
-\- Order settlement.
-
-\- Split and merged bills.
-
-\- Cash and card payment records.
-
-\- Card terminal requests.
-
-\- Receipt printing.
-
-\- Payment history.
-
-
-
-\### 📦 Optional Business Modules
-
-
-
-These modules are independently configurable and disabled by default.
-
-
-
-| Module | Default |
-
-|---|---|
-
-| Inventory Management | OFF |
-
-| Employee \& Shift Management | OFF |
-
-| Financial Management | OFF |
-
-| CRM \& Customer Loyalty | OFF |
-
-
-
-\*\*Inventory Management\*\*
-
-\- Ingredient management.
-
-\- Recipe definitions.
-
-\- Automatic stock deduction.
-
-\- Stock alerts.
-
-\- Waste tracking.
-
-\- Supplier management.
-
-
-
-\*\*Employee Management\*\*
-
-\- Employee profiles.
-
-\- Shift scheduling.
-
-\- Attendance.
-
-\- Leave management.
-
-\- Performance reports.
-
-
-
-\*\*Financial Management\*\*
-
-\- Revenue and expenses.
-
-\- Cash register management.
-
-\- Financial transactions.
-
-\- Cash reconciliation.
-
-\- Profit and loss reports.
-
-
-
-\*\*CRM \& Loyalty\*\*
-
-\- Customer profiles.
-
-\- Loyalty points.
-
-\- Customer wallet.
-
-\- Membership levels.
-
-\- Personalized discounts.
-
-\- Birthday rewards.
-
-
-
-\### 🔐 Security \& Access Control
-
-\- Role-based access control (RBAC).
-
-\- Granular permissions.
-
-\- Department and floor restrictions.
-
-\- Secure authentication.
-
-\- Multi-factor authentication support.
-
-\- Session management.
-
-\- Audit logs.
-
-\- Approval workflows.
-
-\- Backup and recovery.
-
-
-
-\### 🔔 Notifications \& Messaging
-
-\- Real-time notifications.
-
-\- Browser push notifications.
-
-\- SMS integration.
-
-\- Order status notifications.
-
-\- Reservation notifications.
-
-\- Employee notifications.
-
-\- Promotional campaigns.
-
-\- Notification history.
-
-
-
-\### 🖨️ Printing \& Hardware
-
-\- Thermal receipt printing.
-
-\- Kitchen printing.
-
-\- Barista printing.
-
-\- Configurable printer routing.
-
-\- Print queues and retry handling.
-
-\- ESC/POS-compatible printer support.
-
-\- Payment terminal integration architecture.
-
-
-
-\---
-
-
-
-\## 🎨 Design \& User Experience
-
-
-
-\- Persian-first interface.
-
-\- Complete RTL layout.
-
-\- Vazirmatn typography.
-
-\- Jalali calendar.
-
-\- Responsive design.
-
-\- Progressive Web App (PWA).
-
-\- Three.js 3D coffee animation.
-
-\- Anime.js animation sequences.
-
-
-
-\### Brand Colors
-
-
-
-| Color | Hex |
-
-|---|---|
-
-| Primary | `#aa472b` |
-
-| Secondary | `#96a09f` |
-
-
-
-\---
-
-
-
-\## 🛠️ Technology Stack
-
-
-
-| Layer | Technology |
-
-|---|---|
-
-| Frontend | React + TypeScript |
-
-| Build Tool | Vite |
-
-| Styling | Tailwind CSS |
-
-| 3D Graphics | Three.js |
-
-| Animations | Anime.js |
-
-| Backend | Node.js + NestJS |
-
-| Database | PostgreSQL |
-
-| Real-time | WebSocket / Socket.IO |
-
-| API | REST |
-
-| Infrastructure | Docker |
-
-| Application Type | PWA |
-
-
-
-\---
-
-
-
-\## 🏗️ Architecture
-
-
-
-CafeFlow follows a modular architecture with clearly separated application responsibilities.
-
-
-
-```text
-
-CafeFlow/
-
-├── apps/
-
-│   ├── web/                 # Customer and admin interfaces
-
-│   └── api/                 # Backend application
-
-│
-
-├── packages/
-
-│   ├── shared/              # Shared types and utilities
-
-│   ├── ui/                  # Reusable UI components
-
-│   └── config/              # Shared configurations
-
-│
-
-├── infrastructure/
-
-│   ├── docker/
-
-│   ├── database/
-
-│   └── scripts/
-
-│
-
-├── docs/
-
-│   ├── architecture/
-
-│   ├── database/
-
-│   ├── api/
-
-│   ├── modules/
-
-│   └── development/
-
-│
-
-├── tests/
-
-│   ├── integration/
-
-│   └── e2e/
-
-│
-
-└── README.md
-
-```
-
-
-
-\---
-
-
-
-\## ⚙️ Getting Started
-
-
-
-\### Requirements
-
-
-
-\- Node.js 22 or later.
-
-\- npm.
-
-\- Git.
-
-\- Docker and Docker Compose (for containerized development).
-
-\- PostgreSQL (if running without Docker).
-
-
-
-\### Installation
-
-
+# CafeFlow ☕ — کافه‌فلو
+
+سامانه یکپارچه مدیریت کافه و رستوران: منوی QR مشتری، مدیریت میز و سالن، داشبورد گارسون/باریستا/آشپزخانه،
+صندوق و پرداخت، رزرو، تخفیف، انبار، مالی، باشگاه مشتریان و اعلان‌ها.
+
+رابط‌های کاربری **کاملاً فارسی** و **RTL** هستند؛ تقویم **جلالی** و فونت **Vazirmatn**. کد، نام‌گذاری،
+مسیرهای API و مستندات فنی به انگلیسی نوشته می‌شوند.
+
+> **وضعیت: فاز ۵ (رسید/چاپ، تخفیف، بازپرداخت، اعلان‌ها، گزارش‌ها) کامل شده است.**
+> این پروژه در حال توسعه مرحله‌ای است؛ فهرست دقیق قابلیت‌های پیاده‌شده، تصمیم‌ها و محدودیت‌ها در
+> [`docs/PROGRESS.md`](docs/PROGRESS.md) نگه‌داری می‌شود. قابلیت‌های فازهای بعد **هنوز وجود ندارند** و
+> به‌عنوان «آماده» معرفی نمی‌شوند.
+
+---
+
+## آنچه امروز کار می‌کند
+
+- **پایگاه داده کامل** (۶۹ جدول) با مهاجرت، کلید خارجی، ایندکس و داده اولیه فارسی واقعی.
+- **احراز هویت**: ورود با scrypt، نشست سمت سرور، کوکی `HttpOnly`، قفل حساب، تغییر گذرواژه، مدیریت نشست‌ها.
+- **کنترل دسترسی**: ۳۹ مجوز دقیق در ۸ نقش؛ بررسی کامل در سرور (`SessionGuard` → `PermissionsGuard` → `ModuleGuard`).
+- **گزارش رویدادها**: ثبت ورود، تغییر تنظیمات، تغییر ماژول و تصمیم‌های تأیید با مقدار قبل/بعد.
+- **ماژول‌ها**: ۱۵ ماژول با وضعیت واقعی؛ انبار/مالی/CRM/کارکنان پیش‌فرض خاموش و پشت گیت سرور؛ خاموش‌کردن داده را حذف نمی‌کند.
+- **صف تأیید**: درخواست‌ها، تأیید/رد با دلیل و ثبت حسابرسی.
+- **داشبورد عملیات** با اعداد زنده (فروش امروز، سفارش فعال، میز اشغال، درخواست مشتری، رویدادها).
+- **عملیات کارکنان**: صف سفارش‌ها با تغییر وضعیت از ماشین وضعیت مشترک، صف آماده‌سازی به تفکیک باریستا/آشپزخانه
+  با وضعیت خودکار `preparing`/`partially_ready`/`ready`، نمای زنده میزها و رسیدگی یک‌باره به درخواست‌های مشتری.
+- **صندوق و تسویه**: پرداخت جزئی یا کامل (نقد/کارت/آنلاین)، صورت‌حساب با `paid_total`، مشتق‌شدن وضعیت `paid`
+  از پرداخت‌های تأییدشده، بستن میز فقط بعد از تسویه کامل و تکمیل درخواست کارت‌خوان همراه با ثبت پرداخت.
+- **تخفیف و بازپرداخت**: تخفیف مبلغی/درصدی پیش از پرداخت با دلیل و الزام تأیید مدیر برای بیش از ۲۰٪،
+  بازپرداخت جزئی/کامل روی سفارش تسویه‌شده بدون بازگرداندن وضعیت، و بازمحاسبه مبلغ خالص از پایگاه داده.
+- **رسید و صف چاپ**: رسید متنی فارسی با تاریخ جلالی، صف `print_jobs` با کلید یکتا (بدون چاپ تکراری)،
+  صفحه `/admin/print` و پل چاپ `scripts/print-bridge.mjs` که کارها را به فایل متنی می‌نویسد.
+- **اعلان‌ها**: صندوق دریافت شخصی/نقش‌محور در `/admin/notifications` با علامت خوانده‌شده و شمارش خوانده‌نشده.
+- **گزارش‌ها**: فروش/بازپرداخت/خالص، تفکیک روش پرداخت، فروش روزانه تهران، ۱۰ محصول پرفروش و خروجی CSV.
+- **منوی QR و سفارش مشتری**: صفحه اصلی با انیمیشن سه‌بعدی قهوه (Three.js + anime.js، chunk تنبل،
+  دکمه رد کردن، نسخه بدون حرکت/بدون WebGL)، منوی هر میز با ناوبری دسته‌ها، سبد خرید ماندگار،
+  محاسبه مبلغ و ثبت idempotent سفارش، صفحه پیگیری وضعیت و درخواست گارسون/صورتحساب/کارت‌خوان.
+- **سیستم طراحی RTL-first** با رنگ‌های برند `#aa472b` و `#96a09f`.
+
+## شروع سریع
 
 ```bash
-
-git clone https://github.com/USERNAME/CafeFlow.git
-
-cd CafeFlow
-
-
-
 npm install
+npm run build:shared                 # پکیج دامنه مشترک (API از dist آن می‌خواند)
+npm run db:setup -w @cafeflow/api    # مهاجرت + داده اولیه
 
+npm run dev:api                      # http://localhost:3000
+npm run dev:web                      # http://localhost:5173  ← اینجا وارد شوید
 ```
 
+آدرس‌های مشتری: `/` (صفحه اصلی + انیمیشن)، `/menu` (منو بدون میز)، `/menu/<qr-token>` (منوی همان میز)،
+`/order/<code>` (پیگیری وضعیت). پنل کارکنان: `/staff/login` → `/admin`
+(سفارش‌ها، صف آماده‌سازی، صندوق، میزها، درخواست‌ها، اعلان‌ها، صف چاپ و گزارش‌ها).
+توکن QR میزهای نمونه در پایگاه داده است (`SELECT token FROM qr_codes WHERE kind = 'table'`).
 
+حساب اولیه: `admin` / `CafeFlow@1404` (یا مقدار `SEED_ADMIN_PASSWORD`).
+کارکنان نمونه برای آزمودن نقش‌ها: `manager`, `cashier`, `waiter`, `barista`, `kitchen` با گذرواژه `CafeFlow@1404`.
 
-Configure your environment variables using `.env.example`.
+> ⚠️ گذرواژه‌های پیش‌فرض فقط برای نصب توسعه‌اند. پیش از استفاده واقعی، `SEED_ADMIN_PASSWORD` را تنظیم
+> و گذرواژه را از رابط تغییر دهید.
 
+## دستورها
 
+| دستور | کار |
+|---|---|
+| `npm run build` | ساخت shared + API + وب |
+| `npm test` | ۱۱۷ آزمون (دامنه + یکپارچه) |
+| `npm run db:setup -w @cafeflow/api` | مهاجرت + داده اولیه |
+| `npm run db:migrate -w @cafeflow/api` | اعمال مهاجرت‌های جدید |
+| `npm run dev:api` / `npm run dev:web` | اجرای توسعه |
 
-Start the frontend and backend independently during development.
+## پشته فناوری
 
+| لایه | فناوری |
+|---|---|
+| API | NestJS 11، TypeScript، Zod، pino-style logging |
+| پایگاه داده | SQLite (WAL) با اسکیمای قابل‌انتقال به PostgreSQL |
+| وب | React 19، Vite 7، Tailwind CSS 4، React Router |
+| دامنه مشترک | TypeScript خالص (`packages/shared`) — ماشین وضعیت سفارش، ریال، جلالی، نرمال‌سازی فارسی |
+| زیرساخت | Docker/Compose (نوشته‌شده، اجرا نشده — Docker در محیط توسعه نیست) |
 
-
-```bash
-
-\# Frontend
-
-npm run dev --prefix apps/web
-
-
-
-\# Backend
-
-npm run start:dev --prefix apps/api
+## ساختار
 
 ```
-
-
-
-Additional setup instructions will be documented as the project develops.
-
-
-
-\---
-
-
-
-\## 🧩 Development Principles
-
-
-
-CafeFlow is designed around the following principles:
-
-
-
-\- Modular architecture.
-
-\- Separation of concerns.
-
-\- Secure backend authorization.
-
-\- Database integrity.
-
-\- Real-time communication.
-
-\- Configurable business modules.
-
-\- Reusable UI components.
-
-\- Mobile-first development.
-
-\- Testable business logic.
-
-\- Production-oriented engineering.
-
-
-
-Optional modules must never break the core ordering and restaurant operations when disabled.
-
-
-
-\---
-
-
-
-\## 🗺️ Development Roadmap
-
-
-
-\- \[ ] Project foundation and architecture.
-
-\- \[ ] Database design and migrations.
-
-\- \[ ] Authentication and authorization.
-
-\- \[ ] Persian RTL design system.
-
-\- \[ ] Customer homepage and coffee animation.
-
-\- \[ ] QR menu and customer ordering.
-
-\- \[ ] Table and floor management.
-
-\- \[ ] Visual floor plan designer.
-
-\- \[ ] Waiter dashboard.
-
-\- \[ ] Kitchen and barista dashboards.
-
-\- \[ ] Cashier and payment management.
-
-\- \[ ] Printing infrastructure.
-
-\- \[ ] Reservation management.
-
-\- \[ ] Discount and QR campaign management.
-
-\- \[ ] Inventory module.
-
-\- \[ ] Employee and shift module.
-
-\- \[ ] Financial management module.
-
-\- \[ ] CRM and loyalty module.
-
-\- \[ ] Notification and messaging center.
-
-\- \[ ] PWA implementation.
-
-\- \[ ] Security and performance testing.
-
-\- \[ ] Production deployment.
-
-
-
-\---
-
-
-
-\## 🔒 Security
-
-
-
-Security is a core requirement.
-
-
-
-All sensitive operations must be validated and authorized on the backend.
-
-
-
-Financial transactions, order modifications, discounts, user permissions, and administrative actions must have appropriate access controls and audit history.
-
-
-
-Never commit credentials, private keys, or production environment variables.
-
-
-
-\---
-
-
-
-\## 📚 Documentation
-
-
-
-Technical documentation will be maintained inside the `docs/` directory.
-
-
-
-It will cover:
-
-
-
-\- System architecture.
-
-\- Database schema.
-
-\- API specifications.
-
-\- Module dependencies.
-
-\- Authentication and permissions.
-
-\- Deployment.
-
-\- Testing.
-
-\- Backup and recovery.
-
-
-
-\---
-
-
-
-\## 📌 Project Status
-
-
-
-\*\*Development status:\*\* Initial project setup and architecture planning.
-
-
-
-CafeFlow is being developed incrementally. Features listed in the roadmap are planned capabilities and should not be considered implemented until their functionality and tests are completed.
-
-
-
-\---
-
-
-
-\## 📄 License
-
-
-
-License: To be determined.
-
-
-
-\---
-
-
-
-\*\*CafeFlow — One platform. Every part of your café.\*\* ☕
-
+apps/api        NestJS API + migrations + tests
+apps/web        React SPA (مشتری، کارکنان، مدیریت)
+packages/shared منطق دامنه مشترک و آزمون‌شده
+packages/ui     components RTL-first
+infra/docker    Dockerfile.*، compose.yml، nginx.conf
+docs/           ۱۵ سند فنی + PROGRESS.md
+```
+
+## مستندات
+
+- [معماری](docs/01-architecture.md) · [پایگاه داده](docs/02-database-schema.md) · [ERD](docs/03-erd.md)
+- [API](docs/04-api.md) · [امنیت و مجوزها](docs/05-auth-and-authorization.md) · [ماژول‌ها](docs/06-modules.md)
+- [سیستم طراحی](docs/07-design-system.md) · [نقشه سالن](docs/08-floor-plan-data-model.md) · [چرخه سفارش](docs/09-order-lifecycle.md)
+- [چاپ](docs/10-printing.md) · [استقرار](docs/11-deployment.md) · [پشتیبان‌گیری](docs/12-backup-and-recovery.md)
+- [آزمون](docs/13-testing.md) · [تنظیمات محیط](docs/14-environment.md) · [راهنمای توسعه‌دهنده](docs/15-developer-readme.md)
+- [پیشرفت و تصمیم‌ها](docs/PROGRESS.md)
+
+## اصول امنیتی
+
+- هر عملیات حساس در سرور مجازسنجی می‌شود؛ بررسی سمت کلاینت فقط برای پنهان‌کردن منو است.
+- مبلغ‌ها همیشه عدد صحیح ریال و محاسبه نهایی سمت سرور.
+- هیچ رمز یا کلیدی در مخزن نیست؛ `.env` در `.gitignore` است.
+- کوکی نشست `HttpOnly`؛ توکن در JavaScript نگه‌داری نمی‌شود.
+
+## مسیر پیش‌رو
+
+فاز ۶ (رزرو، ماژول‌های اختیاری انبار/مالی/CRM، کارکنان) → فاز ۷ (سخت‌سازی، بلادرنگ/PWA، E2E،
+استقرار). جزئیات در [PROGRESS](docs/PROGRESS.md).

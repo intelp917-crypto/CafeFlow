@@ -1,0 +1,47 @@
+# CafeFlow API image
+# NOTE: Docker is not installed in the current development environment, so this
+# file is delivered but not built/verified here. See docs/11-deployment.md.
+
+FROM node:24-slim AS build
+WORKDIR /app
+
+# Build toolchain for native modules (better-sqlite3) when no prebuild matches.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/ui/package.json packages/ui/
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+RUN npm ci --workspace @cafeflow/shared --workspace @cafeflow/api --include-workspace-root
+
+COPY packages/shared packages/shared
+COPY apps/api apps/api
+RUN npm run build:shared && npm run build -w @cafeflow/api
+
+FROM node:24-slim AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/packages/shared/package.json packages/shared/package.json
+COPY --from=build /app/packages/shared/dist packages/shared/dist
+COPY --from=build /app/apps/api/package.json apps/api/package.json
+COPY --from=build /app/apps/api/dist apps/api/dist
+COPY --from=build /app/apps/api/migrations apps/api/migrations
+
+# Data lives on a volume so it survives container replacement.
+RUN mkdir -p /data && chown -R node:node /data /app
+USER node
+ENV DATABASE_PATH=/data/cafeflow.db
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+WORKDIR /app/apps/api
+CMD ["node", "dist/main.js"]

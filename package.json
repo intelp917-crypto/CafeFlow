@@ -1,0 +1,24 @@
+{
+  "name": "cafeflow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CafeFlow - Persian cafe & restaurant management platform",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:shared": "npm run build -w @cafeflow/shared",
+    "build": "npm run build:shared && npm run build -w @cafeflow/api && npm run build -w @cafeflow/web",
+    "dev:api": "npm run dev -w @cafeflow/api",
+    "dev:web": "npm run dev -w @cafeflow/web",
+    "db:migrate": "npm run db:migrate -w @cafeflow/api",
+    "db:seed": "npm run db:seed -w @cafeflow/api",
+    "db:setup": "npm run db:setup -w @cafeflow/api",
+    "test": "npm run test -w @cafeflow/shared && npm run test -w @cafeflow/api",
+    "test:api": "npm run test -w @cafeflow/api"
+  }
+}
