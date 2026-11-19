@@ -390,8 +390,19 @@ export interface LoyaltyLedgerEntry {
   createdAt: string;
 }
 
+export interface CustomerReservationHistory {
+  id: string;
+  reservedFor: string;
+  guestCount: number;
+  status: ReservationStatus;
+  statusLabelFa: string;
+  tableNameFa: string | null;
+}
+
 export interface CustomerDetail extends CustomerRow {
   ledger: LoyaltyLedgerEntry[];
+  /** Reservations matched by the customer's normalised phone number. */
+  reservations: CustomerReservationHistory[];
 }
 
 export interface CustomersResponse {

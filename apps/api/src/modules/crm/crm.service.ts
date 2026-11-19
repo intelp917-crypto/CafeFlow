@@ -2,15 +2,18 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   LOYALTY_TIER_LABELS_FA,
+  RESERVATION_STATUS_LABELS_FA,
   normalizePhone,
   tierForPoints,
   type AdjustLoyaltyInput,
   type CreateCustomerInput,
   type CustomerDetail,
+  type CustomerReservationHistory,
   type CustomerRow,
   type CustomersResponse,
   type LoyaltyLedgerEntry,
   type LoyaltyTier,
+  type ReservationStatus,
 } from '@cafeflow/shared';
 import { DB_SERVICE } from '../../common/tokens';
 import { DatabaseService } from '../../db/database.service';
@@ -113,7 +116,32 @@ export class CrmService {
       createdAt: entry.created_at,
     }));
 
-    return { ...this.toRow(row), ledger: entries };
+    const reservations = this.database.all<{
+      id: string;
+      reserved_for: string;
+      guest_count: number;
+      status: ReservationStatus;
+      table_name_fa: string | null;
+    }>(
+      `SELECT r.id, r.reserved_for, r.guest_count, r.status, t.name_fa AS table_name_fa
+         FROM reservations r
+         LEFT JOIN dining_tables t ON t.id = r.table_id
+        WHERE r.customer_phone = ?
+        ORDER BY r.reserved_for DESC
+        LIMIT 20`,
+      [row.phone],
+    );
+
+    const history: CustomerReservationHistory[] = reservations.map((entry) => ({
+      id: entry.id,
+      reservedFor: entry.reserved_for,
+      guestCount: entry.guest_count,
+      status: entry.status,
+      statusLabelFa: RESERVATION_STATUS_LABELS_FA[entry.status] ?? entry.status,
+      tableNameFa: entry.table_name_fa,
+    }));
+
+    return { ...this.toRow(row), ledger: entries, reservations: history };
   }
 
   create(input: CreateCustomerInput, actor: ActingUser): CustomerRow {

@@ -44,7 +44,7 @@ export interface StatCardProps {
   label: string;
   value: ReactNode;
   hint?: ReactNode;
-  tone?: 'default' | 'brand' | 'success' | 'warning';
+  tone?: 'default' | 'brand' | 'success' | 'warning' | 'danger';
 }
 
 const STAT_TONES = {
@@ -52,6 +52,7 @@ const STAT_TONES = {
   brand: 'text-brand-600',
   success: 'text-success-600',
   warning: 'text-warning-600',
+  danger: 'text-danger-600',
 };
 
 export function StatCard({ label, value, hint, tone = 'default' }: StatCardProps) {

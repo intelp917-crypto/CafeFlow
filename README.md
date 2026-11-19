@@ -62,6 +62,7 @@ npm install
 npm run build:shared                 # پکیج دامنه مشترک (API از dist آن می‌خواند)
 npm run db:setup -w @cafeflow/api    # مهاجرت + داده اولیه
 
+npm start                            # shared + API + وب با هم (Ctrl+C هر دو را می‌بندد)
 npm run dev:api                      # http://localhost:3000
 npm run dev:web                      # http://localhost:5173  ← اینجا وارد شوید
 ```
@@ -88,6 +89,7 @@ npm run dev:web                      # http://localhost:5173  ← اینجا و�
 | `npm run backup` | پشتیبان آنلاین در `backups/` با بررسی سلامت و چرخش |
 | `npm run db:setup -w @cafeflow/api` | مهاجرت + داده اولیه |
 | `npm run db:migrate -w @cafeflow/api` | اعمال مهاجرت‌های جدید |
+| `npm start` | ساخت shared و اجرای هم‌زمان API و وب با لاگ پیشونددار |
 | `npm run dev:api` / `npm run dev:web` | اجرای توسعه |
 
 ## پشته فناوری

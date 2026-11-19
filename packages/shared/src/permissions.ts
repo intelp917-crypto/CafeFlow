@@ -61,6 +61,9 @@ export const PERMISSIONS = [
 
   { key: 'shifts.read', labelFa: 'مشاهده شیفت‌ها', group: 'shifts' },
   { key: 'shifts.write', labelFa: 'مدیریت شیفت‌ها', group: 'shifts' },
+
+  { key: 'messages.read', labelFa: 'مشاهده مرکز پیام', group: 'messages' },
+  { key: 'messages.write', labelFa: 'ارسال پیام و مدیریت قالب‌ها', group: 'messages' },
 ] as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[number]['key'];
@@ -89,6 +92,7 @@ export const PERMISSION_GROUP_LABELS_FA: Record<string, string> = {
   finance: 'مالی',
   crm: 'باشگاه مشتریان',
   shifts: 'شیفت‌ها',
+  messages: 'مرکز پیام',
 };
 
 /**
@@ -143,7 +147,10 @@ export const SEED_ROLES: SeedRole[] = [
       'reports.read',
       'inventory.read',
       'shifts.read',
+      'shifts.write',
       'crm.read',
+      'messages.read',
+      'messages.write',
     ],
   },
   {

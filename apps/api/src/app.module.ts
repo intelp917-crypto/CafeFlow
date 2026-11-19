@@ -9,9 +9,11 @@ import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { EmployeesModule } from './modules/employees/employees.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { HealthModule } from './modules/health/health.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
+import { LayoutModule } from './modules/layout/layout.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
@@ -42,6 +44,8 @@ import { UsersModule } from './modules/users/users.module';
     ReservationsModule,
     FinanceModule,
     CrmModule,
+    LayoutModule,
+    EmployeesModule,
   ],
   providers: [
     // Order matters: authenticate, then authorize permissions, then module gate.

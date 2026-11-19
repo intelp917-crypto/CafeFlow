@@ -2,6 +2,9 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@ne
 import {
   adjustStockSchema,
   createIngredientSchema,
+  createPurchaseSchema,
+  createSupplierSchema,
+  createWasteSchema,
   setRecipeSchema,
 } from '@cafeflow/shared';
 import { CurrentAuth, Permissions, RequireModule } from '../../common/decorators';
@@ -58,6 +61,58 @@ export class InventoryController {
     const parsed = Number(limit);
     const safe = Number.isFinite(parsed) ? Math.min(Math.max(Math.trunc(parsed), 1), 200) : 60;
     return this.inventory.movements(safe);
+  }
+
+  @Get('suppliers')
+  @Permissions('inventory.read')
+  suppliers() {
+    return this.inventory.suppliers();
+  }
+
+  @Post('suppliers')
+  @Permissions('inventory.write')
+  createSupplier(@Body() body: unknown, @CurrentAuth() auth: RequestAuth) {
+    return this.inventory.createSupplier(parseWith(createSupplierSchema, body), {
+      userId: auth.userId,
+      username: auth.username,
+      permissions: auth.permissions,
+    });
+  }
+
+  @Get('purchases')
+  @Permissions('inventory.read')
+  purchases(@Query('limit') limit?: string) {
+    const parsed = Number(limit);
+    const safe = Number.isFinite(parsed) ? Math.min(Math.max(Math.trunc(parsed), 1), 200) : 40;
+    return this.inventory.purchases(safe);
+  }
+
+  @Post('purchases')
+  @Permissions('inventory.write')
+  createPurchase(@Body() body: unknown, @CurrentAuth() auth: RequestAuth) {
+    return this.inventory.createPurchase(parseWith(createPurchaseSchema, body), {
+      userId: auth.userId,
+      username: auth.username,
+      permissions: auth.permissions,
+    });
+  }
+
+  @Get('waste')
+  @Permissions('inventory.read')
+  waste(@Query('limit') limit?: string) {
+    const parsed = Number(limit);
+    const safe = Number.isFinite(parsed) ? Math.min(Math.max(Math.trunc(parsed), 1), 200) : 40;
+    return this.inventory.waste(safe);
+  }
+
+  @Post('waste')
+  @Permissions('inventory.write')
+  createWaste(@Body() body: unknown, @CurrentAuth() auth: RequestAuth) {
+    return this.inventory.createWaste(parseWith(createWasteSchema, body), {
+      userId: auth.userId,
+      username: auth.username,
+      permissions: auth.permissions,
+    });
   }
 
   @Get('recipes')

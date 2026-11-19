@@ -13,6 +13,7 @@
   "scripts": {
     "build:shared": "npm run build -w @cafeflow/shared",
     "build": "npm run build:shared && npm run build -w @cafeflow/api && npm run build -w @cafeflow/web",
+    "start": "node scripts/start.mjs",
     "dev:api": "npm run dev -w @cafeflow/api",
     "dev:web": "npm run dev -w @cafeflow/web",
     "db:migrate": "npm run db:migrate -w @cafeflow/api",

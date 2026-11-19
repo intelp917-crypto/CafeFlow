@@ -126,7 +126,7 @@ export function HomePage() {
               </Link>
               <Link
                 to="/staff/login"
-                className="rounded-full border border-cream/25 px-6 py-3 text-xs text-cream hover:border-cream/60"
+                className="rounded-full border border-cream/15 px-6 py-3 text-xs text-cream/70 hover:border-cream/40 hover:text-cream"
               >
                 ورود کارکنان
               </Link>

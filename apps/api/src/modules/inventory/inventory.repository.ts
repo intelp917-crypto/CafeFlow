@@ -268,4 +268,133 @@ export class InventoryRepository {
     );
     return row ? row.is_enabled === 1 : false;
   }
+
+  /* ------------------------------ suppliers ------------------------------ */
+
+  suppliers(): Array<{
+    id: string;
+    name_fa: string;
+    phone: string | null;
+    address: string | null;
+    is_active: number;
+    purchase_count: number;
+    last_purchase_at: string | null;
+  }> {
+    return this.database.all(
+      `SELECT s.id, s.name_fa, s.phone, s.address, s.is_active,
+              (SELECT COUNT(*) FROM purchases p WHERE p.supplier_id = s.id) AS purchase_count,
+              (SELECT MAX(p.purchased_at) FROM purchases p WHERE p.supplier_id = s.id) AS last_purchase_at
+         FROM suppliers s
+        ORDER BY s.is_active DESC, s.name_fa ASC`,
+    );
+  }
+
+  findSupplier(id: string): { id: string; name_fa: string; is_active: number } | undefined {
+    return this.database.get('SELECT id, name_fa, is_active FROM suppliers WHERE id = ?', [id]);
+  }
+
+  insertSupplier(input: { id: string; nameFa: string; phone: string | null; address: string | null }): void {
+    this.database.run('INSERT INTO suppliers (id, name_fa, phone, address) VALUES (?, ?, ?, ?)', [
+      input.id,
+      input.nameFa,
+      input.phone,
+      input.address,
+    ]);
+  }
+
+  /* ------------------------------- purchases ----------------------------- */
+
+  purchases(limit: number): Array<{
+    id: string;
+    supplier_id: string | null;
+    supplier_name_fa: string | null;
+    invoice_no: string | null;
+    total: number;
+    purchased_at: string;
+    item_count: number;
+    created_by_name: string | null;
+  }> {
+    return this.database.all(
+      `SELECT p.id, p.supplier_id, s.name_fa AS supplier_name_fa, p.invoice_no, p.total, p.purchased_at,
+              (SELECT COUNT(*) FROM purchase_items pi WHERE pi.purchase_id = p.id) AS item_count,
+              u.full_name AS created_by_name
+         FROM purchases p
+         LEFT JOIN suppliers s ON s.id = p.supplier_id
+         LEFT JOIN users u ON u.id = p.created_by_user_id
+        ORDER BY p.purchased_at DESC
+        LIMIT ?`,
+      [limit],
+    );
+  }
+
+  insertPurchase(input: {
+    id: string;
+    supplierId: string | null;
+    invoiceNo: string | null;
+    total: number;
+    purchasedAt: string;
+    createdByUserId: string;
+  }): void {
+    this.database.run(
+      `INSERT INTO purchases (id, supplier_id, invoice_no, total, purchased_at, created_by_user_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [input.id, input.supplierId, input.invoiceNo, input.total, input.purchasedAt, input.createdByUserId],
+    );
+  }
+
+  insertPurchaseItem(input: {
+    id: string;
+    purchaseId: string;
+    ingredientId: string;
+    qty: number;
+    unitCost: number;
+  }): void {
+    this.database.run(
+      'INSERT INTO purchase_items (id, purchase_id, ingredient_id, qty, unit_cost) VALUES (?, ?, ?, ?, ?)',
+      [input.id, input.purchaseId, input.ingredientId, input.qty, input.unitCost],
+    );
+  }
+
+  updateIngredientCost(ingredientId: string, unitCost: number): void {
+    this.database.run('UPDATE ingredients SET cost_per_unit = ? WHERE id = ?', [unitCost, ingredientId]);
+  }
+
+  /* --------------------------------- waste ------------------------------- */
+
+  insertWaste(input: {
+    id: string;
+    ingredientId: string;
+    qty: number;
+    reason: string;
+    recordedByUserId: string;
+  }): void {
+    this.database.run(
+      `INSERT INTO waste_records (id, ingredient_id, qty, reason, recorded_by_user_id)
+       VALUES (?, ?, ?, ?, ?)`,
+      [input.id, input.ingredientId, input.qty, input.reason, input.recordedByUserId],
+    );
+  }
+
+  waste(limit: number): Array<{
+    id: string;
+    ingredient_id: string;
+    ingredient_name_fa: string;
+    qty: number;
+    unit_symbol: string | null;
+    reason: string | null;
+    recorded_by_name: string | null;
+    created_at: string;
+  }> {
+    return this.database.all(
+      `SELECT w.id, w.ingredient_id, i.name_fa AS ingredient_name_fa, w.qty,
+              u2.symbol AS unit_symbol, w.reason, u.full_name AS recorded_by_name, w.created_at
+         FROM waste_records w
+         JOIN ingredients i ON i.id = w.ingredient_id
+         LEFT JOIN measurement_units u2 ON u2.id = i.unit_id
+         LEFT JOIN users u ON u.id = w.recorded_by_user_id
+        ORDER BY w.created_at DESC
+        LIMIT ?`,
+      [limit],
+    );
+  }
 }

@@ -1,16 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import type {
-  CashRegisterRow,
-  CashSessionRow,
-  CashSessionsResponse,
-  CloseCashSessionInput,
-  OpenCashSessionInput,
+import {
+  EXPENSE_CATEGORY_LABELS_FA,
+  type CashRegisterRow,
+  type CashSessionRow,
+  type CashSessionsResponse,
+  type CloseCashSessionInput,
+  type CreateExpenseInput,
+  type ExpenseCategory,
+  type ExpenseRow,
+  type FinanceSummaryResponse,
+  type OpenCashSessionInput,
 } from '@cafeflow/shared';
 import { DB_SERVICE } from '../../common/tokens';
 import { DatabaseService } from '../../db/database.service';
 import { AuditService } from '../audit/audit.service';
 import { badRequest, conflict, notFound } from '../../common/errors';
+import { resolveDayRange } from '../../common/date-range';
 
 export interface ActingUser {
   userId: string;
@@ -210,5 +216,159 @@ export class FinanceService {
     const closed = this.findSession(id);
     if (!closed) throw notFound('جلسه صندوق یافت نشد.', 'CASH_SESSION_NOT_FOUND');
     return this.toRow(closed);
+  }
+
+  /* ------------------------------- expenses ------------------------------ */
+
+  private expenseRows(fromIso?: string, toIso?: string, limit = 40): ExpenseRow[] {
+    const rows = this.database.all<{
+      id: string;
+      category: ExpenseCategory;
+      amount: number;
+      description: string | null;
+      spent_at: string;
+      created_by_name: string | null;
+    }>(
+      `SELECT e.id, e.category, e.amount, e.description, e.spent_at, u.full_name AS created_by_name
+         FROM expenses e
+         LEFT JOIN users u ON u.id = e.created_by_user_id
+        WHERE (? IS NULL OR (e.spent_at >= ? AND e.spent_at < ?))
+        ORDER BY e.spent_at DESC
+        LIMIT ?`,
+      [fromIso ?? null, fromIso ?? null, toIso ?? null, limit],
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      category: row.category,
+      categoryLabelFa: EXPENSE_CATEGORY_LABELS_FA[row.category] ?? row.category,
+      amount: row.amount,
+      description: row.description,
+      spentAt: row.spent_at,
+      createdByName: row.created_by_name,
+    }));
+  }
+
+  expenses(limit: number): { items: ExpenseRow[] } {
+    return { items: this.expenseRows(undefined, undefined, limit) };
+  }
+
+  createExpense(input: CreateExpenseInput, actor: ActingUser): ExpenseRow {
+    const id = randomUUID();
+    const spentAt = input.spentAt ? new Date(input.spentAt).toISOString() : new Date().toISOString();
+
+    this.database.run(
+      `INSERT INTO expenses (id, category, amount, description, spent_at, created_by_user_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, input.category, input.amount, input.description ?? null, spentAt, actor.userId],
+    );
+
+    this.audit.record({
+      actorUserId: actor.userId,
+      actorUsername: actor.username,
+      action: 'finance.expense_recorded',
+      entityType: 'expense',
+      entityId: id,
+      after: { category: input.category, amount: input.amount, spentAt },
+    });
+
+    return {
+      id,
+      category: input.category,
+      categoryLabelFa: EXPENSE_CATEGORY_LABELS_FA[input.category],
+      amount: input.amount,
+      description: input.description ?? null,
+      spentAt,
+      createdByName: actor.username,
+    };
+  }
+
+  /**
+   * Revenue, expenses and profit for a Tehran calendar range.
+   *
+   * Revenue is the confirmed payment ledger minus refunds; expenses come from
+   * the expense ledger. Nothing is derived from client input.
+   */
+  summary(from?: string, to?: string): FinanceSummaryResponse {
+    const range = resolveDayRange(from, to, 29);
+    const params = [range.startIso, range.endIso];
+
+    const revenueRow = this.database.get<{ confirmed: number; refunded: number }>(
+      `SELECT COALESCE(SUM(CASE WHEN status = 'confirmed' THEN amount ELSE 0 END), 0) AS confirmed,
+              COALESCE(SUM(CASE WHEN status = 'refunded' THEN amount ELSE 0 END), 0) AS refunded
+         FROM payments
+        WHERE paid_at >= ? AND paid_at < ?`,
+      params,
+    );
+    const expenseRow = this.database.get<{ total: number }>(
+      'SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE spent_at >= ? AND spent_at < ?',
+      params,
+    );
+
+    const revenue = revenueRow?.confirmed ?? 0;
+    const refunds = revenueRow?.refunded ?? 0;
+    const netRevenue = revenue - refunds;
+    const expenses = expenseRow?.total ?? 0;
+    const profit = netRevenue - expenses;
+
+    const byCategory = this.database
+      .all<{ category: ExpenseCategory; total: number }>(
+        `SELECT category, COALESCE(SUM(amount), 0) AS total
+           FROM expenses
+          WHERE spent_at >= ? AND spent_at < ?
+          GROUP BY category
+          ORDER BY total DESC`,
+        params,
+      )
+      .map((row) => ({
+        category: row.category,
+        labelFa: EXPENSE_CATEGORY_LABELS_FA[row.category] ?? row.category,
+        total: row.total,
+      }));
+
+    const revenueDaily = new Map(
+      this.database
+        .all<{ date: string; total: number }>(
+          `SELECT date(paid_at, '+210 minutes') AS date,
+                  COALESCE(SUM(CASE WHEN status = 'confirmed' THEN amount WHEN status = 'refunded' THEN -amount ELSE 0 END), 0) AS total
+             FROM payments
+            WHERE paid_at >= ? AND paid_at < ?
+            GROUP BY date`,
+          params,
+        )
+        .map((row) => [row.date, row.total]),
+    );
+    const expenseDaily = new Map(
+      this.database
+        .all<{ date: string; total: number }>(
+          `SELECT date(spent_at, '+210 minutes') AS date, COALESCE(SUM(amount), 0) AS total
+             FROM expenses
+            WHERE spent_at >= ? AND spent_at < ?
+            GROUP BY date`,
+          params,
+        )
+        .map((row) => [row.date, row.total]),
+    );
+
+    const dates = [...new Set([...revenueDaily.keys(), ...expenseDaily.keys()])].sort();
+    const daily = dates.map((date) => {
+      const dayRevenue = revenueDaily.get(date) ?? 0;
+      const dayExpenses = expenseDaily.get(date) ?? 0;
+      return { date, revenue: dayRevenue, expenses: dayExpenses, profit: dayRevenue - dayExpenses };
+    });
+
+    return {
+      from: range.from,
+      to: range.to,
+      revenue,
+      refunds,
+      netRevenue,
+      expenses,
+      profit,
+      marginPercent: netRevenue > 0 ? Math.round((profit / netRevenue) * 1000) / 10 : 0,
+      expensesByCategory: byCategory,
+      daily,
+      expensesList: this.expenseRows(range.startIso, range.endIso, 60),
+    };
   }
 }

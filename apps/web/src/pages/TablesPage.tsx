@@ -101,7 +101,7 @@ export function TablesPage() {
         </Card>
       ) : data && data.items.length === 0 ? (
         <Card>
-          <EmptyState title="میز فعالی ثبت نشده است" description="میزها از بخش مدیریت سالن (فاز بعد) اضافه می‌شوند." />
+          <EmptyState title="میز فعالی ثبت نشده است" description="میزها را از بخش «طراح سالن» اضافه کنید." />
         </Card>
       ) : data ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

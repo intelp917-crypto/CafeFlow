@@ -152,7 +152,7 @@ export function SettingsPage() {
                     </select>
                   </Field>
 
-                  <Field label="واحد پول" htmlFor="currency" hint="در فاز ۱ فقط ریال ایران پشتیبانی می‌شود.">
+                  <Field label="واحد پول" htmlFor="currency" hint="فقط ریال ایران پشتیبانی می‌شود.">
                     <Input id="currency" value="ریال ایران (IRR)" disabled readOnly />
                   </Field>
 
@@ -297,7 +297,7 @@ export function SettingsPage() {
               </div>
               <div>
                 <p className="text-muted">نسخه</p>
-                <p className="font-medium">۰.۱ — فاز ۱ (پایه و امنیت)</p>
+                <p className="font-medium">۰.۹.۰</p>
               </div>
             </CardBody>
           </Card>

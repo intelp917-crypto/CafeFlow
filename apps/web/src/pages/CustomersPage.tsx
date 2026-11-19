@@ -326,6 +326,41 @@ export function CustomersPage() {
                 </ul>
               )}
             </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold text-ink">تاریخچه رزرو</p>
+              {selected.reservations.length === 0 ? (
+                <p className="text-[11px] text-muted">
+                  رزروی با این شماره تماس ثبت نشده است.
+                </p>
+              ) : (
+                <ul className="max-h-64 divide-y divide-line overflow-y-auto rounded-xl border border-line">
+                  {selected.reservations.map((entry) => (
+                    <li key={entry.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                      <div>
+                        <p className="text-[11px] text-ink">
+                          {formatDateTimeFa(entry.reservedFor)} — {entry.guestCount.toLocaleString('fa-IR')} نفر
+                        </p>
+                        <p className="text-[10px] text-muted">
+                          {entry.tableNameFa ?? 'بدون میز'} · {entry.statusLabelFa}
+                        </p>
+                      </div>
+                      <Badge
+                        tone={
+                          entry.status === 'cancelled' || entry.status === 'no_show'
+                            ? 'danger'
+                            : entry.status === 'seated'
+                              ? 'success'
+                              : 'warning'
+                        }
+                      >
+                        {entry.statusLabelFa}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         ) : null}
       </Modal>

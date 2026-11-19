@@ -1,3 +1,4 @@
+import { Suspense, lazy, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Spinner } from '@cafeflow/ui';
 import { useAuth } from './lib/auth';
@@ -8,8 +9,12 @@ import { CashierPage } from './pages/CashierPage';
 import { CashPage } from './pages/CashPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { EmployeesPage } from './pages/EmployeesPage';
+import { FinancePage } from './pages/FinancePage';
+import { MessagesPage } from './pages/MessagesPage';
 import { HomePage } from './pages/HomePage';
 import { InventoryPage } from './pages/InventoryPage';
+import { LayoutPage } from './pages/LayoutPage';
 import { LoginPage } from './pages/LoginPage';
 import { MenuPage } from './pages/MenuPage';
 import { OrderStatusPage } from './pages/OrderStatusPage';
@@ -28,12 +33,32 @@ import { SecurityPage } from './pages/SecurityPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StaffPage } from './pages/StaffPage';
 
+const INTRO_SEEN_KEY = 'cafeflow:intro-seen';
+
+/** The cinematic entrance is its own chunk, downloaded on the first visit of a session. */
+const IntroPage = lazy(() => import('./pages/IntroPage').then((module) => ({ default: module.IntroPage })));
+
 function FullPageLoader() {
   return (
     <div className="flex min-h-dvh items-center justify-center text-brand-600">
       <Spinner size="lg" label="در حال بررسی نشست…" />
     </div>
   );
+}
+
+function readIntroSeen() {
+  try {
+    return sessionStorage.getItem(INTRO_SEEN_KEY) === '1';
+  } catch {
+    // Storage can be blocked; the entrance is an extra, so never trap anyone on it.
+    return true;
+  }
+}
+
+/** Entering the site starts at the entrance scene; once per session after that, straight home. */
+function RootRoute() {
+  const [introSeen] = useState(readIntroSeen);
+  return introSeen ? <HomePage /> : <Navigate to="/intro" replace />;
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -49,7 +74,15 @@ export function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
+      <Route path="/" element={<RootRoute />} />
+      <Route
+        path="/intro"
+        element={
+          <Suspense fallback={<FullPageLoader />}>
+            <IntroPage />
+          </Suspense>
+        }
+      />
       <Route path="/menu" element={<MenuPage />} />
       <Route path="/menu/:qrToken" element={<MenuPage />} />
       <Route path="/order/:code" element={<OrderStatusPage />} />
@@ -72,6 +105,7 @@ export function App() {
         <Route path="cashier" element={<CashierPage />} />
         <Route path="prep" element={<PrepPage />} />
         <Route path="tables" element={<TablesPage />} />
+        <Route path="layout" element={<LayoutPage />} />
         <Route path="reservations" element={<ReservationsPage />} />
         <Route path="requests" element={<RequestsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
@@ -79,6 +113,9 @@ export function App() {
         <Route path="reports" element={<ReportsPage />} />
         <Route path="inventory" element={<InventoryPage />} />
         <Route path="cash" element={<CashPage />} />
+        <Route path="finance" element={<FinancePage />} />
+        <Route path="employees" element={<EmployeesPage />} />
+        <Route path="messages" element={<MessagesPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="modules" element={<ModulesPage />} />
         <Route path="staff" element={<StaffPage />} />

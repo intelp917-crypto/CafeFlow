@@ -62,7 +62,6 @@ export function ModulesPage() {
                 <Badge tone="neutral" dot>غیرفعال</Badge>
               )}
               {!module.configurable ? <Badge tone="brand">هسته</Badge> : null}
-              <Badge tone="info">قابلیت‌ها در فاز {module.phase}</Badge>
             </div>
             <p className="max-w-2xl text-[11px] leading-6 text-muted">{module.descriptionFa}</p>
           </div>

@@ -4,11 +4,17 @@ import {
   STOCK_MOVEMENT_LABELS_FA,
   type AdjustStockInput,
   type CreateIngredientInput,
+  type CreatePurchaseInput,
+  type CreateSupplierInput,
+  type CreateWasteInput,
   type IngredientRow,
   type IngredientsResponse,
+  type PurchaseRow,
   type RecipeView,
   type SetRecipeInput,
+  type SupplierRow,
   type StockMovementRow,
+  type WasteRow,
 } from '@cafeflow/shared';
 import { DB_SERVICE } from '../../common/tokens';
 import { DatabaseService } from '../../db/database.service';
@@ -266,6 +272,216 @@ export class InventoryService {
       }
     }
     return deductible;
+  }
+
+  /* ------------------------------ suppliers ------------------------------ */
+
+  suppliers(): { items: SupplierRow[] } {
+    return {
+      items: this.repository.suppliers().map((row) => ({
+        id: row.id,
+        nameFa: row.name_fa,
+        phone: row.phone,
+        address: row.address,
+        isActive: row.is_active === 1,
+        purchaseCount: row.purchase_count,
+        lastPurchaseAt: row.last_purchase_at,
+      })),
+    };
+  }
+
+  createSupplier(input: CreateSupplierInput, actor: ActingUser): SupplierRow {
+    const id = randomUUID();
+    this.repository.insertSupplier({
+      id,
+      nameFa: input.nameFa,
+      phone: input.phone ?? null,
+      address: input.address ?? null,
+    });
+
+    this.audit.record({
+      actorUserId: actor.userId,
+      actorUsername: actor.username,
+      action: 'inventory.supplier_created',
+      entityType: 'supplier',
+      entityId: id,
+      after: { nameFa: input.nameFa, phone: input.phone ?? null },
+    });
+
+    const created = this.repository.findSupplier(id);
+    if (!created) throw notFound('تأمین‌کننده ثبت نشد.', 'SUPPLIER_NOT_CREATED');
+    return {
+      id: created.id,
+      nameFa: created.name_fa,
+      phone: input.phone ?? null,
+      address: input.address ?? null,
+      isActive: created.is_active === 1,
+      purchaseCount: 0,
+      lastPurchaseAt: null,
+    };
+  }
+
+  /* ------------------------------- purchases ----------------------------- */
+
+  purchases(limit: number): { items: PurchaseRow[] } {
+    return {
+      items: this.repository.purchases(limit).map((row) => ({
+        id: row.id,
+        supplierId: row.supplier_id,
+        supplierNameFa: row.supplier_name_fa,
+        invoiceNo: row.invoice_no,
+        total: row.total,
+        purchasedAt: row.purchased_at,
+        itemCount: row.item_count,
+        createdByName: row.created_by_name,
+      })),
+    };
+  }
+
+  createPurchase(input: CreatePurchaseInput, actor: ActingUser): PurchaseRow {
+    if (input.supplierId) {
+      const supplier = this.repository.findSupplier(input.supplierId);
+      if (!supplier) throw notFound('تأمین‌کننده یافت نشد.', 'SUPPLIER_NOT_FOUND');
+      if (supplier.is_active !== 1) throw badRequest('این تأمین‌کننده غیرفعال است.', 'SUPPLIER_INACTIVE');
+    }
+
+    for (const item of input.items) {
+      if (!this.repository.findIngredient(item.ingredientId)) {
+        throw badRequest('یکی از مواد اولیه انتخاب‌شده یافت نشد.', 'INGREDIENT_NOT_FOUND');
+      }
+    }
+
+    const purchasedAt = input.purchasedAt ? new Date(input.purchasedAt).toISOString() : new Date().toISOString();
+    const total = input.items.reduce((sum, item) => sum + Math.round(item.qty * item.unitCost), 0);
+    const id = randomUUID();
+
+    this.database.transaction(() => {
+      this.repository.insertPurchase({
+        id,
+        supplierId: input.supplierId ?? null,
+        invoiceNo: input.invoiceNo ?? null,
+        total,
+        purchasedAt,
+        createdByUserId: actor.userId,
+      });
+
+      for (const item of input.items) {
+        const qty = round3(item.qty);
+        this.repository.insertPurchaseItem({
+          id: randomUUID(),
+          purchaseId: id,
+          ingredientId: item.ingredientId,
+          qty,
+          unitCost: item.unitCost,
+        });
+        this.repository.addStock(item.ingredientId, qty);
+        this.repository.updateIngredientCost(item.ingredientId, item.unitCost);
+        this.repository.insertMovement({
+          id: randomUUID(),
+          ingredientId: item.ingredientId,
+          type: 'purchase',
+          qty,
+          refType: 'purchase',
+          refId: id,
+          note: input.invoiceNo ? `خرید — فاکتور ${input.invoiceNo}` : 'خرید کالا',
+          createdByUserId: actor.userId,
+        });
+      }
+    });
+
+    this.audit.record({
+      actorUserId: actor.userId,
+      actorUsername: actor.username,
+      action: 'inventory.purchase_created',
+      entityType: 'purchase',
+      entityId: id,
+      after: { supplierId: input.supplierId ?? null, total, itemCount: input.items.length },
+    });
+
+    const created = this.repository.purchases(200).find((row) => row.id === id);
+    return {
+      id,
+      supplierId: created?.supplier_id ?? input.supplierId ?? null,
+      supplierNameFa: created?.supplier_name_fa ?? null,
+      invoiceNo: input.invoiceNo ?? null,
+      total,
+      purchasedAt,
+      itemCount: input.items.length,
+      createdByName: actor.username,
+    };
+  }
+
+  /* --------------------------------- waste ------------------------------- */
+
+  waste(limit: number): { items: WasteRow[] } {
+    return {
+      items: this.repository.waste(limit).map((row) => ({
+        id: row.id,
+        ingredientId: row.ingredient_id,
+        ingredientNameFa: row.ingredient_name_fa,
+        qty: round3(row.qty),
+        unitSymbol: row.unit_symbol,
+        reason: row.reason,
+        recordedByName: row.recorded_by_name,
+        createdAt: row.created_at,
+      })),
+    };
+  }
+
+  createWaste(input: CreateWasteInput, actor: ActingUser): WasteRow {
+    const ingredient = this.repository.findIngredient(input.ingredientId);
+    if (!ingredient) throw notFound('ماده اولیه یافت نشد.', 'INGREDIENT_NOT_FOUND');
+
+    const qty = round3(input.qty);
+    if (ingredient.current_qty < qty) {
+      throw badRequest(
+        `موجودی «${ingredient.name_fa}» برای ثبت این ضایعات کافی نیست؛ موجودی فعلی ${round3(ingredient.current_qty)} است.`,
+        'INSUFFICIENT_STOCK',
+        { currentQty: round3(ingredient.current_qty), qty },
+      );
+    }
+
+    const id = randomUUID();
+    this.database.transaction(() => {
+      this.repository.insertWaste({
+        id,
+        ingredientId: input.ingredientId,
+        qty,
+        reason: input.reason,
+        recordedByUserId: actor.userId,
+      });
+      this.repository.addStock(input.ingredientId, -qty);
+      this.repository.insertMovement({
+        id: randomUUID(),
+        ingredientId: input.ingredientId,
+        type: 'waste',
+        qty: -qty,
+        refType: 'waste',
+        refId: id,
+        note: input.reason,
+        createdByUserId: actor.userId,
+      });
+    });
+
+    this.audit.record({
+      actorUserId: actor.userId,
+      actorUsername: actor.username,
+      action: 'inventory.waste_recorded',
+      entityType: 'waste_record',
+      entityId: id,
+      after: { ingredientId: input.ingredientId, qty, reason: input.reason },
+    });
+
+    return {
+      id,
+      ingredientId: input.ingredientId,
+      ingredientNameFa: ingredient.name_fa,
+      qty,
+      unitSymbol: ingredient.unit_symbol,
+      reason: input.reason,
+      recordedByName: actor.username,
+      createdAt: new Date().toISOString(),
+    };
   }
 
   /**

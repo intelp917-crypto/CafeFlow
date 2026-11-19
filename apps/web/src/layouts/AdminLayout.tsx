@@ -21,6 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/admin/prep', label: 'صف آماده‌سازی', permission: 'prep.read', icon: 'M4 7h16M6 7v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7M9 3v4m6-4v4' },
   { to: '/admin/cashier', label: 'صندوق', permission: 'payments.read', icon: 'M4 7h16v10H4zM4 11h16M8 15h3' },
   { to: '/admin/tables', label: 'میزها', permission: 'layout.read', icon: 'M4 10h16M6 10V6h12v4M8 10v6m8-6v6M5 20h14' },
+  { to: '/admin/layout', label: 'طراحی سالن', permission: 'layout.read', icon: 'M4 4h16v16H4zM4 10h16M10 10v10M15 6h2' },
   { to: '/admin/reservations', label: 'رزروها', permission: 'reservations.read', module: 'reservations', icon: 'M8 4v3m8-3v3M4 9h16M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z' },
   { to: '/admin/requests', label: 'درخواست‌ها', permission: 'orders.read', icon: 'M12 4a5 5 0 0 1 5 5v3l2 3H5l2-3V9a5 5 0 0 1 5-5zM10 19a2 2 0 0 0 4 0' },
   { to: '/admin/notifications', label: 'اعلان‌ها', permission: '', icon: 'M6 9a6 6 0 1 1 12 0v3l2 4H4l2-4zM10 20a2 2 0 0 0 4 0' },
@@ -28,6 +29,9 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/admin/reports', label: 'گزارش‌ها', permission: 'reports.read', icon: 'M5 19V9m5 10V5m5 14v-7m5 7V8' },
   { to: '/admin/inventory', label: 'انبار', permission: 'inventory.read', module: 'inventory', icon: 'M4 8l8-4 8 4v9l-8 4-8-4zM4 8l8 4 8-4M12 12v9' },
   { to: '/admin/cash', label: 'جلسات صندوق', permission: 'finance.read', module: 'finance', icon: 'M4 7h16v10H4zM8 11h3M8 14h6' },
+  { to: '/admin/finance', label: 'مالی و سود و زیان', permission: 'finance.read', module: 'finance', icon: 'M5 19V9m5 10V5m5 14v-7m5 7V8M3 19h18' },
+  { to: '/admin/employees', label: 'شیفت و عملکرد', permission: 'shifts.read', module: 'employees', icon: 'M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z' },
+  { to: '/admin/messages', label: 'مرکز پیام', permission: 'messages.read', module: 'notifications', icon: 'M4 6h16v10H8l-4 4V6zM8 10h8M8 13h5' },
   { to: '/admin/customers', label: 'مشتریان', permission: 'crm.read', module: 'crm', icon: 'M17 19v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M10 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM20 8v6M17 11h6' },
   { to: '/admin/modules', label: 'ماژول‌ها', permission: 'modules.read', icon: 'M4 7h16M4 12h16M4 17h10' },
   { to: '/admin/staff', label: 'کارکنان و نقش‌ها', permission: 'users.read', icon: 'M16 19v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z' },
@@ -110,8 +114,8 @@ export function AdminLayout() {
       ))}
 
       <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-3.5 text-[10px] leading-5 text-cream/55">
-        <p className="font-semibold text-cream/85">نسخه ۰.۷ — فاز ۷</p>
-        <p>تأیید دو مرحله‌ای، کدهای پشتیبان، PWA و لندینگ تازه.</p>
+        <p className="font-semibold text-cream/85">نسخه ۰.۹</p>
+        <p>طراح سالن، شیفت و عملکرد، مالی و مرکز پیام.</p>
       </div>
     </nav>
   );
