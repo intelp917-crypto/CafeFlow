@@ -2,8 +2,8 @@ import { forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTML
 import { cn } from './cn';
 
 const BASE =
-  'w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-muted/70 ' +
-  'transition-colors focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-500/10 ' +
+  'w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink placeholder:text-muted/70 ' +
+  'focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-500/12 ' +
   'disabled:cursor-not-allowed disabled:bg-canvas';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {

@@ -18,6 +18,7 @@ import { DB_SERVICE } from '../../common/tokens';
 import { DatabaseService } from '../../db/database.service';
 import { AuditService } from '../audit/audit.service';
 import { badRequest, conflict, forbidden, notFound } from '../../common/errors';
+import { InventoryService } from '../inventory/inventory.service';
 import { OrdersRepository } from './orders.repository';
 
 export interface ActingUser {
@@ -65,6 +66,7 @@ export class OrdersService {
     @Inject(DB_SERVICE) private readonly database: DatabaseService,
     @Inject(OrdersRepository) private readonly repository: OrdersRepository,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(InventoryService) private readonly inventory: InventoryService,
   ) {}
 
   list(query: ListOrdersQuery) {
@@ -274,6 +276,8 @@ export class OrdersService {
 
     if (to === 'cancelled') {
       this.repository.cancelRemainingWork(order.id);
+      // Put recipe ingredients back; a no-op while the inventory module is off.
+      this.inventory.restoreForOrder(order.id);
       this.releaseTableIfIdle(order);
     }
 

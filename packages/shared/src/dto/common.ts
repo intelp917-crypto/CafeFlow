@@ -53,6 +53,10 @@ export interface ModuleStatusDto {
 
 export interface AppSettingsDto {
   restaurantNameFa: string;
+  logoUrl: string;
+  addressFa: string;
+  phone: string;
+  email: string;
   currency: string;
   digitMode: 'fa' | 'latin';
   timezone: string;

@@ -47,6 +47,43 @@ docker compose --env-file ../../.env up -d --build
 5. HTTPS را با reverse proxy تأمین کنید؛ کوکی `Secure` بدون HTTPS کار نمی‌کند.
 6. پل چاپ را روی رایانه‌ای در شبکه رستوران اجرا و توکن آن را تنظیم کنید (فاز ۴).
 
+## پشتیبان‌گیری بدون توقف سرویس
+
+```bash
+npm run backup                                  # → backups/cafeflow-YYYYMMDD-HHmmss.db
+BACKUP_KEEP=30 npm run backup                    # نگه‌داشتن ۳۰ نسخه اخیر
+DATABASE_PATH=/srv/cafeflow.db BACKUP_DIR=/mnt/backup npm run backup
+```
+
+- اسکریپت `scripts/backup.mjs` از `VACUUM INTO` استفاده می‌کند؛ فایل تک‌پارچه و سازگار با WAL تولید می‌شود
+  و نیازی به توقف API نیست.
+- پس از ساخت، `integrity_check` و شمارش سفارش/پرداخت چاپ می‌شود؛ خروجی غیرصفر یعنی نسخه سالم نیست.
+- چرخش بر اساس تعداد (`BACKUP_KEEP`، پیش‌فرض ۱۴) انجام می‌شود؛ زمان‌بندی (cron/Task Scheduler) و آپلود
+  خارج از سرور **تنظیم نشده** است.
+- بازیابی: API را متوقف کنید، فایل پایگاه داده جاری را کنار بگذارید و نسخه پشتیبان را در
+  `DATABASE_PATH` کپی کنید (فایل‌های `-wal`/`-shm` قدیمی را حذف کنید) و دوباره بالا بیاورید.
+
+## PWA و آزمون E2E
+
+- بیلد وب شامل `manifest.webmanifest`، `sw.js`، `offline.html` و `icon-192/512.png` است. سرویس‌ورکر فقط
+  در بیلد تولیدی ثبت می‌شود و پاسخ‌های `/api` را هرگز کش نمی‌کند؛ صفحه آفلاین فقط برای ناوبری است.
+- آیکون‌ها با `node scripts/make-icons.mjs` بازتولید می‌شوند.
+- آزمون دود مرورگر (روی Edge نصب‌شده):
+
+```bash
+npm run test:e2e
+# اختیاری: E2E_ADMIN_USERNAME و E2E_ADMIN_PASSWORD برای حساب دیگری
+```
+
+- در CI، Playwright خودش API و Vite را بالا می‌آورد؛ روی ماشین توسعه سرورهای در حال اجرا دوباره استفاده می‌شوند.
+- تأیید واقعی آفلاین روی بیلد تولیدی:
+
+```bash
+npm run build -w @cafeflow/web
+(cd apps/web && npx vite preview --port 4173 --strictPort) &
+npm run verify:pwa     # manifest، سرویس‌ورکر و صفحه آفلاین را با Edge بررسی می‌کند
+```
+
 ## بررسی سلامت
 
 ```bash

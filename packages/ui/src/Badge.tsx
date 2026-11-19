@@ -40,7 +40,7 @@ export function Badge({
 export type AlertTone = 'info' | 'success' | 'warning' | 'danger';
 
 const ALERT_TONES: Record<AlertTone, string> = {
-  info: 'border-info-200 bg-info-50 text-info-700',
+  info: 'border-sec-200 bg-sec-100 text-sec-700',
   success: 'border-success-200 bg-success-50 text-success-700',
   warning: 'border-warning-200 bg-warning-50 text-warning-700',
   danger: 'border-danger-200 bg-danger-50 text-danger-700',

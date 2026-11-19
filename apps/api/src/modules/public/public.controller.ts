@@ -34,6 +34,48 @@ export class PublicController {
     return this.publicService.getMenu(typeof qr === 'string' && qr.length > 0 ? qr : undefined);
   }
 
+  /**
+   * The admin-uploaded logo as the installed-app icon. Served same-origin, so
+   * the PWA manifest can point at it. Falls back to the bundled icon when none.
+   */
+  @Public()
+  @Get('branding/icon/:size')
+  brandingIcon(@Param('size') size: string, @Res() response: Response) {
+    const logo = this.publicService.getLogoImage();
+    if (!logo) {
+      response.redirect(302, `/icon-${size === '512' ? '512' : '192'}.png`);
+      return;
+    }
+    response.setHeader('Content-Type', logo.mime);
+    response.setHeader('Cache-Control', 'no-cache');
+    response.end(logo.bytes);
+  }
+
+  @Public()
+  @Get('branding/manifest')
+  brandingManifest() {
+    const custom = this.publicService.getLogoImage() !== null;
+    const iconSrc = (size: number) =>
+      custom ? `/api/v1/public/branding/icon/${size}` : `/icon-${size}.png`;
+    return {
+      name: 'کافه‌فلو — مدیریت کافه و رستوران',
+      short_name: 'کافه‌فلو',
+      description: 'منوی QR، سفارش، آماده‌سازی، صندوق، رزرو و گزارش‌های کافه و رستوران',
+      lang: 'fa-IR',
+      dir: 'rtl',
+      start_url: '/',
+      scope: '/',
+      display: 'standalone',
+      orientation: 'portrait-primary',
+      background_color: '#f8f5f2',
+      theme_color: '#aa472b',
+      icons: [
+        { src: iconSrc(192), sizes: '192x192', purpose: 'any' },
+        { src: iconSrc(512), sizes: '512x512', purpose: 'any' },
+      ],
+    };
+  }
+
   @Public()
   @Post('orders')
   @HttpCode(201)

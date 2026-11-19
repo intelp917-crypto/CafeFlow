@@ -10,6 +10,7 @@ interface AuthUser {
   roles: string[];
   permissions: string[];
   mustChangePassword: boolean;
+  mfaEnabled: boolean;
 }
 
 interface AuthContextValue {
@@ -17,7 +18,7 @@ interface AuthContextValue {
   modules: ModuleKey[];
   loading: boolean;
   error: string | null;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, code?: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
@@ -55,8 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadSession]);
 
   const login = useCallback(
-    async (username: string, password: string) => {
-      await api.post<{ user: AuthUser; modules: ModuleKey[] }>('/auth/login', { username, password });
+    async (username: string, password: string, code?: string) => {
+      await api.post<{ user: AuthUser; modules: ModuleKey[] }>('/auth/login', {
+        username,
+        password,
+        ...(code ? { code } : {}),
+      });
       // Re-read the session so permissions and module flags come from the same
       // backend source as every later request.
       const data = await api.get<MeResponse>('/auth/me');

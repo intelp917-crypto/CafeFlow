@@ -2,61 +2,65 @@
 @source "../../../packages/ui/src";
 
 /* ---------------------------------------------------------------------------
-   CafeFlow design tokens
-   Primary  #aa472b  (espresso)
-   Secondary #96a09f (stone)
-   Every component uses logical properties (start/end) so that the RTL layout
-   is designed, not mirrored.
+   CafeFlow design tokens — "slow coffee" system
+   The palette follows the reference direction: deep chocolate surfaces, warm
+   linen paper, copper accent, cream type on dark. Persian display headings use
+   Naskh (a true serif) while the interface stays on Vazirmatn.
 --------------------------------------------------------------------------- */
 @theme {
-  --color-brand-50: #fdf3ef;
-  --color-brand-100: #f8e0d7;
-  --color-brand-200: #f0c3b2;
-  --color-brand-300: #e3a088;
-  --color-brand-400: #c9795d;
-  --color-brand-500: #aa472b;
-  --color-brand-600: #953c23;
-  --color-brand-700: #7b311d;
-  --color-brand-800: #622818;
-  --color-brand-900: #4d2014;
+  --color-brand-50: #fcefe5;
+  --color-brand-100: #f7ddc9;
+  --color-brand-200: #eec0a1;
+  --color-brand-300: #e19e76;
+  --color-brand-400: #d07c4f;
+  --color-brand-500: #b95f33;
+  --color-brand-600: #a34c25;
+  --color-brand-700: #853c1d;
+  --color-brand-800: #6a3018;
+  --color-brand-900: #4e2413;
 
-  --color-sec-100: #eef1f0;
-  --color-sec-200: #e0e5e4;
-  --color-sec-300: #96a09f;
-  --color-sec-500: #7c8785;
-  --color-sec-700: #566160;
+  --color-sec-100: #f0e9dc;
+  --color-sec-200: #e6dbc9;
+  --color-sec-300: #cdbda7;
+  --color-sec-500: #9c8b76;
+  --color-sec-700: #6b5a49;
 
-  --color-canvas: #f7f4f0;
-  --color-surface: #ffffff;
-  --color-line: #e8e2db;
-  --color-ink: #241f1c;
-  --color-muted: #6f6862;
+  --color-canvas: #f6f0e6;
+  --color-surface: #fffcf6;
+  --color-line: #e6dbc9;
+  --color-ink: #291b13;
+  --color-muted: #7b6a5b;
 
-  --color-success-50: #eef8f1;
-  --color-success-200: #c8e8d3;
-  --color-success-600: #2f7d4f;
-  --color-success-700: #24613d;
+  --color-espresso: #241611;
+  --color-choco: #3b2519;
+  --color-cream: #f7efe3;
 
-  --color-warning-50: #fdf6e9;
-  --color-warning-200: #f2e0b6;
-  --color-warning-600: #a4700f;
-  --color-warning-700: #82590c;
+  --color-success-50: #eef6ec;
+  --color-success-200: #cde3c6;
+  --color-success-600: #3f7a45;
+  --color-success-700: #336239;
 
-  --color-danger-50: #fdf0ee;
-  --color-danger-200: #f3cdc5;
-  --color-danger-500: #c0392b;
-  --color-danger-600: #a72e22;
-  --color-danger-700: #8c251b;
+  --color-warning-50: #fbf2df;
+  --color-warning-200: #efdcae;
+  --color-warning-600: #9a6c12;
+  --color-warning-700: #7d5710;
 
-  --color-info-50: #eef4fb;
-  --color-info-200: #cadff4;
-  --color-info-700: #245c8d;
+  --color-danger-50: #fbece6;
+  --color-danger-200: #f0c8ba;
+  --color-danger-500: #b23a26;
+  --color-danger-600: #982e1d;
+  --color-danger-700: #7d2618;
 
-  --font-sans:
-    'Vazirmatn Variable', 'Vazirmatn', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --color-info-50: #eaf1f4;
+  --color-info-200: #c4d9e1;
+  --color-info-700: #2c5a6b;
+
+  --font-sans: 'Vazirmatn Variable', 'Vazirmatn', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: 'Noto Naskh Arabic', 'Vazirmatn Variable', 'Vazirmatn', serif;
 
   --radius-xl: 0.875rem;
-  --radius-2xl: 1.125rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.75rem;
 }
 
 @layer base {
@@ -75,6 +79,15 @@
     line-height: 1.7;
   }
 
+  /* Persian display headings: Naskh's higher contrast carries the editorial
+     voice of the reference layouts. */
+  .font-display {
+    font-family: var(--font-display);
+    font-feature-settings: normal;
+    letter-spacing: 0;
+    line-height: 1.35;
+  }
+
   /* Persian digits should not be reordered by the bidi algorithm inside
      numbers and dates. */
   .num {
@@ -87,7 +100,8 @@
   }
 
   ::selection {
-    background-color: var(--color-brand-100);
+    background-color: var(--color-brand-200);
+    color: var(--color-espresso);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -107,5 +121,99 @@
   .scroll-thin {
     scrollbar-width: thin;
     scrollbar-color: var(--color-line) transparent;
+  }
+
+  .paper-grain {
+    background-image: radial-gradient(rgba(41, 27, 19, 0.045) 1px, transparent 1px);
+    background-size: 4px 4px;
+  }
+}
+
+/* Landing hero motion. All of it is decorative and is disabled below. */
+@keyframes hero-glow {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.45);
+  }
+  to {
+    opacity: 0.55;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes hero-swap {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@layer utilities {
+  .hero-glow {
+    animation: hero-glow 900ms cubic-bezier(0.22, 0.8, 0.24, 1) forwards;
+  }
+
+  .hero-swap {
+    animation: hero-swap 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .rise-in {
+    animation: rise-in 700ms cubic-bezier(0.22, 0.8, 0.24, 1) both;
+  }
+
+  .marquee-mask:hover .marquee-track {
+    animation-play-state: paused;
+  }
+
+  .float-slow {
+    animation: float-slow 7s ease-in-out infinite;
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.marquee-track {
+  animation: marquee 32s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-glow,
+  .hero-swap,
+  .rise-in,
+  .marquee-track,
+  .float-slow {
+    animation: none;
   }
 }

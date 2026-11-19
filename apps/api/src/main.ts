@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { loadConfig, loadEnvFile } from './config/env';
 import { AppExceptionFilter } from './common/errors';
+import { httpSecurity } from './common/http-security';
 import { DatabaseService } from './db/database.service';
 import { isSeeded, seedDatabase } from './db/seed';
 
@@ -18,6 +19,7 @@ async function bootstrap(): Promise<void> {
 
   app.setGlobalPrefix(config.apiPrefix.replace(/^\//, ''));
   app.useGlobalFilters(new AppExceptionFilter());
+  app.use(httpSecurity({ production: config.isProduction }));
   app.enableShutdownHooks();
 
   const database = app.get(DatabaseService);

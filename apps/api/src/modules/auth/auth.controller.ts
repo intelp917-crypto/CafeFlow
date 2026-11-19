@@ -1,9 +1,16 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { changePasswordSchema, loginSchema } from '@cafeflow/shared';
+import {
+  changePasswordSchema,
+  loginSchema,
+  mfaCodeSchema,
+  mfaDisableSchema,
+  mfaRecoverySchema,
+} from '@cafeflow/shared';
 import { CurrentAuth, Public } from '../../common/decorators';
-import { parseWith } from '../../common/errors';
+import { AppError, parseWith } from '../../common/errors';
 import { buildClearedSessionCookie, buildSessionCookie } from '../../common/cookies';
+import { SlidingWindowLimiter } from '../../common/rate-limit';
 import { loadConfig } from '../../config/env';
 import type { RequestAuth, RequestWithAuth } from '../../common/tokens';
 import { AuthService, type RequestMeta } from './auth.service';
@@ -20,14 +27,29 @@ function metaFrom(request: Request): RequestMeta {
 export class AuthController {
   private readonly config = loadConfig();
 
+  /**
+   * Per-IP budget on top of the per-account lockout. A distributed password
+   * spray rotates usernames, so the account counter alone would never trigger.
+   */
+  private readonly loginLimiter = new SlidingWindowLimiter(10 * 60_000, 60);
+
   constructor(@Inject(AuthService) private readonly auth: AuthService) {}
 
   @Public()
   @Post('login')
   @HttpCode(200)
   login(@Body() body: unknown, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    const meta = metaFrom(request);
+    if (meta.ip && !this.loginLimiter.hit(`login:${meta.ip}`)) {
+      throw new AppError(
+        'RATE_LIMITED',
+        429,
+        'تعداد تلاش‌های ورود از این شبکه زیاد بوده است. چند دقیقه بعد دوباره تلاش کنید.',
+      );
+    }
+
     const input = parseWith(loginSchema, body);
-    const result = this.auth.login(input.username, input.password, metaFrom(request));
+    const result = this.auth.login(input.username, input.password, meta, input.code);
 
     response.setHeader(
       'Set-Cookie',
@@ -62,6 +84,38 @@ export class AuthController {
   @Get('me')
   me(@CurrentAuth() auth: RequestAuth) {
     return this.auth.me(auth.userId);
+  }
+
+  @Get('mfa')
+  mfaStatus(@CurrentAuth() auth: RequestAuth) {
+    return this.auth.mfaStatus(auth.userId);
+  }
+
+  @Post('mfa/enroll')
+  @HttpCode(200)
+  enrollMfa(@CurrentAuth() auth: RequestAuth, @Req() request: Request) {
+    return this.auth.enrollMfa(auth.userId, metaFrom(request));
+  }
+
+  @Post('mfa/activate')
+  @HttpCode(200)
+  activateMfa(@CurrentAuth() auth: RequestAuth, @Body() body: unknown, @Req() request: Request) {
+    const input = parseWith(mfaCodeSchema, body);
+    return this.auth.activateMfa(auth.userId, input.code, metaFrom(request));
+  }
+
+  @Post('mfa/recovery-codes')
+  @HttpCode(200)
+  regenerateRecoveryCodes(@CurrentAuth() auth: RequestAuth, @Body() body: unknown, @Req() request: Request) {
+    const input = parseWith(mfaRecoverySchema, body);
+    return this.auth.regenerateRecoveryCodes(auth.userId, input.password, input.code, metaFrom(request));
+  }
+
+  @Post('mfa/disable')
+  @HttpCode(200)
+  disableMfa(@CurrentAuth() auth: RequestAuth, @Body() body: unknown, @Req() request: Request) {
+    const input = parseWith(mfaDisableSchema, body);
+    return this.auth.disableMfa(auth.userId, input.password, input.code, metaFrom(request));
   }
 
   @Get('sessions')

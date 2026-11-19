@@ -1,32 +1,79 @@
-import { Controller, Get, Inject } from '@nestjs/common';
-import { DB_SERVICE, type RequestAuth } from '../../common/tokens';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
+import {
+  adjustStockSchema,
+  createIngredientSchema,
+  setRecipeSchema,
+} from '@cafeflow/shared';
 import { CurrentAuth, Permissions, RequireModule } from '../../common/decorators';
-import { DatabaseService } from '../../db/database.service';
+import { parseWith } from '../../common/errors';
+import type { RequestAuth } from '../../common/tokens';
+import { InventoryService } from './inventory.service';
 
 /**
- * Inventory is an optional module and OFF by default. This endpoint exists in
- * Phase 1 to prove the module gate end to end: it answers 403 with a Persian
- * explanation while the module is disabled and returns real (currently empty)
- * stock counters once it is enabled.
+ * Inventory is an optional module and OFF by default. The module guard answers
+ * 403 with a Persian explanation while it is disabled; enabling it never
+ * re-creates or deletes data.
  */
 @Controller('inventory')
 @RequireModule('inventory')
 export class InventoryController {
-  constructor(@Inject(DB_SERVICE) private readonly database: DatabaseService) {}
+  constructor(@Inject(InventoryService) private readonly inventory: InventoryService) {}
 
   @Get('overview')
   @Permissions('inventory.read')
-  overview(@CurrentAuth() _auth: RequestAuth) {
-    return {
-      ingredients: this.database.count('SELECT COUNT(*) AS n FROM ingredients WHERE is_active = 1'),
-      lowStock: this.database.count(
-        'SELECT COUNT(*) AS n FROM ingredients WHERE is_active = 1 AND current_qty <= min_qty',
-      ),
-      suppliers: this.database.count('SELECT COUNT(*) AS n FROM suppliers WHERE is_active = 1'),
-      movementsToday: this.database.count(
-        `SELECT COUNT(*) AS n FROM stock_movements
-          WHERE created_at >= strftime('%Y-%m-%dT00:00:00.000Z', 'now')`,
-      ),
-    };
+  overview() {
+    return this.inventory.overview();
+  }
+
+  @Get('ingredients')
+  @Permissions('inventory.read')
+  ingredients() {
+    return this.inventory.ingredients();
+  }
+
+  @Post('ingredients')
+  @Permissions('inventory.write')
+  createIngredient(@Body() body: unknown, @CurrentAuth() auth: RequestAuth) {
+    return this.inventory.createIngredient(parseWith(createIngredientSchema, body), {
+      userId: auth.userId,
+      username: auth.username,
+      permissions: auth.permissions,
+    });
+  }
+
+  @Post('ingredients/:id/adjustments')
+  @HttpCode(200)
+  @Permissions('inventory.write')
+  adjust(@Param('id') id: string, @Body() body: unknown, @CurrentAuth() auth: RequestAuth) {
+    return this.inventory.adjust(id, parseWith(adjustStockSchema, body), {
+      userId: auth.userId,
+      username: auth.username,
+      permissions: auth.permissions,
+    });
+  }
+
+  @Get('movements')
+  @Permissions('inventory.read')
+  movements(@Query('limit') limit?: string) {
+    const parsed = Number(limit);
+    const safe = Number.isFinite(parsed) ? Math.min(Math.max(Math.trunc(parsed), 1), 200) : 60;
+    return this.inventory.movements(safe);
+  }
+
+  @Get('recipes')
+  @Permissions('inventory.read')
+  recipes() {
+    return this.inventory.recipes();
+  }
+
+  @Post('recipes/:productId')
+  @HttpCode(200)
+  @Permissions('inventory.write')
+  setRecipe(@Param('productId') productId: string, @Body() body: unknown, @CurrentAuth() auth: RequestAuth) {
+    return this.inventory.setRecipe(productId, parseWith(setRecipeSchema, body), {
+      userId: auth.userId,
+      username: auth.username,
+      permissions: auth.permissions,
+    });
   }
 }

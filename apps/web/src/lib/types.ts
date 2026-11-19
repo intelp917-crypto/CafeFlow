@@ -20,6 +20,7 @@ export interface MeResponse {
     roles: string[];
     permissions: string[];
     mustChangePassword: boolean;
+    mfaEnabled: boolean;
   };
   modules: ModuleKey[];
 }
@@ -124,6 +125,10 @@ export interface ApprovalItem {
 
 export interface SettingsResponse {
   restaurantNameFa: string;
+  logoUrl: string;
+  addressFa: string;
+  phone: string;
+  email: string;
   currency: string;
   digitMode: 'fa' | 'latin';
   timezone: string;

@@ -15,6 +15,12 @@ export const passwordSchema = z
 export const loginSchema = z.object({
   username: usernameSchema,
   password: z.string({ error: 'گذرواژه الزامی است.' }).min(1, 'گذرواژه الزامی است.'),
+  /** TOTP code (6 digits) or a one-time recovery code (`XXXX-XXXX`). */
+  code: z
+    .string()
+    .trim()
+    .regex(/^(\d{6}|[A-Za-z2-7]{4}-?[A-Za-z2-7]{4})$/, 'کد تأیید باید ۶ رقم یا کد پشتیبان باشد.')
+    .optional(),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -44,6 +50,15 @@ export const updateSettingsSchema = z.object({
   serviceChargePercent: z.number().int().min(0).max(30).optional(),
   taxPercent: z.number().int().min(0).max(30).optional(),
   timezone: z.string().min(3).max(64).optional(),
+  /** PNG, JPEG or WebP logo as a data URL; empty string removes it. */
+  logoUrl: z
+    .string()
+    .max(300_000, 'حجم لوگو بیش از حد بزرگ است (حداکثر ۲۲۰ کیلوبایت).')
+    .regex(/^(data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+)?$/, 'فرمت لوگو معتبر نیست (PNG، JPEG یا WebP).')
+    .optional(),
+  addressFa: z.string().trim().max(300, 'نشانی بیش از حد طولانی است.').optional(),
+  phone: z.string().trim().max(32, 'شماره تماس بیش از حد طولانی است.').optional(),
+  email: z.string().trim().max(120).email('ایمیل معتبر نیست.').or(z.literal('')).optional(),
 });
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
@@ -54,3 +69,49 @@ export const approvalDecisionSchema = z.object({
 });
 
 export type ApprovalDecisionInput = z.infer<typeof approvalDecisionSchema>;
+
+/* ------------------------ two-factor authentication ------------------------ */
+
+export const mfaCodeSchema = z.object({
+  code: z
+    .string({ error: 'کد تأیید الزامی است.' })
+    .trim()
+    .regex(/^\d{6}$/, 'کد تأیید باید ۶ رقم باشد.'),
+});
+export type MfaCodeInput = z.infer<typeof mfaCodeSchema>;
+
+export const mfaDisableSchema = z.object({
+  password: z.string({ error: 'گذرواژه الزامی است.' }).min(1, 'گذرواژه الزامی است.'),
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, 'کد تأیید باید ۶ رقم باشد.')
+    .optional(),
+});
+export type MfaDisableInput = z.infer<typeof mfaDisableSchema>;
+
+export interface MfaStatus {
+  enabled: boolean;
+  confirmedAt: string | null;
+}
+
+export interface MfaEnrollment {
+  secret: string;
+  otpauthUrl: string;
+}
+
+export interface MfaActivation {
+  enabled: true;
+  confirmedAt: string;
+  /** Shown exactly once; only hashes are stored server-side. */
+  recoveryCodes: string[];
+}
+
+export const mfaRecoverySchema = z.object({
+  password: z.string({ error: 'گذرواژه الزامی است.' }).min(1, 'گذرواژه الزامی است.'),
+  code: z
+    .string({ error: 'کد تأیید الزامی است.' })
+    .trim()
+    .regex(/^\d{6}$/, 'کد تأیید باید ۶ رقم باشد.'),
+});
+export type MfaRecoveryInput = z.infer<typeof mfaRecoverySchema>;

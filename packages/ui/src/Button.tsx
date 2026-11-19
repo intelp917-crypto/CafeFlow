@@ -7,19 +7,19 @@ export type ButtonSize = 'sm' | 'md' | 'lg';
 
 const VARIANTS: Record<ButtonVariant, string> = {
   primary:
-    'bg-brand-500 text-white shadow-sm hover:bg-brand-600 active:bg-brand-700 focus-visible:outline-brand-500',
+    'bg-brand-500 text-cream shadow-[0_14px_30px_-18px_rgba(78,36,19,0.85)] hover:bg-brand-600 active:bg-brand-700 focus-visible:outline-brand-500',
   secondary:
-    'bg-sec-100 text-ink hover:bg-sec-200 active:bg-sec-300 focus-visible:outline-sec-500',
+    'bg-espresso text-cream hover:bg-choco active:bg-ink focus-visible:outline-espresso',
   outline:
-    'border border-line bg-surface text-ink hover:border-brand-300 hover:text-brand-600 focus-visible:outline-brand-500',
-  ghost: 'text-muted hover:bg-canvas hover:text-ink focus-visible:outline-brand-500',
+    'border border-line bg-transparent text-ink hover:border-brand-400 hover:bg-brand-50/60 hover:text-brand-700 focus-visible:outline-brand-500',
+  ghost: 'text-muted hover:bg-espresso/5 hover:text-ink focus-visible:outline-brand-500',
   danger: 'bg-danger-500 text-white hover:bg-danger-600 focus-visible:outline-danger-500',
 };
 
 const SIZES: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-xs rounded-lg gap-1.5',
-  md: 'h-11 px-4 text-sm rounded-xl gap-2',
-  lg: 'h-12 px-6 text-base rounded-xl gap-2',
+  sm: 'h-9 px-4 text-xs rounded-full gap-1.5',
+  md: 'h-11 px-5 text-sm rounded-full gap-2',
+  lg: 'h-12 px-7 text-sm rounded-full gap-2',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -39,7 +39,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={props.type ?? 'button'}
       disabled={disabled || loading}
       className={cn(
-        'inline-flex select-none items-center justify-center font-medium transition-colors',
+        'inline-flex select-none items-center justify-center font-medium',
         'focus-visible:outline-2 focus-visible:outline-offset-2',
         'disabled:cursor-not-allowed disabled:opacity-55',
         VARIANTS[variant],

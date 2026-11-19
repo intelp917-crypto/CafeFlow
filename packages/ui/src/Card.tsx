@@ -3,7 +3,12 @@ import { cn } from './cn';
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <section className={cn('rounded-2xl border border-line bg-surface shadow-[0_1px_2px_rgba(36,31,28,0.04)]', className)}>
+    <section
+      className={cn(
+        'rounded-[1.35rem] border border-line bg-surface shadow-[0_24px_60px_-46px_rgba(41,27,19,0.55)]',
+        className,
+      )}
+    >
       {children}
     </section>
   );
@@ -21,9 +26,9 @@ export function CardHeader({
   className?: string;
 }) {
   return (
-    <header className={cn('flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4', className)}>
+    <header className={cn('flex flex-wrap items-start justify-between gap-3 border-b border-line/80 px-6 py-5', className)}>
       <div className="space-y-1">
-        <h2 className="text-base font-semibold text-ink">{title}</h2>
+        <h2 className="font-display text-lg font-bold text-ink">{title}</h2>
         {description ? <p className="text-xs leading-6 text-muted">{description}</p> : null}
       </div>
       {action ? <div className="flex items-center gap-2">{action}</div> : null}
@@ -32,7 +37,7 @@ export function CardHeader({
 }
 
 export function CardBody({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn('px-5 py-4', className)}>{children}</div>;
+  return <div className={cn('px-6 py-5', className)}>{children}</div>;
 }
 
 export interface StatCardProps {
@@ -51,9 +56,9 @@ const STAT_TONES = {
 
 export function StatCard({ label, value, hint, tone = 'default' }: StatCardProps) {
   return (
-    <Card className="p-5">
-      <p className="text-xs font-medium text-muted">{label}</p>
-      <p className={cn('mt-2 text-2xl font-bold tracking-tight', STAT_TONES[tone])}>{value}</p>
+    <Card className="p-6">
+      <p className="text-[11px] font-medium tracking-wide text-muted">{label}</p>
+      <p className={cn('num mt-2 text-2xl font-bold tracking-tight', STAT_TONES[tone])}>{value}</p>
       {hint ? <p className="mt-1 text-[11px] text-muted">{hint}</p> : null}
     </Card>
   );

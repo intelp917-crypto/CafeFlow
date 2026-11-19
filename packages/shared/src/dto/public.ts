@@ -123,6 +123,9 @@ export interface PublicMenuResponse {
     digitMode: 'fa' | 'latin';
     serviceChargePercent: number;
     taxPercent: number;
+    logoUrl: string;
+    addressFa: string;
+    phone: string;
   };
   qr: { kind: 'table' | 'promo'; label: string | null } | null;
   table: { id: string; nameFa: string; code: string; floorNameFa: string | null } | null;

@@ -18,6 +18,7 @@ import { DatabaseService } from '../../db/database.service';
 import { AppError, badRequest, conflict, notFound } from '../../common/errors';
 import { createOpaqueToken } from '../../common/password';
 import { SlidingWindowLimiter } from '../../common/rate-limit';
+import { InventoryService } from '../inventory/inventory.service';
 import { PublicRepository, type ProductRow } from './public.repository';
 
 const TEHRAN_OFFSET_MINUTES = 210;
@@ -90,6 +91,7 @@ export class PublicService {
   constructor(
     @Inject(PublicRepository) private readonly repository: PublicRepository,
     @Inject(DB_SERVICE) private readonly database: DatabaseService,
+    @Inject(InventoryService) private readonly inventory: InventoryService,
   ) {}
 
   /* ------------------------------- identity ------------------------------- */
@@ -115,6 +117,17 @@ export class PublicService {
   }
 
   /* --------------------------------- menu --------------------------------- */
+
+  /**
+   * The admin-uploaded logo as raw image bytes for the installed-app icon.
+   * Returns null when no logo is set, so the caller falls back to the static icon.
+   */
+  getLogoImage(): { mime: string; bytes: Buffer } | null {
+    const dataUrl = this.repository.getSettings().logo_url;
+    const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+    if (!match) return null;
+    return { mime: match[1]!, bytes: Buffer.from(match[2]!, 'base64') };
+  }
 
   getMenu(qrToken: string | undefined): PublicMenuResponse {
     const settings = this.repository.getSettings();
@@ -148,6 +161,9 @@ export class PublicService {
         digitMode: settings.digit_mode,
         serviceChargePercent: settings.service_charge_percent,
         taxPercent: settings.tax_percent,
+        logoUrl: settings.logo_url,
+        addressFa: settings.address_fa,
+        phone: settings.phone,
       },
       qr,
       table,
@@ -489,6 +505,10 @@ export class PublicService {
           nowIso,
         ],
       );
+
+      // Optional module: while inventory is disabled this is a no-op, so the
+      // ordering path never depends on it.
+      this.inventory.deductForOrder(orderId);
     });
 
     this.repository.insertNotification({

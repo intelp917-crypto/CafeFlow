@@ -66,6 +66,9 @@ export interface SettingsRow {
   digit_mode: 'fa' | 'latin';
   service_charge_percent: number;
   tax_percent: number;
+  logo_url: string;
+  address_fa: string;
+  phone: string;
 }
 
 export interface DeviceRow {
@@ -92,7 +95,8 @@ export class PublicRepository {
   getSettings(): SettingsRow {
     return (
       this.database.get<SettingsRow>(
-        `SELECT restaurant_name_fa, currency, digit_mode, service_charge_percent, tax_percent
+        `SELECT restaurant_name_fa, currency, digit_mode, service_charge_percent, tax_percent,
+                logo_url, address_fa, phone
            FROM settings WHERE id = 'singleton'`,
       ) ?? {
         restaurant_name_fa: 'کافه‌فلو',
@@ -100,6 +104,9 @@ export class PublicRepository {
         digit_mode: 'fa',
         service_charge_percent: 0,
         tax_percent: 0,
+        logo_url: '',
+        address_fa: '',
+        phone: '',
       }
     );
   }

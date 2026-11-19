@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
+import { InventoryModule } from '../inventory/inventory.module';
 import { OrdersRepository } from './orders.repository';
 import { OrdersService } from './orders.service';
 import { OrdersController, PrepController } from './orders.controller';
@@ -8,10 +9,11 @@ import { ServiceRequestsController, TablesController, TerminalRequestsController
 /**
  * Staff operations: order queue, preparation queue, live tables and customer
  * requests. Every route is permission-gated; the customer QR surface lives in
- * the public module instead.
+ * the public module instead. Inventory is imported so a cancellation can put
+ * deducted ingredients back in the same transaction.
  */
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, InventoryModule],
   controllers: [
     OrdersController,
     PrepController,

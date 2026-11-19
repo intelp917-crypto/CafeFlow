@@ -5,8 +5,11 @@ import { AdminLayout } from './layouts/AdminLayout';
 import { ApprovalsPage } from './pages/ApprovalsPage';
 import { AuditPage } from './pages/AuditPage';
 import { CashierPage } from './pages/CashierPage';
+import { CashPage } from './pages/CashPage';
+import { CustomersPage } from './pages/CustomersPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { HomePage } from './pages/HomePage';
+import { InventoryPage } from './pages/InventoryPage';
 import { LoginPage } from './pages/LoginPage';
 import { MenuPage } from './pages/MenuPage';
 import { OrderStatusPage } from './pages/OrderStatusPage';
@@ -17,9 +20,11 @@ import { PrepPage } from './pages/PrepPage';
 import { PrintPage } from './pages/PrintPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { RequestsPage } from './pages/RequestsPage';
+import { ReservationsPage } from './pages/ReservationsPage';
 import { TablesPage } from './pages/TablesPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { PasswordPage } from './pages/PasswordPage';
+import { SecurityPage } from './pages/SecurityPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StaffPage } from './pages/StaffPage';
 
@@ -67,15 +72,20 @@ export function App() {
         <Route path="cashier" element={<CashierPage />} />
         <Route path="prep" element={<PrepPage />} />
         <Route path="tables" element={<TablesPage />} />
+        <Route path="reservations" element={<ReservationsPage />} />
         <Route path="requests" element={<RequestsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="print" element={<PrintPage />} />
         <Route path="reports" element={<ReportsPage />} />
+        <Route path="inventory" element={<InventoryPage />} />
+        <Route path="cash" element={<CashPage />} />
+        <Route path="customers" element={<CustomersPage />} />
         <Route path="modules" element={<ModulesPage />} />
         <Route path="staff" element={<StaffPage />} />
         <Route path="approvals" element={<ApprovalsPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="security" element={<SecurityPage />} />
       </Route>
 
       <Route path="*" element={<NotFoundPage />} />

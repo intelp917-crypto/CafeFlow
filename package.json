@@ -19,6 +19,12 @@
     "db:seed": "npm run db:seed -w @cafeflow/api",
     "db:setup": "npm run db:setup -w @cafeflow/api",
     "test": "npm run test -w @cafeflow/shared && npm run test -w @cafeflow/api",
-    "test:api": "npm run test -w @cafeflow/api"
+    "test:api": "npm run test -w @cafeflow/api",
+    "backup": "node scripts/backup.mjs",
+    "test:e2e": "playwright test",
+    "verify:pwa": "node scripts/verify-pwa.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
   }
 }

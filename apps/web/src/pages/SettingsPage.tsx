@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Alert, Button, Card, CardBody, CardHeader, ErrorState, Field, Input, PageHeader, Spinner } from '@cafeflow/ui';
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -22,6 +22,10 @@ export function SettingsPage() {
     digitMode: 'fa' as 'fa' | 'latin',
     serviceChargePercent: 0,
     taxPercent: 0,
+    logoUrl: '',
+    addressFa: '',
+    phone: '',
+    email: '',
   });
 
   const load = useCallback(async () => {
@@ -35,6 +39,10 @@ export function SettingsPage() {
         digitMode: data.digitMode,
         serviceChargePercent: data.serviceChargePercent,
         taxPercent: data.taxPercent,
+        logoUrl: data.logoUrl,
+        addressFa: data.addressFa,
+        phone: data.phone,
+        email: data.email,
       });
     } catch (caught) {
       setError(errorMessage(caught));
@@ -59,6 +67,10 @@ export function SettingsPage() {
         digitMode: form.digitMode,
         serviceChargePercent: Number(form.serviceChargePercent),
         taxPercent: Number(form.taxPercent),
+        logoUrl: form.logoUrl,
+        addressFa: form.addressFa.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim(),
       });
       setSettings(updated);
       setNotice('تنظیمات ذخیره شد.');
@@ -67,6 +79,26 @@ export function SettingsPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const pickLogo = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setError('فرمت لوگو باید PNG، JPEG یا WebP باشد.');
+      return;
+    }
+    if (file.size > 220 * 1024) {
+      setError('حجم لوگو بیش از ۲۲۰ کیلوبایت است.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setError(null);
+      setForm((current) => ({ ...current, logoUrl: String(reader.result) }));
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -156,6 +188,92 @@ export function SettingsPage() {
                 {canWrite ? (
                   <div className="flex justify-end">
                     <Button type="submit" loading={saving}>ذخیره تنظیمات</Button>
+                  </div>
+                ) : null}
+              </form>
+            </CardBody>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader
+              title="هویت کافه"
+              description="نام، لوگو و مشخصات تماس که در منوی مشتری و برنامه نمایش داده می‌شود."
+            />
+            <CardBody>
+              <form onSubmit={submit} className="space-y-4">
+                <Field label="نام کافه (فارسی)" htmlFor="cafe-name" required>
+                  <Input
+                    id="cafe-name"
+                    value={form.restaurantNameFa}
+                    onChange={(event) => setForm((current) => ({ ...current, restaurantNameFa: event.target.value }))}
+                    disabled={!canWrite}
+                    required
+                  />
+                </Field>
+
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-line bg-surface">
+                    {form.logoUrl ? (
+                      <img src={form.logoUrl} alt="پیش‌نمایش لوگو" className="h-full w-full object-contain" />
+                    ) : (
+                      <span className="text-xs text-muted">بدون لوگو</span>
+                    )}
+                  </div>
+                  {canWrite ? (
+                    <div className="flex flex-wrap gap-2">
+                      <label className="inline-flex h-10 cursor-pointer items-center rounded-xl border border-line bg-surface px-4 text-sm font-medium text-ink hover:border-brand-400">
+                        انتخاب لوگو
+                        <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={pickLogo} />
+                      </label>
+                      {form.logoUrl ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setForm((current) => ({ ...current, logoUrl: '' }))}
+                        >
+                          حذف لوگو
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <p className="text-xs text-muted">PNG، JPEG یا WebP تا ۲۲۰ کیلوبایت.</p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="شماره تماس" htmlFor="cafe-phone">
+                    <Input
+                      id="cafe-phone"
+                      className="num"
+                      dir="ltr"
+                      value={form.phone}
+                      onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+                      disabled={!canWrite}
+                    />
+                  </Field>
+                  <Field label="ایمیل" htmlFor="cafe-email">
+                    <Input
+                      id="cafe-email"
+                      type="email"
+                      dir="ltr"
+                      value={form.email}
+                      onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                      disabled={!canWrite}
+                    />
+                  </Field>
+                </div>
+
+                <Field label="نشانی" htmlFor="cafe-address">
+                  <Input
+                    id="cafe-address"
+                    value={form.addressFa}
+                    onChange={(event) => setForm((current) => ({ ...current, addressFa: event.target.value }))}
+                    disabled={!canWrite}
+                  />
+                </Field>
+
+                {canWrite ? (
+                  <div className="flex justify-end">
+                    <Button type="submit" loading={saving}>ذخیره هویت کافه</Button>
                   </div>
                 ) : null}
               </form>

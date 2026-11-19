@@ -21,6 +21,10 @@ interface SettingsRow {
   locale: string;
   service_charge_percent: number;
   tax_percent: number;
+  logo_url: string;
+  address_fa: string;
+  phone: string;
+  email: string;
 }
 
 export interface ActingUser {
@@ -46,10 +50,18 @@ export class SettingsService {
         locale: 'fa-IR',
         service_charge_percent: 0,
         tax_percent: 0,
+        logo_url: '',
+        address_fa: '',
+        phone: '',
+        email: '',
       } satisfies SettingsRow);
 
     return {
       restaurantNameFa: row.restaurant_name_fa,
+      logoUrl: row.logo_url,
+      addressFa: row.address_fa,
+      phone: row.phone,
+      email: row.email,
       currency: row.currency,
       digitMode: row.digit_mode,
       timezone: row.timezone,
@@ -70,6 +82,10 @@ export class SettingsService {
       ['serviceChargePercent', 'service_charge_percent'],
       ['taxPercent', 'tax_percent'],
       ['timezone', 'timezone'],
+      ['logoUrl', 'logo_url'],
+      ['addressFa', 'address_fa'],
+      ['phone', 'phone'],
+      ['email', 'email'],
     ];
 
     for (const [key, column] of map) {

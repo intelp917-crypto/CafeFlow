@@ -16,7 +16,7 @@ export class HealthController {
       status: databaseOk ? 'ok' : 'degraded',
       database: databaseOk ? 'ok' : 'down',
       time: new Date().toISOString(),
-      version: '0.1.0-phase1',
+      version: '0.7.0',
     };
   }
 }

@@ -33,16 +33,16 @@ export function Modal({ open, onClose, title, description, children, footer, siz
         aria-modal="true"
         aria-label={title}
         className={cn(
-          'relative w-full overflow-hidden rounded-2xl border border-line bg-surface shadow-xl',
+          'relative w-full overflow-hidden rounded-[1.5rem] border border-line bg-surface shadow-[0_40px_120px_-40px_rgba(36,22,17,0.6)]',
           SIZES[size],
         )}
       >
-        <header className="border-b border-line px-5 py-4">
-          <h2 className="text-sm font-semibold text-ink">{title}</h2>
+        <header className="border-b border-line bg-cream/50 px-6 py-5">
+          <h2 className="font-display text-lg font-bold text-ink">{title}</h2>
           {description ? <p className="mt-1 text-xs leading-6 text-muted">{description}</p> : null}
         </header>
-        <div className="max-h-[70vh] overflow-y-auto px-5 py-4">{children}</div>
-        {footer ? <footer className="flex justify-end gap-2 border-t border-line px-5 py-3">{footer}</footer> : null}
+        <div className="max-h-[70vh] overflow-y-auto px-6 py-5">{children}</div>
+        {footer ? <footer className="flex justify-end gap-2 border-t border-line px-6 py-4">{footer}</footer> : null}
       </div>
     </div>
   );

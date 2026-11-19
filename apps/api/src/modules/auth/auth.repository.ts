@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import type { ModuleKey } from '@cafeflow/shared';
 import { DB_SERVICE } from '../../common/tokens';
@@ -16,6 +17,9 @@ export interface UserRow {
   locked_until: string | null;
   last_login_at: string | null;
   deleted_at: string | null;
+  totp_secret: string | null;
+  totp_enabled: number;
+  totp_confirmed_at: string | null;
 }
 
 export interface SessionRow {
@@ -36,6 +40,59 @@ export interface SessionRow {
 @Injectable()
 export class AuthRepository {
   constructor(@Inject(DB_SERVICE) private readonly database: DatabaseService) {}
+
+  setTotpSecret(userId: string, secret: string): void {
+    this.database.run(
+      'UPDATE users SET totp_secret = ?, totp_enabled = 0, totp_confirmed_at = NULL, updated_at = ? WHERE id = ?',
+      [secret, new Date().toISOString(), userId],
+    );
+  }
+
+  activateTotp(userId: string, confirmedAt: string): void {
+    this.database.run(
+      'UPDATE users SET totp_enabled = 1, totp_confirmed_at = ?, updated_at = ? WHERE id = ?',
+      [confirmedAt, confirmedAt, userId],
+    );
+  }
+
+  disableTotp(userId: string): void {
+    this.database.run(
+      'UPDATE users SET totp_secret = NULL, totp_enabled = 0, totp_confirmed_at = NULL, updated_at = ? WHERE id = ?',
+      [new Date().toISOString(), userId],
+    );
+    this.database.run('DELETE FROM mfa_recovery_codes WHERE user_id = ?', [userId]);
+  }
+
+  replaceRecoveryCodes(userId: string, hashes: string[]): void {
+    this.database.transaction(() => {
+      this.database.run('DELETE FROM mfa_recovery_codes WHERE user_id = ?', [userId]);
+      for (const hash of hashes) {
+        this.database.run('INSERT INTO mfa_recovery_codes (id, user_id, code_hash) VALUES (?, ?, ?)', [
+          randomUUID(),
+          userId,
+          hash,
+        ]);
+      }
+    });
+  }
+
+  /** Consumes an unused recovery code; false when it is unknown or already used. */
+  useRecoveryCode(userId: string, hash: string, nowIso: string): boolean {
+    const row = this.database.get<{ id: string }>(
+      'SELECT id FROM mfa_recovery_codes WHERE user_id = ? AND code_hash = ? AND used_at IS NULL',
+      [userId, hash],
+    );
+    if (!row) return false;
+    this.database.run('UPDATE mfa_recovery_codes SET used_at = ? WHERE id = ? AND used_at IS NULL', [nowIso, row.id]);
+    return true;
+  }
+
+  countUnusedRecoveryCodes(userId: string): number {
+    return this.database.count(
+      'SELECT COUNT(*) AS n FROM mfa_recovery_codes WHERE user_id = ? AND used_at IS NULL',
+      [userId],
+    );
+  }
 
   findUserByUsername(username: string): UserRow | undefined {
     return this.database.get<UserRow>('SELECT * FROM users WHERE username = ? COLLATE NOCASE', [username]);

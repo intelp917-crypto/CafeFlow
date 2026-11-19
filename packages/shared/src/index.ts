@@ -8,3 +8,4 @@ export * from './dto/auth';
 export * from './dto/common';
 export * from './dto/public';
 export * from './dto/operations';
+export * from './dto/management';

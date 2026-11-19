@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Button, cn } from '@cafeflow/ui';
+import type { ModuleKey } from '@cafeflow/shared';
 import { useAuth } from '../lib/auth';
+import { DeveloperCredit } from '../components/DeveloperCredit';
 
 interface NavItem {
   to: string;
   label: string;
   permission: string;
+  /** Optional modules hide their entry while disabled. */
+  module?: ModuleKey;
   end?: boolean;
   icon: string;
 }
@@ -17,10 +21,14 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/admin/prep', label: 'صف آماده‌سازی', permission: 'prep.read', icon: 'M4 7h16M6 7v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7M9 3v4m6-4v4' },
   { to: '/admin/cashier', label: 'صندوق', permission: 'payments.read', icon: 'M4 7h16v10H4zM4 11h16M8 15h3' },
   { to: '/admin/tables', label: 'میزها', permission: 'layout.read', icon: 'M4 10h16M6 10V6h12v4M8 10v6m8-6v6M5 20h14' },
+  { to: '/admin/reservations', label: 'رزروها', permission: 'reservations.read', module: 'reservations', icon: 'M8 4v3m8-3v3M4 9h16M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z' },
   { to: '/admin/requests', label: 'درخواست‌ها', permission: 'orders.read', icon: 'M12 4a5 5 0 0 1 5 5v3l2 3H5l2-3V9a5 5 0 0 1 5-5zM10 19a2 2 0 0 0 4 0' },
   { to: '/admin/notifications', label: 'اعلان‌ها', permission: '', icon: 'M6 9a6 6 0 1 1 12 0v3l2 4H4l2-4zM10 20a2 2 0 0 0 4 0' },
   { to: '/admin/print', label: 'صف چاپ', permission: 'orders.read', icon: 'M7 8V4h10v4M7 16h10v4H7zM5 8h14a2 2 0 0 1 2 2v6H3v-6a2 2 0 0 1 2-2z' },
   { to: '/admin/reports', label: 'گزارش‌ها', permission: 'reports.read', icon: 'M5 19V9m5 10V5m5 14v-7m5 7V8' },
+  { to: '/admin/inventory', label: 'انبار', permission: 'inventory.read', module: 'inventory', icon: 'M4 8l8-4 8 4v9l-8 4-8-4zM4 8l8 4 8-4M12 12v9' },
+  { to: '/admin/cash', label: 'جلسات صندوق', permission: 'finance.read', module: 'finance', icon: 'M4 7h16v10H4zM8 11h3M8 14h6' },
+  { to: '/admin/customers', label: 'مشتریان', permission: 'crm.read', module: 'crm', icon: 'M17 19v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M10 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM20 8v6M17 11h6' },
   { to: '/admin/modules', label: 'ماژول‌ها', permission: 'modules.read', icon: 'M4 7h16M4 12h16M4 17h10' },
   { to: '/admin/staff', label: 'کارکنان و نقش‌ها', permission: 'users.read', icon: 'M16 19v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z' },
   { to: '/admin/approvals', label: 'صف تأیید', permission: 'approvals.read', icon: 'M9 12l2 2 4-4M12 3l7 4v6c0 4-3 6.5-7 8-4-1.5-7-4-7-8V7z' },
@@ -46,12 +54,15 @@ function Icon({ path }: { path: string }) {
 }
 
 export function AdminLayout() {
-  const { user, logout, hasPermission } = useAuth();
+  const { user, logout, hasPermission, isModuleEnabled } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  const items = NAV_ITEMS.filter((item) => !item.permission || hasPermission(item.permission));
+  const items = NAV_ITEMS.filter(
+    (item) =>
+      (!item.permission || hasPermission(item.permission)) && (!item.module || isModuleEnabled(item.module)),
+  );
 
   const onLogout = async () => {
     setLoggingOut(true);
@@ -64,17 +75,17 @@ export function AdminLayout() {
   };
 
   const sidebar = (
-    <nav aria-label="ناوبری اصلی" className="flex h-full flex-col gap-1 p-3">
-      <div className="mb-4 flex items-center gap-2 px-2 py-1">
-        <span className="flex size-9 items-center justify-center rounded-xl bg-brand-500 text-white">
+    <nav aria-label="ناوبری اصلی" className="flex h-full flex-col gap-1 p-3.5">
+      <div className="mb-5 flex items-center gap-2.5 px-2 py-1">
+        <span className="flex size-10 items-center justify-center rounded-full border border-brand-300/30 bg-brand-500/15 text-cream">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="size-5">
             <path d="M5 9h11a4 4 0 0 1 0 8h-1v2H8v-2H5z" strokeLinejoin="round" />
             <path d="M8 5c0 1.5 1 1.5 1 3M12 5c0 1.5 1 1.5 1 3" strokeLinecap="round" />
           </svg>
         </span>
         <div className="leading-tight">
-          <p className="text-sm font-bold text-ink">کافه‌فلو</p>
-          <p className="text-[10px] text-muted">مدیریت کافه و رستوران</p>
+          <p className="font-display text-lg font-bold text-cream">کافه‌فلو</p>
+          <p className="text-[10px] text-cream/50">مدیریت کافه و رستوران</p>
         </div>
       </div>
 
@@ -86,10 +97,10 @@ export function AdminLayout() {
           onClick={() => setMobileOpen(false)}
           className={({ isActive }) =>
             cn(
-              'flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-medium transition-colors',
+              'flex items-center gap-2.5 rounded-full px-3.5 py-2.5 text-xs font-medium',
               isActive
-                ? 'bg-brand-50 text-brand-700'
-                : 'text-muted hover:bg-canvas hover:text-ink',
+                ? 'bg-brand-500 text-cream shadow-[0_10px_24px_-16px_rgba(0,0,0,0.9)]'
+                : 'text-cream/65 hover:bg-white/5 hover:text-cream',
             )
           }
         >
@@ -98,9 +109,9 @@ export function AdminLayout() {
         </NavLink>
       ))}
 
-      <div className="mt-auto rounded-xl border border-line bg-canvas/70 p-3 text-[10px] leading-5 text-muted">
-        <p className="font-semibold text-ink">نسخه ۰.۵ — فاز ۵</p>
-        <p>رسید و صف چاپ، تخفیف، بازپرداخت، اعلان‌ها و گزارش‌ها.</p>
+      <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-3.5 text-[10px] leading-5 text-cream/55">
+        <p className="font-semibold text-cream/85">نسخه ۰.۷ — فاز ۷</p>
+        <p>تأیید دو مرحله‌ای، کدهای پشتیبان، PWA و لندینگ تازه.</p>
       </div>
     </nav>
   );
@@ -108,19 +119,19 @@ export function AdminLayout() {
   return (
     <div className="min-h-dvh bg-canvas">
       <div className="mx-auto flex max-w-[1600px]">
-        <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 border-e border-line bg-surface lg:block">
+        <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 border-e border-white/10 bg-espresso lg:block">
           {sidebar}
         </aside>
 
         {mobileOpen ? (
           <div className="fixed inset-0 z-40 lg:hidden">
             <div className="absolute inset-0 bg-ink/40" onClick={() => setMobileOpen(false)} aria-hidden />
-            <aside className="absolute inset-y-0 start-0 w-64 border-e border-line bg-surface">{sidebar}</aside>
+            <aside className="absolute inset-y-0 start-0 w-64 border-e border-white/10 bg-espresso">{sidebar}</aside>
           </div>
         ) : null}
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
+          <header className="sticky top-0 z-30 border-b border-line bg-canvas/95 backdrop-blur">
             <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
               <div className="flex items-center gap-3">
                 <button
@@ -141,6 +152,9 @@ export function AdminLayout() {
               </div>
 
               <div className="flex items-center gap-2">
+                <Button size="sm" variant="ghost" onClick={() => navigate('/admin/security')}>
+                  امنیت
+                </Button>
                 <Button size="sm" variant="ghost" onClick={() => navigate('/staff/password')}>
                   تغییر گذرواژه
                 </Button>
@@ -155,8 +169,9 @@ export function AdminLayout() {
             <Outlet />
           </main>
 
-          <footer className="border-t border-line px-4 py-4 text-center text-[10px] text-muted sm:px-6">
-            کافه‌فلو — سامانه یکپارچه مدیریت کافه و رستوران
+          <footer className="space-y-4 border-t border-line px-4 py-5 text-center text-[10px] text-muted sm:px-6">
+            <p>کافه‌فلو — سامانه یکپارچه مدیریت کافه و رستوران</p>
+            <DeveloperCredit />
           </footer>
         </div>
       </div>

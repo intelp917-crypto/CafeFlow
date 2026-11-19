@@ -1,122 +1,177 @@
-import { useCallback, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@cafeflow/ui';
-import { CoffeeIntro } from '../features/coffee/CoffeeIntro';
+import { customerApi } from '../lib/customer';
+import { formatCountFa } from '../lib/format';
+import { HeroCarousel, type HeroItem } from '../components/customer/HeroCarousel';
+import { DeveloperCredit } from '../components/DeveloperCredit';
 
-const INTRO_SESSION_KEY = 'cafeflow:intro-seen';
-
-function introAlreadySeen(): boolean {
-  try {
-    return sessionStorage.getItem(INTRO_SESSION_KEY) === '1';
-  } catch {
-    return false;
-  }
+interface LandingCategory {
+  id: string;
+  nameFa: string;
+  productCount: number;
 }
 
-/**
- * Customer entry point. The 3D intro plays at most once per browser session:
- * navigating back to the home page shows the static hero instead of replaying
- * five seconds of animation.
- */
-export function HomePage() {
-  const [introSeen, setIntroSeen] = useState(introAlreadySeen);
-  const [introDone, setIntroDone] = useState(introAlreadySeen);
+/** Muted tints behind the carousel cards, one per category, recycled. */
+const TINTS = ['#d9a26a', '#a9c1bd', '#cf9aa2', '#b9a7c9', '#cbb08a', '#c2a58d'];
 
-  const finishIntro = useCallback(() => {
-    try {
-      sessionStorage.setItem(INTRO_SESSION_KEY, '1');
-    } catch {
-      // Private mode may refuse storage; the animation simply plays again.
-    }
-    setIntroSeen(true);
-    setIntroDone(true);
+function imageFor(name: string): string {
+  if (/(سرد|آیس|iced|cold|فراپه|شیک|shake)/.test(name)) return '/images/iced.jpg';
+  if (/(شیرینی|کیک|دسر|dessert|cake|pastry)/.test(name)) return '/images/cake.jpg';
+  if (/(غذا|صبحانه|ساندویچ|سالاد|پاستا|food|sandwich|breakfast|salad|pasta)/.test(name)) return '/images/food.jpg';
+  return '/images/cup-hero.jpg';
+}
+
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const onChange = () => setReduced(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+  return reduced;
+}
+
+function Wordmark({ className = '' }: { className?: string }) {
+  return (
+    <span className={`font-display text-xl font-bold ${className}`} dir="rtl">
+      کافه‌فلو
+    </span>
+  );
+}
+
+export function HomePage() {
+  const [categories, setCategories] = useState<LandingCategory[] | null>(null);
+  const [productTotal, setProductTotal] = useState(0);
+  const reduced = useReducedMotion();
+
+  useEffect(() => {
+    let disposed = false;
+    customerApi
+      .menu()
+      .then((menu) => {
+        if (disposed) return;
+        setProductTotal(menu.categories.reduce((sum, category) => sum + category.products.length, 0));
+        setCategories(
+          menu.categories.map((category) => ({
+            id: category.id,
+            nameFa: category.nameFa,
+            productCount: category.products.length,
+          })),
+        );
+      })
+      .catch(() => {
+        // The landing page still works without catalog numbers.
+      });
+    return () => {
+      disposed = true;
+    };
   }, []);
 
+  const menu = categories ?? [];
+  const heroItems: HeroItem[] = menu.map((category, index) => ({
+    id: category.id,
+    nameFa: category.nameFa,
+    count: category.productCount,
+    image: imageFor(category.nameFa),
+    tint: TINTS[index % TINTS.length]!,
+  }));
+
   return (
-    <div className="min-h-dvh bg-[#150c08] text-brand-50">
-      <div className="mx-auto flex min-h-dvh max-w-5xl flex-col px-4 py-6 sm:px-6">
-        <header className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="flex size-9 items-center justify-center rounded-xl bg-brand-500 text-white">
-              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="size-5">
+    <div className="flex min-h-dvh flex-col bg-espresso text-cream">
+      <header className="absolute inset-x-0 top-0 z-20">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-5 sm:px-8">
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 items-center justify-center rounded-full border border-brand-300/40 bg-brand-500/15">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="size-5">
                 <path d="M5 9h11a4 4 0 0 1 0 8h-1v2H8v-2H5z" strokeLinejoin="round" />
                 <path d="M8 5c0 1.5 1 1.5 1 3M12 5c0 1.5 1 1.5 1 3" strokeLinecap="round" />
               </svg>
             </span>
-            <div className="leading-tight">
-              <p className="text-sm font-bold">کافه‌فلو</p>
-              <p className="text-[10px] text-brand-100/70">منوی دیجیتال کافه</p>
-            </div>
+            <Wordmark />
           </div>
-          <Link to="/staff/login" className="text-[11px] text-brand-100/70 hover:text-brand-50">
-            ورود کارکنان
-          </Link>
-        </header>
-
-        <main className="flex flex-1 flex-col justify-center gap-6 py-6">
-          {!introSeen ? (
-            <CoffeeIntro onDone={finishIntro} />
-          ) : (
-            <div className="relative overflow-hidden rounded-3xl border border-brand-100/15 bg-gradient-to-b from-[#2a1610] via-[#3a1f15] to-[#1a0f0a]">
-              <div className="flex h-52 items-end justify-center gap-2 pb-6 sm:h-64">
-                <div className="relative flex h-32 w-32 items-end justify-center">
-                  <div className="absolute bottom-0 h-5 w-24 rounded-full bg-black/40 blur-md" />
-                  <div className="relative h-20 w-24 rounded-b-[2.5rem] rounded-t-lg border-4 border-brand-100/80 bg-gradient-to-b from-[#f7efe4] to-[#e4d3bf]" />
-                  <div className="absolute bottom-12 h-10 w-20 rounded-[50%] bg-[#3a2113]" />
-                  <div className="absolute bottom-[3.35rem] h-8 w-14 rounded-[50%] bg-[#f0dfc8]/90" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div
-            className={`space-y-4 text-center transition-opacity duration-500 ${
-              introDone ? 'opacity-100' : 'pointer-events-none opacity-0'
-            }`}
+          <Link
+            to="/menu"
+            className="rounded-full border border-cream/25 px-4 py-2 text-[11px] text-cream hover:border-cream/60"
           >
-            <p className="text-[11px] tracking-wide text-brand-200/80">دانه تازه، استخراج دقیق، لاته‌آرت دست‌ساز</p>
-            <h1 className="text-2xl font-bold leading-snug sm:text-3xl">
-              قهوه‌ات را از روی میز سفارش بده
+            شروع سفارش
+          </Link>
+        </div>
+      </header>
+
+      <main className="relative flex flex-1 items-center overflow-hidden">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-40 -top-40 size-[30rem] rounded-full bg-brand-500/20 blur-3xl"
+        />
+        <div className="relative mx-auto grid w-full max-w-6xl items-center gap-10 px-5 pb-12 pt-28 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:gap-12">
+          <div>
+            <p className="rise-in text-[11px] text-brand-200">کافه، منو، سفارش</p>
+            <h1 className="font-display rise-in mt-4 text-[2.5rem] font-bold leading-[1.3] sm:text-6xl" style={{ animationDelay: '100ms' }}>
+              سفارش آرام،
+              <br />
+              از روی میز.
             </h1>
-            <p className="mx-auto max-w-md text-xs leading-6 text-brand-100/75">
-              کد QR روی میز را اسکن کنید تا منو باز شود؛ سفارش مستقیم به باریستا یا آشپزخانه می‌رود و
-              می‌توانید وضعیت آماده‌سازی را دنبال کنید.
+            <p className="rise-in mt-5 max-w-md text-xs leading-7 text-cream/70 sm:text-sm" style={{ animationDelay: '180ms' }}>
+              کد QR میز را اسکن کنید، منو را ببینید و سفارش را مستقیم به تیم کافه بفرستید. وضعیت هر آیتم را تا
+              لحظه سرو دنبال کنید.
             </p>
 
-            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <div className="rise-in mt-8 flex flex-wrap items-center gap-3" style={{ animationDelay: '260ms' }}>
               <Link to="/menu">
-                <Button size="lg">مشاهده منو</Button>
+                <Button size="lg">دیدن منو</Button>
               </Link>
-              <Link to="/staff/login">
-                <Button size="lg" variant="outline" className="border-brand-100/30 bg-transparent text-brand-50 hover:border-brand-100/60 hover:text-white">
-                  ورود کارکنان
-                </Button>
+              <Link
+                to="/staff/login"
+                className="rounded-full border border-cream/25 px-6 py-3 text-xs text-cream hover:border-cream/60"
+              >
+                ورود کارکنان
               </Link>
             </div>
 
-            <p className="text-[10px] text-brand-100/50">
-              برای ثبت سفارش، کد QR روی میز را اسکن کنید.
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            {[
-              { title: 'اسکن QR میز', body: 'بدون نصب اپلیکیشن، منوی همان میز باز می‌شود.' },
-              { title: 'سفارش مستقیم', body: 'آیتم‌ها به باریستا یا آشپزخانه مسیر می‌گیرند.' },
-              { title: 'پیگیری وضعیت', body: 'از ثبت تا آماده‌شدن، وضعیت را می‌بینید.' },
-            ].map((card) => (
-              <div key={card.title} className="rounded-2xl border border-brand-100/12 bg-white/5 p-4">
-                <p className="text-xs font-semibold">{card.title}</p>
-                <p className="mt-1 text-[11px] leading-6 text-brand-100/70">{card.body}</p>
+            <dl className="rise-in mt-10 flex gap-8 border-t border-cream/12 pt-6" style={{ animationDelay: '340ms' }}>
+              <div>
+                <dt className="text-[10px] text-cream/50">دسته‌بندی</dt>
+                <dd className="num font-display mt-1 text-3xl font-bold">{formatCountFa(menu.length)}</dd>
               </div>
-            ))}
+              <div className="border-s border-cream/12 ps-8">
+                <dt className="text-[10px] text-cream/50">آیتم در منو</dt>
+                <dd className="num font-display mt-1 text-3xl font-bold">{formatCountFa(productTotal)}</dd>
+              </div>
+            </dl>
           </div>
-        </main>
 
-        <footer className="border-t border-brand-100/10 pt-4 text-center text-[10px] text-brand-100/40">
-          کافه‌فلو — سامانه یکپارچه مدیریت کافه و رستوران
-        </footer>
-      </div>
+          <div className="rise-in" style={{ animationDelay: '200ms' }}>
+            {heroItems.length > 0 ? (
+              <HeroCarousel items={heroItems} reducedMotion={reduced} />
+            ) : (
+              <img
+                src="/images/cup-hero.jpg"
+                alt="فنجان قهوه کرم‌رنگ میان دانه‌های برشته با پاشش قهوه"
+                width={1392}
+                height={752}
+                className="aspect-[5/4] w-full rounded-[2rem] object-cover object-[62%_center]"
+              />
+            )}
+          </div>
+        </div>
+      </main>
+
+      <footer className="border-t border-cream/10">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-5 py-8 sm:flex-row sm:justify-between sm:px-8">
+          <p className="text-[10px] text-cream/45">سامانه یکپارچه مدیریت کافه و رستوران</p>
+          <nav className="flex gap-5 text-[11px] text-cream/60">
+            <Link to="/menu" className="hover:text-cream">منو</Link>
+            <Link to="/staff/login" className="hover:text-cream">کارکنان</Link>
+          </nav>
+        </div>
+        <div className="border-t border-cream/10 px-5 py-6">
+          <DeveloperCredit tone="dark" />
+        </div>
+      </footer>
     </div>
   );
 }

@@ -255,10 +255,98 @@
 - فروش = مجموع پرداخت‌های `confirmed`؛ خالص = فروش − بازپرداخت‌ها؛ سفارش تسویه‌شده از `orders.paid_at` شمارش می‌شود.
 - «فروش روزانه» با `date(paid_at,'+210 minutes')` گروه می‌شود تا مرز نیمه‌شب تهران درست باشد.
 
+## رزرو (فاز ۶) — `@RequireModule('reservations')`
+
+| متد | مسیر | مجوز | توضیح |
+|---|---|---|---|
+| GET | `/reservations?date=YYYY-MM-DD&scope=upcoming\|all&status=&tableId=` | `reservations.read` | رزروهای روز تقویم تهران (یا همه) + شمارش وضعیت‌ها |
+| POST | `/reservations` | `reservations.write` | نام، شماره تماس، تعداد مهمان، زمان ISO، مدت (۱۵–۴۸۰)، میز اختیاری |
+| POST | `/reservations/:id/status` | `reservations.write` | `pending`/`confirmed`/`seated`/`cancelled`/`no_show` با نقشه انتقال |
+
+- شماره تماس با ارقام لاتین و بدون فاصله ذخیره می‌شود؛ عدد فارسی/عربی پذیرفته است.
+- تداخل بازه‌ها با `julianday` در SQLite بررسی می‌شود: رزرو هم‌پوشان روی همان میز `409 RESERVATION_CONFLICT`.
+  رزروی که دقیقاً وقتی رزرو دیگر تمام می‌شود شروع شود مجاز است.
+- تعداد مهمان بیش از ظرفیت میز `400 CAPACITY_EXCEEDED`؛ زمان گذشته `400 RESERVATION_IN_PAST`.
+- تأیید میز آزاد را `reserved`، حضور را `occupied` و لغو/عدم‌حضور میز رزروشده بدون نشست را `available` می‌کند.
+
+## انبار (فاز ۶) — `@RequireModule('inventory')`
+
+| متد | مسیر | مجوز | توضیح |
+|---|---|---|---|
+| GET | `/inventory/overview` | `inventory.read` | شمارش مواد اولیه/کمبود/تأمین‌کننده/گردش امروز |
+| GET | `/inventory/ingredients` | `inventory.read` | موجودی، حد هشدار، بهای واحد و پرچم کمبود |
+| POST | `/inventory/ingredients` | `inventory.write` | نام، واحد (به‌صورت نماد)، موجودی اولیه، حد هشدار، بهای واحد |
+| POST | `/inventory/ingredients/:id/adjustments` | `inventory.write` | `{ delta, reason }`؛ منفی‌شدن موجودی `400 INSUFFICIENT_STOCK` |
+| GET | `/inventory/movements?limit=60` | `inventory.read` | گردش انبار با نوع، مرجع سفارش و کاربر |
+| GET | `/inventory/recipes` | `inventory.read` | دستور پخت محصولات |
+| POST | `/inventory/recipes/:productId` | `inventory.write` | `{ yieldQty, items:[{ingredientId, qty}] }`؛ آرایه خالی دستور پخت را پاک می‌کند |
+
+- هنگام ثبت سفارش، اگر ماژول روشن باشد، برای هر آیتم `qty × recipe_items.qty / yield_qty` از موجودی کم و
+  ردیف `sale_deduction` ثبت می‌شود؛ فراخوانی دوباره بی‌اثر است.
+- لغو سفارش فقط خالص کسر‌شده را با ردیف `restore` برمی‌گرداند.
+- ماژول پیش‌فرض خاموش است؛ در حالت خاموش هیچ کسر/بازگردانی انجام نمی‌شود و داده حذف نمی‌شود.
+
+## کارکنان (فاز ۶)
+
+| متد | مسیر | مجوز | توضیح |
+|---|---|---|---|
+| POST | `/users` | `users.write` | `{ username, fullName, password, roleKeys[] }`؛ حساب با `mustChangePassword` ساخته می‌شود |
+| PATCH | `/users/:id` | `users.write` | `fullName`, `isActive`, `roleKeys[]`, `newPassword`, `resetMfa` — همه اختیاری |
+
+- نام کاربری یکتا (بدون حساسیت به بزرگی/کوچکی)؛ نقش نامعتبر `400 ROLE_NOT_FOUND`.
+- غیرفعال‌سازی یا بازنشانی گذرواژه، همه نشست‌های آن کاربر را باطل می‌کند؛ غیرفعال‌کردن حساب خود `400 CANNOT_DISABLE_SELF`.
+- `resetMfa: true` کلید TOTP و کدهای پشتیبان را پاک می‌کند (دستگاه گمشده) و در حسابرسی `staff.updated` ثبت می‌شود.
+
+## جلسات صندوق (فاز ۶) — `@RequireModule('finance')`
+
+| متد | مسیر | مجوز | توضیح |
+|---|---|---|---|
+| GET | `/cash-sessions?registerId=` | `finance.read` | صندوق‌ها، جلسه باز و ۲۰ جلسه بسته |
+| POST | `/cash-sessions/open` | `finance.write` | `{ registerId, openingFloat }`؛ یک جلسه باز در هر صندوق |
+| POST | `/cash-sessions/:id/close` | `finance.write` | `{ closingAmount }` → مبلغ انتظار، شمارش و مغایرت |
+
+- مبلغ انتظار = موجودی اولیه + پرداخت‌های نقدی تأییدشده − بازپرداخت‌های نقدی در بازه جلسه؛ هیچ عددی از کلاینت
+  به‌عنوان «انتظار» پذیرفته نمی‌شود.
+- بستن دوباره یا جلسه دوم هم‌زمان `409`. ماژول پیش‌فرض خاموش است.
+
+## باشگاه مشتریان (فاز ۶) — `@RequireModule('crm')`
+
+| متد | مسیر | مجوز | توضیح |
+|---|---|---|---|
+| GET | `/customers?q=&limit=50` | `crm.read` | جست‌وجو بر اساس نام/شماره |
+| POST | `/customers` | `crm.write` | نام، شماره یکتا، تاریخ تولد، یادداشت، رضایت پیامک |
+| GET | `/customers/:id` | `crm.read` | پروفایل + ۵۰ ردیف آخر دفتر امتیاز/کیف پول |
+| POST | `/customers/:id/loyalty` | `crm.write` | `{ points?, wallet?, reason }` — حداقل یکی باید غیرصفر باشد |
+
+- شماره تکراری `409 CUSTOMER_EXISTS`؛ برداشت بیش از موجودی کیف پول/امتیاز `400`.
+- سطح از امتیاز مشتق می‌شود: ۲۰۰ نقره‌ای، ۵۰۰ طلایی، ۱۰۰۰ ویژه. ماژول پیش‌فرض خاموش است.
+
+## تأیید دو مرحله‌ای (فاز ۷)
+
+| متد | مسیر | دسترسی | توضیح |
+|---|---|---|---|
+| GET | `/auth/mfa` | هر کاربر واردشده | `{ enabled, confirmedAt }` |
+| POST | `/auth/mfa/enroll` | هر کاربر واردشده | `{ secret, otpauthUrl }`؛ اگر فعال باشد `409 MFA_ALREADY_ENABLED` |
+| POST | `/auth/mfa/activate` | هر کاربر واردشده | `{ code }` → فعال‌سازی؛ کد نادرست `401 MFA_INVALID`، بدون ثبت‌نام `400 MFA_NOT_ENROLLED` |
+| POST | `/auth/mfa/recovery-codes` | هر کاربر واردشده | `{ password, code }` → ۱۰ کد پشتیبان جدید؛ کدهای قبلی باطل می‌شوند |
+| POST | `/auth/mfa/disable` | هر کاربر واردشده | `{ password, code? }`؛ گذرواژه نادرست `401 INVALID_CREDENTIALS` |
+
+- ورود (`POST /auth/login`) فیلد اختیاری `code` می‌گیرد: کد ۶ رقمی TOTP یا کد پشتیبان `XXXX-XXXX`.
+  حساب فعال‌شده بدون کد `401 MFA_REQUIRED` و با کد نادرست `401 MFA_INVALID` پاسخ می‌دهد؛ گذرواژه همیشه
+  پیش از بررسی کد سنجیده می‌شود. هر کد پشتیبان فقط یک‌بار پذیرفته می‌شود.
+- فعال‌سازی در پاسخ ۱۰ کد پشتیبان برمی‌گرداند (تنها بار نمایش)؛ در سرور فقط هش SHA-256 ذخیره می‌شود.
+- الگوریتم TOTP (SHA-1، ۶ رقم، ۳۰ ثانیه) در سرور است؛ کلید فقط هنگام ثبت‌نام یک‌بار برمی‌گردد.
+
+## سخت‌سازی HTTP (فاز ۷)
+
+- همه پاسخ‌ها `X-Request-Id`، `X-Content-Type-Options`، `X-Frame-Options`، `Referrer-Policy`،
+  `Permissions-Policy` و CSP سخت‌گیرانه دارند؛ HSTS فقط در تولید.
+- ورود: ۶۰ تلاش در ۱۰ دقیقه برای هر IP، علاو‌ه بر قفل حساب (۵ تلاش ناموفق → ۱۵ دقیقه).
+- `/health` نسخه API را برمی‌گرداند (`0.7.0`).
+
 ## مسیرهای فازهای بعد
 
-`/layout`, `/floorplans`, `/qr-codes`, `/campaigns`, `/reservations` — قرارداد آن‌ها در
-`docs/PROGRESS.md` و فاز مربوطه تکمیل می‌شود.
+`/layout`, `/floorplans`, `/qr-codes`, `/campaigns` — قرارداد آن‌ها در `docs/PROGRESS.md` و فاز مربوطه تکمیل می‌شود.
 
 ## قواعد عمومی
 
