@@ -71,9 +71,13 @@ export function JoinGate({ tableNameFa, games, loading, error, joiningGameId, on
         </div>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2">
-          {games.map((game) => (
+          {[...games].sort((a, b) => Number(b.playable) - Number(a.playable)).map((game) => (
             <li key={game.id}>
-              <article className="flex h-full flex-col rounded-[1.5rem] border border-line/70 bg-surface p-4 transition-colors hover:border-brand-300">
+              <article
+                className={`flex h-full flex-col rounded-[1.5rem] border border-line/70 bg-surface p-4 transition-colors hover:border-brand-300 ${
+                  game.playable ? '' : 'opacity-75'
+                }`}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h2 className="font-display text-base font-bold text-ink">{game.nameFa}</h2>
@@ -92,14 +96,20 @@ export function JoinGate({ tableNameFa, games, loading, error, joiningGameId, on
                       ? `${formatCountFa(game.maxPlayers)} بازیکن`
                       : `${formatCountFa(game.minPlayers)} تا ${formatCountFa(game.maxPlayers)} بازیکن`}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => submit(game.id)}
-                    disabled={joiningGameId !== null}
-                    className="min-h-11 rounded-full bg-espresso px-4 text-[11px] font-semibold text-cream transition-colors hover:bg-brand-800 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
-                  >
-                    {joiningGameId === game.id ? 'در حال ورود…' : 'بازی با این میز'}
-                  </button>
+                  {game.playable ? (
+                    <button
+                      type="button"
+                      onClick={() => submit(game.id)}
+                      disabled={joiningGameId !== null}
+                      className="min-h-11 rounded-full bg-espresso px-4 text-[11px] font-semibold text-cream transition-colors hover:bg-brand-800 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                    >
+                      {joiningGameId === game.id ? 'در حال ورود…' : 'بازی با این میز'}
+                    </button>
+                  ) : (
+                    <span className="flex min-h-11 items-center rounded-full border border-dashed border-line px-4 text-[11px] text-muted">
+                      به‌زودی
+                    </span>
+                  )}
                 </div>
 
                 <details className="mt-2 text-[11px] text-ink/70">

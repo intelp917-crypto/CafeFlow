@@ -6,6 +6,12 @@ import { Reversi } from './Reversi';
 import { Uno } from './Uno';
 import { Realtime2048 } from './Realtime2048';
 import { Werewolf } from './Werewolf';
+import { Gomoku } from './Gomoku';
+import { Chess } from './Chess';
+import { Checkers } from './Checkers';
+import { Sudoku } from './Sudoku';
+import { Minesweeper } from './Minesweeper';
+import { NumberBomb } from './NumberBomb';
 
 /**
  * Game id → screen. Everything a renderer needs arrives in `GameRendererProps`;
@@ -18,4 +24,10 @@ export const RENDERERS: Record<string, ComponentType<GameRendererProps>> = {
   uno: Uno,
   '2048': Realtime2048,
   werewolf: Werewolf,
+  gomoku: Gomoku,
+  chess: Chess,
+  checkers: Checkers,
+  sudoku: Sudoku,
+  minesweeper: Minesweeper,
+  numberbomb: NumberBomb,
 };
