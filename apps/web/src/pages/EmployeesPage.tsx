@@ -29,6 +29,7 @@ import type {
 } from '@cafeflow/shared';
 import { api, errorMessage } from '../lib/api';
 import { formatCountFa, formatDateTimeFa, formatRial } from '../lib/format';
+import { JalaliDateInput } from '../components/JalaliDateInput';
 
 type Tab = 'employees' | 'shifts' | 'performance';
 
@@ -392,19 +393,17 @@ export function EmployeesPage() {
               description="بازه پیش‌فرض از امروز تا دو هفته آینده است؛ شیفت هم‌پوشان برای یک کارمند پذیرفته نمی‌شود."
               action={
                 <div className="flex flex-wrap items-end gap-2">
-                  <Input
-                    type="date"
+                  <JalaliDateInput
                     value={shiftRange.from}
-                    onChange={(event) => setShiftRange({ ...shiftRange, from: event.target.value })}
-                    className="h-9 w-36 text-xs"
-                    aria-label="از تاریخ"
+                    onChange={(next) => setShiftRange({ ...shiftRange, from: next })}
+                    className="w-36"
+                    ariaLabel="از تاریخ"
                   />
-                  <Input
-                    type="date"
+                  <JalaliDateInput
                     value={shiftRange.to}
-                    onChange={(event) => setShiftRange({ ...shiftRange, to: event.target.value })}
-                    className="h-9 w-36 text-xs"
-                    aria-label="تا تاریخ"
+                    onChange={(next) => setShiftRange({ ...shiftRange, to: next })}
+                    className="w-36"
+                    ariaLabel="تا تاریخ"
                   />
                   <Button size="sm" variant="outline" onClick={() => void loadShifts()} loading={loading}>
                     اعمال
@@ -434,19 +433,17 @@ export function EmployeesPage() {
             description="ساعت کارکرد از ثبت حضور و خروج، سفارش تسویه‌شده از سفارش‌ها و درآمد وصولی از پرداخت‌ها محاسبه می‌شود."
             action={
               <div className="flex flex-wrap items-end gap-2">
-                <Input
-                  type="date"
+                <JalaliDateInput
                   value={performanceRange.from}
-                  onChange={(event) => setPerformanceRange({ ...performanceRange, from: event.target.value })}
-                  className="h-9 w-36 text-xs"
-                  aria-label="از تاریخ"
+                  onChange={(next) => setPerformanceRange({ ...performanceRange, from: next })}
+                  className="w-36"
+                  ariaLabel="از تاریخ"
                 />
-                <Input
-                  type="date"
+                <JalaliDateInput
                   value={performanceRange.to}
-                  onChange={(event) => setPerformanceRange({ ...performanceRange, to: event.target.value })}
-                  className="h-9 w-36 text-xs"
-                  aria-label="تا تاریخ"
+                  onChange={(next) => setPerformanceRange({ ...performanceRange, to: next })}
+                  className="w-36"
+                  ariaLabel="تا تاریخ"
                 />
                 <Button size="sm" variant="outline" onClick={() => void loadPerformance()} loading={loading}>
                   اعمال
@@ -585,17 +582,21 @@ export function EmployeesPage() {
             </Field>
           </div>
           <Field label="شروع" required>
-            <Input
-              type="datetime-local"
+            <JalaliDateInput
+              withTime
               value={shiftForm.startsAt}
-              onChange={(event) => setShiftForm({ ...shiftForm, startsAt: event.target.value })}
+              onChange={(next) => setShiftForm({ ...shiftForm, startsAt: next })}
+              className="flex-1 justify-between"
+              ariaLabel="شروع شیفت"
             />
           </Field>
           <Field label="پایان" required>
-            <Input
-              type="datetime-local"
+            <JalaliDateInput
+              withTime
               value={shiftForm.endsAt}
-              onChange={(event) => setShiftForm({ ...shiftForm, endsAt: event.target.value })}
+              onChange={(next) => setShiftForm({ ...shiftForm, endsAt: next })}
+              className="flex-1 justify-between"
+              ariaLabel="پایان شیفت"
             />
           </Field>
           <div className="sm:col-span-2">

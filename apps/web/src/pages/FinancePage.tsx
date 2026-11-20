@@ -25,7 +25,8 @@ import {
   type FinanceSummaryResponse,
 } from '@cafeflow/shared';
 import { api, errorMessage } from '../lib/api';
-import { formatCountFa, formatDateTimeFa, formatRial } from '../lib/format';
+import { formatCountFa, formatDateFa, formatDateTimeFa, formatRial } from '../lib/format';
+import { JalaliDateInput } from '../components/JalaliDateInput';
 
 function tehranIsoDay(offsetDays = 0): string {
   return new Date(Date.now() + 210 * 60_000 - offsetDays * 86_400_000).toISOString().slice(0, 10);
@@ -126,19 +127,17 @@ export function FinancePage() {
         breadcrumb={<Breadcrumb page="مالی" />}
         actions={
           <div className="flex flex-wrap items-end gap-2">
-            <Input
-              type="date"
+            <JalaliDateInput
               value={range.from}
-              onChange={(event) => setRange({ ...range, from: event.target.value })}
-              className="h-9 w-36 text-xs"
-              aria-label="از تاریخ"
+              onChange={(next) => setRange({ ...range, from: next })}
+              className="w-36"
+              ariaLabel="از تاریخ"
             />
-            <Input
-              type="date"
+            <JalaliDateInput
               value={range.to}
-              onChange={(event) => setRange({ ...range, to: event.target.value })}
-              className="h-9 w-36 text-xs"
-              aria-label="تا تاریخ"
+              onChange={(next) => setRange({ ...range, to: next })}
+              className="w-36"
+              ariaLabel="تا تاریخ"
             />
             <Button size="sm" variant="outline" onClick={() => void load()} loading={loading}>
               اعمال
@@ -172,7 +171,10 @@ export function FinancePage() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
-              <CardHeader title="هزینه به تفکیک دسته" description={`بازه ${data.from} تا ${data.to}`} />
+              <CardHeader
+                title="هزینه به تفکیک دسته"
+                description={`بازهٔ ${formatDateFa(`${data.from}T00:00:00Z`)} تا ${formatDateFa(`${data.to}T00:00:00Z`)}`}
+              />
               {data.expensesByCategory.length > 0 ? (
                 <DataTable
                   columns={categoryColumns}
@@ -270,10 +272,12 @@ export function FinancePage() {
             />
           </Field>
           <Field label="زمان هزینه" hint="خالی بماند، همین حالا ثبت می‌شود.">
-            <Input
-              type="datetime-local"
+            <JalaliDateInput
+              withTime
               value={expenseForm.spentAt}
-              onChange={(event) => setExpenseForm({ ...expenseForm, spentAt: event.target.value })}
+              onChange={(next) => setExpenseForm({ ...expenseForm, spentAt: next })}
+              className="flex-1 justify-between"
+              ariaLabel="زمان هزینه"
             />
           </Field>
           <Field label="شرح">

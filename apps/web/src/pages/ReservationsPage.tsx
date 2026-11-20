@@ -27,7 +27,8 @@ import {
   type StaffTablesResponse,
 } from '@cafeflow/shared';
 import { api, errorMessage } from '../lib/api';
-import { formatDateTimeFa, formatCountFa } from '../lib/format';
+import { formatDateFa, formatDateTimeFa, formatCountFa } from '../lib/format';
+import { JalaliDateInput } from '../components/JalaliDateInput';
 
 const TONES: Record<ReservationStatus, 'neutral' | 'brand' | 'success' | 'danger' | 'warning'> = {
   pending: 'warning',
@@ -233,7 +234,7 @@ export function ReservationsPage() {
       <Card>
         <CardHeader
           title="فهرست رزروها"
-          description={allDates ? 'همه رزروها' : `رزروهای ${date}`}
+          description={allDates ? 'همه رزروها' : `رزروهای ${formatDateFa(`${date}T00:00:00Z`)}`}
           action={
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-1.5 text-[11px] text-muted">
@@ -245,14 +246,15 @@ export function ReservationsPage() {
                 />
                 همه تاریخ‌ها
               </label>
-              <Input
-                type="date"
-                value={date}
-                disabled={allDates}
-                onChange={(event) => setDate(event.target.value)}
-                className="h-9 w-36 text-xs"
-                aria-label="تاریخ رزرو"
-              />
+              <div className={allDates ? 'pointer-events-none opacity-50' : undefined}>
+                <JalaliDateInput
+                  value={date}
+                  disabled={allDates}
+                  onChange={setDate}
+                  className="w-36"
+                  ariaLabel="تاریخ رزرو"
+                />
+              </div>
               <Button size="sm" variant="outline" onClick={() => void load()} loading={loading}>
                 به‌روزرسانی
               </Button>
@@ -332,10 +334,12 @@ export function ReservationsPage() {
             </select>
           </Field>
           <Field label="زمان رزرو" required>
-            <Input
-              type="datetime-local"
+            <JalaliDateInput
+              withTime
               value={form.reservedFor}
-              onChange={(event) => setForm({ ...form, reservedFor: event.target.value })}
+              onChange={(next) => setForm({ ...form, reservedFor: next })}
+              className="flex-1 justify-between"
+              ariaLabel="زمان رزرو"
             />
           </Field>
           <Field label="مدت (دقیقه)" required>

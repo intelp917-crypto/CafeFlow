@@ -20,6 +20,7 @@ import {
 import type { CustomerDetail, CustomerRow, CustomersResponse, LoyaltyTier } from '@cafeflow/shared';
 import { api, errorMessage } from '../lib/api';
 import { formatDateTimeFa, formatRial } from '../lib/format';
+import { JalaliDateInput } from '../components/JalaliDateInput';
 
 const TIER_TONES: Record<LoyaltyTier, 'neutral' | 'brand' | 'success' | 'warning'> = {
   regular: 'neutral',
@@ -231,11 +232,12 @@ export function CustomersPage() {
               placeholder="09120000000"
             />
           </Field>
-          <Field label="تاریخ تولد" hint="میلادی: YYYY-MM-DD">
-            <Input
-              type="date"
+          <Field label="تاریخ تولد" hint="شمسی؛ برای ذخیره خودکار به میلادی تبدیل می‌شود.">
+            <JalaliDateInput
               value={form.birthDate}
-              onChange={(event) => setForm({ ...form, birthDate: event.target.value })}
+              onChange={(next) => setForm({ ...form, birthDate: next })}
+              className="w-full justify-between"
+              ariaLabel="تاریخ تولد"
             />
           </Field>
           <div className="flex items-end pb-2">
