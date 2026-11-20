@@ -12,8 +12,12 @@
 |---|---|---|
 | `NODE_ENV` | `development` | `development` / `test` / `production` |
 | `PORT` | `3000` | پورت API؛ مقدار نامعتبر (۰ یا خارج از بازه) به ۳۰۰۰ برمی‌گردد |
+| `HOST` | `0.0.0.0` | رابط شنود API؛ `0.0.0.0` یعنی از شبکهٔ محلی هم در دسترس است، `127.0.0.1` یعنی فقط همین دستگاه |
 | `API_PREFIX` | `/api/v1` | پیشوند مسیرها |
-| `DATABASE_PATH` | `../../data/cafeflow.db` | نسبت به پوشه اجرای API (`apps/api`) |
+| `CAFEFLOW_DATA_DIR` | `../../data` | **ریشهٔ پایدار داده‌ها**؛ در تولید مسیر مطلق روی دیسک پایدار (مثلاً `/var/lib/cafeflow`) |
+| `DATABASE_PATH` | `$CAFEFLOW_DATA_DIR/cafeflow.db` | بازنویسی اختیاری فایل پایگاه داده |
+| `CAFEFLOW_BACKUP_DIR` | `$CAFEFLOW_DATA_DIR/backups` | محل پشتیبان‌ها |
+| `PRINT_OUTPUT_DIR` | `$CAFEFLOW_DATA_DIR/print-output` | خروجی پل چاپ (فقط اسکریپت پل) |
 | `SESSION_COOKIE_NAME` | `cafe_session` | نام کوکی نشست |
 | `SESSION_TTL_HOURS` | `168` | عمر نشست (۷ روز) |
 | `SESSION_COOKIE_SECURE` | `false` | در تولید `true` (نیازمند HTTPS) |
@@ -36,12 +40,19 @@
 
 ## مسیرهای داده
 
+همهٔ وضعیت زمان اجرا زیر یک ریشه است (`CAFEFLOW_DATA_DIR`)؛ پیش‌فرض توسعه `data/` در ریشهٔ مخزن است:
+
 ```
-data/cafeflow.db        پایگاه داده اصلی
-data/cafeflow.db-wal    تراکنش‌های در جریان WAL
-data/cafeflow.db-shm    حافظه مشترک
-backups/                نسخه‌های پشتیبان (خارج از کنترل نسخه)
+$CAFEFLOW_DATA_DIR/
+  cafeflow.db            پایگاه داده اصلی
+  cafeflow.db-wal        تراکنش‌های در جریان WAL
+  cafeflow.db-shm        حافظه مشترک
+  backups/               نسخه‌های پشتیبان (VACUUM INTO)
+  print-output/          فایل‌های رسید پل چاپ
 ```
+
+در تولید این ریشه باید یک مسیر مطلق بیرون از پوشهٔ پروژه و روی دیسک پایدار باشد (`/var/lib/cafeflow`
+در Compose). جزئیات و چک‌لیست ریستارت در `docs/11-deployment.md`.
 
 ## پیش از استقرار
 

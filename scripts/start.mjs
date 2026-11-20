@@ -6,6 +6,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -93,8 +94,19 @@ process.on('SIGHUP', () => shutdown(0));
 console.log(`${label.shared} building @cafeflow/shared`);
 runOnce(['run', 'build:shared'], label.shared);
 
+// Both servers listen on every interface, so the same app is reachable from a
+// phone or another computer on the same network. Printing the addresses here
+// saves guessing the machine's IP for a quick mobile check.
+const lanAddresses = Object.values(os.networkInterfaces())
+  .flat()
+  .filter((entry) => entry && entry.family === 'IPv4' && !entry.internal)
+  .map((entry) => entry.address);
+
 console.log(`${label.api}  http://127.0.0.1:3000/api/v1`);
 console.log(`${label.web}  http://localhost:5173`);
+for (const address of lanAddresses) {
+  console.log(`${label.web}  http://${address}:5173  ← از موبایل/شبکه محلی`);
+}
 console.log('');
 
 start(label.api, ['run', 'dev:api']);

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
 /**
  * Environment configuration.
@@ -11,8 +11,21 @@ import { resolve } from 'node:path';
 export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'production';
   port: number;
+  /**
+   * Interface the HTTP server binds to. `0.0.0.0` keeps the app reachable from
+   * the local network (a phone opening the menu or the panel over Wi-Fi); set
+   * `127.0.0.1` to serve this machine only.
+   */
+  host: string;
   apiPrefix: string;
+  /**
+   * The one folder that holds everything the installation must not lose:
+   * the SQLite file and its WAL, backups and (for the print bridge) receipts.
+   * On a server this must be an absolute path on persistent storage.
+   */
+  dataDirectory: string;
   databasePath: string;
+  backupDirectory: string;
   sessionCookieName: string;
   sessionTtlHours: number;
   sessionCookieSecure: boolean;
@@ -54,7 +67,15 @@ export function loadEnvFile(): void {
 
 export function loadConfig(): AppConfig {
   const nodeEnv = (process.env.NODE_ENV ?? 'development') as AppConfig['nodeEnv'];
-  const databasePath = resolve(process.cwd(), process.env.DATABASE_PATH ?? '../../data/cafeflow.db');
+
+  // A single root for runtime state. Defaults to the repository's `data/` in
+  // development; production sets CAFEFLOW_DATA_DIR to a mounted volume so a
+  // container restart, rebuild or deploy never touches the database.
+  const dataDirectory = resolve(process.env.CAFEFLOW_DATA_DIR ?? '../../data');
+  const databasePath = process.env.DATABASE_PATH
+    ? resolve(process.cwd(), process.env.DATABASE_PATH)
+    : join(dataDirectory, 'cafeflow.db');
+  const backupDirectory = resolve(process.env.CAFEFLOW_BACKUP_DIR ?? join(dataDirectory, 'backups'));
 
   // A port of 0 means "pick a random free port" to Node, which would make the
   // service unreachable for the browser and the reverse proxy. Some shells
@@ -65,8 +86,11 @@ export function loadConfig(): AppConfig {
   return {
     nodeEnv,
     port,
+    host: process.env.HOST?.trim() || '0.0.0.0',
     apiPrefix: process.env.API_PREFIX ?? '/api/v1',
+    dataDirectory,
     databasePath,
+    backupDirectory,
     sessionCookieName: process.env.SESSION_COOKIE_NAME ?? 'cafe_session',
     sessionTtlHours: readNumber('SESSION_TTL_HOURS', 168),
     sessionCookieSecure: readBoolean('SESSION_COOKIE_SECURE', nodeEnv === 'production'),
