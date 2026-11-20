@@ -12,3 +12,4 @@ export * from './dto/management';
 export * from './dto/layout';
 export * from './dto/backoffice';
 export * from './dto/catalog';
+export * from './dto/games';

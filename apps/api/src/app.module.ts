@@ -12,6 +12,7 @@ import { CrmModule } from './modules/crm/crm.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EmployeesModule } from './modules/employees/employees.module';
 import { FinanceModule } from './modules/finance/finance.module';
+import { GamesModule } from './modules/games/games.module';
 import { HealthModule } from './modules/health/health.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { LayoutModule } from './modules/layout/layout.module';
@@ -48,6 +49,7 @@ import { UsersModule } from './modules/users/users.module';
     CrmModule,
     LayoutModule,
     EmployeesModule,
+    GamesModule,
   ],
   providers: [
     // Order matters: authenticate, then authorize permissions, then module gate.

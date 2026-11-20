@@ -8,6 +8,7 @@ import { AppExceptionFilter } from './common/errors';
 import { httpSecurity } from './common/http-security';
 import { DatabaseService } from './db/database.service';
 import { isSeeded, seedDatabase } from './db/seed';
+import { attachGamesGateway } from './modules/games/games.gateway';
 
 async function bootstrap(): Promise<void> {
   loadEnvFile();
@@ -44,6 +45,9 @@ async function bootstrap(): Promise<void> {
   }
 
   await app.listen(config.port, config.host);
+
+  // Table games share the HTTP server: one process, one port, one deployment.
+  attachGamesGateway(app);
 
   logger.log(`CafeFlow API روی ${config.host}:${config.port} آماده است (${config.apiPrefix})`);
   logger.log(`پایگاه داده: ${database.filePath}`);
