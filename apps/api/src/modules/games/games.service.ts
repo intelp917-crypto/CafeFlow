@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { isGameId } from '@cafeflow/games';
+import { isGameId, manifest } from '@cafeflow/games';
 import type { GameJoinResponse } from '@cafeflow/shared';
 import { GamesRepository } from './games.repository';
 import { RoomManager } from './room-manager';
@@ -29,6 +29,10 @@ export class GamesService {
   join(input: JoinRequest): GameJoinResponse {
     if (!isGameId(input.gameId)) {
       throw badRequest('این بازی در دسترس نیست.', 'GAME_UNKNOWN');
+    }
+    // Listed but not yet rendered: a room with no screen would strand the table.
+    if (!manifest(input.gameId).playable) {
+      throw badRequest('این بازی هنوز روی این نسخه آماده نیست.', 'GAME_NOT_READY');
     }
 
     const table = this.repository.findTableByQrToken(input.qrToken);

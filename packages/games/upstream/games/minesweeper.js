@@ -1,0 +1,208 @@
+// games/minesweeper.js
+// 扫雷 — Multiplayer speed race: same starting mine layout, independent boards per player
+
+exports.name = 'minesweeper';
+exports.maxPlayers = 6;
+exports.minPlayers = 1;
+
+const DEFAULT_ROWS = 10;
+const DEFAULT_COLS = 10;
+const DEFAULT_MINES = 15;
+
+function createMineLayout(rows, cols, mines) {
+  const mines_ = [];
+  for (let r = 0; r < rows; r++) {
+    mines_[r] = Array(cols).fill(false);
+  }
+  let placed = 0;
+  while (placed < mines) {
+    const r = Math.floor(Math.random() * rows);
+    const c = Math.floor(Math.random() * cols);
+    if (!mines_[r][c]) {
+      mines_[r][c] = true;
+      placed++;
+    }
+  }
+  return mines_;
+}
+
+function countAdjacent(mines_, r, c, rows, cols) {
+  let count = 0;
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const nr = r + dr, nc = c + dc;
+      if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && mines_[nr][nc]) count++;
+    }
+  }
+  return count;
+}
+
+function floodReveal(revealed, mines_, r, c, rows, cols) {
+  if (r < 0 || r >= rows || c < 0 || c >= cols) return 0;
+  if (revealed[r][c] || mines_[r][c]) return 0;
+  revealed[r][c] = true;
+  let count = 1;
+  if (countAdjacent(mines_, r, c, rows, cols) === 0) {
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        count += floodReveal(revealed, mines_, r + dr, c + dc, rows, cols);
+      }
+    }
+  }
+  return count;
+}
+
+// Build a lightweight board snapshot for client (per-player view)
+function playerBoardView(state, playerIndex) {
+  // A seat that joined after the boards were created (or before initGame) has no board yet.
+  if (!state.revealed || !state.revealed[playerIndex] || !state.flagged || !state.flagged[playerIndex]) return [];
+  const mines = state.mines && state.mines[playerIndex];
+  if (!mines) return [];
+  const over = state.winner !== null && state.winner !== undefined;
+  const rows = state.rows;
+  const cols = state.cols;
+  const board = [];
+  for (let r = 0; r < rows; r++) {
+    board[r] = [];
+    for (let c = 0; c < cols; c++) {
+      const revealed = state.revealed[playerIndex][r][c];
+      const flagged = state.flagged[playerIndex][r][c];
+      const isMine = mines[r][c];
+      board[r][c] = {
+        // Mine positions stay hidden until the cell is revealed (or the game is over)
+        mine: (revealed || over) && isMine,
+        revealed: revealed,
+        flagged: flagged,
+        adjacent: revealed && !isMine ? countAdjacent(mines, r, c, rows, cols) : 0,
+        exploded: revealed && isMine && state.deadByCell[playerIndex] && state.deadByCell[playerIndex].r === r && state.deadByCell[playerIndex].c === c,
+      };
+    }
+  }
+  return board;
+}
+
+exports.createState = () => ({
+  mines: [],          // per-player mine layout (rows×cols boolean), copies of one random layout; never sent to clients
+  revealed: [],       // per-player: rows×cols boolean
+  flagged: [],        // per-player: rows×cols boolean
+  rows: DEFAULT_ROWS,
+  cols: DEFAULT_COLS,
+  mineCount: DEFAULT_MINES,
+  alive: [],
+  cellsRevealed: [],   // per-player: total safe cells they've revealed
+  deadByCell: [],      // per-player: which cell they died on {r,c} or null
+  currentPlayer: -1,
+  winner: null,
+  safeCells: 0,
+});
+
+exports.initGame = function (state, playerCount) {
+  state.rows = DEFAULT_ROWS;
+  state.cols = DEFAULT_COLS;
+  state.mineCount = DEFAULT_MINES;
+  const layout = createMineLayout(state.rows, state.cols, state.mineCount);
+  state.mines = [];
+  state.revealed = [];
+  state.flagged = [];
+  state.deadByCell = [];
+  for (let p = 0; p < playerCount; p++) {
+    const rGrid = [];
+    const fGrid = [];
+    for (let r = 0; r < state.rows; r++) {
+      rGrid[r] = Array(state.cols).fill(false);
+      fGrid[r] = Array(state.cols).fill(false);
+    }
+    // Each player gets their own copy so a first-click fix-up only affects that player
+    state.mines.push(layout.map(row => row.slice()));
+    state.revealed.push(rGrid);
+    state.flagged.push(fGrid);
+    state.deadByCell.push(null);
+  }
+  state.alive = Array(playerCount).fill(true);
+  state.cellsRevealed = Array(playerCount).fill(0);
+  state.winner = null;
+  state.currentPlayer = -1;
+  state.safeCells = state.rows * state.cols - state.mineCount;
+};
+
+exports.playerBoardView = playerBoardView;
+
+// What a seat may see: its own board, no mine layout (until the game ends) and no other
+// player's revealed/flagged grids (a shared layout would give away safe cells).
+exports.playerView = function (state, playerIndex) {
+  const over = state.winner !== null && state.winner !== undefined;
+  const view = Object.assign({}, state, { board: playerBoardView(state, playerIndex) });
+  if (!over) {
+    view.mines = [];
+    view.revealed = (state.revealed || []).map((g, i) => (i === playerIndex ? g : null));
+    view.flagged = (state.flagged || []).map((g, i) => (i === playerIndex ? g : null));
+  }
+  return view;
+};
+
+exports.handleMove = function (data, state, playerIndex) {
+  if (state.winner !== null) return 'g_game_over';
+  if (!state.alive || !state.alive[playerIndex]) return 'ms_you_are_out';
+
+  const { action, row, col } = data || {};
+  if (!Number.isInteger(row) || !Number.isInteger(col)) return 'ms_invalid_action';
+  if (row < 0 || row >= state.rows || col < 0 || col >= state.cols) return 'ms_out_of_bounds';
+
+  if (action === 'flag') {
+    if (state.revealed[playerIndex][row][col]) return 'ms_already_revealed';
+    state.flagged[playerIndex][row][col] = !state.flagged[playerIndex][row][col];
+    return null;
+  }
+
+  if (action === 'reveal') {
+    if (state.revealed[playerIndex][row][col]) return 'ms_already_revealed';
+    if (state.flagged[playerIndex][row][col]) return 'ms_flagged';
+
+    // Standard rule: each player's very first reveal is never a mine.
+    const mines = state.mines[playerIndex];
+    if (mines[row][col] && !state.revealed[playerIndex].some(rw => rw.some(Boolean))) {
+      mines[row][col] = false;
+      const free = [];
+      for (let r = 0; r < state.rows; r++) for (let c = 0; c < state.cols; c++) {
+        if (!mines[r][c] && !(r === row && c === col)) free.push([r, c]);
+      }
+      const [mr, mc] = free[Math.floor(Math.random() * free.length)];
+      mines[mr][mc] = true;
+    }
+
+    if (mines[row][col]) {
+      state.revealed[playerIndex][row][col] = true;
+      state.deadByCell[playerIndex] = { r: row, c: col };
+      state.alive[playerIndex] = false;
+
+      const aliveCount = state.alive.filter(Boolean).length;
+      if (aliveCount === 1) {
+        state.winner = state.alive.indexOf(true);
+      } else if (aliveCount === 0) {
+        if (state.alive.length === 1) {
+          state.winner = -2; // solo run ended on a mine: a loss, not a draw
+        } else {
+          // everyone blew up: most safe cells cleared wins, an exact tie is a draw
+          const best = Math.max(...state.cellsRevealed);
+          const top = [];
+          state.cellsRevealed.forEach((n, i) => { if (n === best) top.push(i); });
+          state.winner = top.length === 1 ? top[0] : -1;
+        }
+      }
+      return null;
+    }
+
+    const revealed = floodReveal(state.revealed[playerIndex], mines, row, col, state.rows, state.cols);
+    state.cellsRevealed[playerIndex] += revealed;
+
+    if (state.cellsRevealed[playerIndex] >= state.safeCells) {
+      state.winner = playerIndex;
+    }
+
+    return null;
+  }
+
+  return 'ms_invalid_action_type';
+};

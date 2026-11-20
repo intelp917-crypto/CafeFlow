@@ -1,0 +1,316 @@
+// games/exploding-kittens.js
+// 爆炸猫 — Russian roulette card game. Avoid drawing Exploding Kittens!
+const { pick } = require('./lib/i18n');
+
+exports.name = 'exploding-kittens';
+exports.maxPlayers = 6;
+
+function createDeck(playerCount) {
+  playerCount = playerCount || 2;
+  const deck = [];
+  // Official deck: 6 explode, 4 defuse, (4 nope — omitted), 4 attack, 4 skip, 4 shuffle,
+  // 4 favor, 4 steal, 5 future. Scale non-essential cards for larger groups.
+  const scale = Math.max(1, Math.ceil(playerCount / 2));
+
+  // Exploding Kittens (official: 6)
+  for (let i = 0; i < 6; i++) deck.push({ type: 'explode', id: 'explode-' + i });
+  // Defuses (official: 4)
+  for (let i = 0; i < 4; i++) deck.push({ type: 'defuse', id: 'defuse-' + i });
+  // Nope is left out: this version has no reaction window, so it would be a dead card
+  // Attack (official: 4)
+  for (let i = 0; i < 4 * scale; i++) deck.push({ type: 'attack', id: 'attack-' + i });
+  // Skip (official: 4)
+  for (let i = 0; i < 4 * scale; i++) deck.push({ type: 'skip', id: 'skip-' + i });
+  // See the Future (official: 5)
+  for (let i = 0; i < 5 * scale; i++) deck.push({ type: 'future', id: 'future-' + i });
+  // Shuffle (official: 4)
+  for (let i = 0; i < 4 * scale; i++) deck.push({ type: 'shuffle', id: 'shuffle-' + i });
+  // Favor (official: 4)
+  for (let i = 0; i < 4 * scale; i++) deck.push({ type: 'favor', id: 'favor-' + i });
+  // Steal (official: 4)
+  for (let i = 0; i < 4 * scale; i++) deck.push({ type: 'steal', id: 'steal-' + i });
+  return deck;
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+exports.createState = () => ({
+  deck: [],           // draw pile
+  discard: [],        // discard pile
+  hands: [],          // per-player hand
+  currentPlayer: 0,
+  winner: null,
+  alive: [],          // per-player: bool
+  extraTurns: [],     // per-player: remaining extra turns
+  futureCards: null,  // result of See the Future (visible only to current player)
+  phase: 'play',      // 'play' | 'draw' | 'place' (put a defused kitten back) | 'over'
+  peekedCards: null,  // cards seen by current player via Future
+  lastSteal: null,    // { stealer, victim, cardType } — shown as notification then cleared
+  lastAction: null,   // { player, type, seq, target? } — public play/explosion log
+  actionSeq: 0,       // increments on each lastAction (used to fire animations once)
+});
+
+// Record a public action so all clients can show what just happened.
+function setAction(state, player, type, extra) {
+  state.actionSeq = (state.actionSeq || 0) + 1;
+  state.lastAction = Object.assign({ player, type, seq: state.actionSeq }, extra || {});
+}
+
+function initGame(state, playerCount) {
+  const deck = createDeck(playerCount);
+  // Remove all explode and defuse cards
+  const explodes = deck.filter(c => c.type === 'explode');
+  const defuses = deck.filter(c => c.type === 'defuse');
+  let remaining = deck.filter(c => c.type !== 'explode' && c.type !== 'defuse');
+  shuffle(remaining);
+
+  // Official rule: deal 4 cards to each player, then give each 1 defuse.
+  state.hands = [];
+  for (let i = 0; i < playerCount; i++) {
+    state.hands[i] = remaining.splice(0, 4);
+  }
+  // Give each player 1 defuse
+  for (let i = 0; i < playerCount; i++) {
+    if (defuses.length > 0) state.hands[i].push(defuses.pop());
+  }
+  // Add (playerCount - 1) explodes back to deck
+  for (let i = 0; i < playerCount - 1; i++) {
+    remaining.push(explodes[i]);
+  }
+  // Shuffle remaining defuses into deck
+  remaining.push(...defuses);
+  shuffle(remaining);
+
+  state.deck = remaining;
+  state.discard = [];
+  state.currentPlayer = 0;
+  state.winner = null;
+  state.alive = Array(playerCount).fill(true);
+  state.extraTurns = Array(playerCount).fill(0);
+  state.futureCards = null;
+  state.peekedCards = null;
+  state.phase = 'play';
+  state.lastSteal = null;
+  state.lastAction = null;
+  state.actionSeq = 0;
+}
+exports.initGame = initGame;
+
+function nextAlive(state, fromIdx) {
+  const n = state.alive.length;
+  for (let i = 1; i <= n; i++) {
+    const idx = (fromIdx + i) % n;
+    if (state.alive[idx]) return idx;
+  }
+  return fromIdx;
+}
+
+// A draw ends one turn: an attacked player who still owes turns keeps playing
+function endDrawTurn(state, playerIndex) {
+  if (state.extraTurns[playerIndex] > 0) state.extraTurns[playerIndex]--;
+  else state.currentPlayer = nextAlive(state, playerIndex);
+}
+
+// Reinsert the defused kitten. position: 'top' | 'bottom' | 'random' or a depth n
+// (0 = the next card drawn, 1 = the second, ...). The deck is drawn from its end.
+// Anything else (a bot fallback {}, a missing value) means random.
+function placeBomb(state, position) {
+  const card = state.pendingBomb || { type: 'explode', id: 'explode-x' };
+  state.pendingBomb = null;
+  const len = state.deck.length;
+  let depth;
+  if (position === 'top') depth = 0;
+  else if (position === 'bottom') depth = len;
+  else if (Number.isInteger(position) && position >= 0) depth = Math.min(position, len);
+  else depth = Math.floor(Math.random() * (len + 1));
+  state.deck.splice(len - depth, 0, card);
+}
+
+function aliveCount(state) {
+  return state.alive.filter(a => a).length;
+}
+
+exports.handleMove = (data, state, playerIndex) => {
+  if (state.winner !== null) return 'g_game_over';
+  if (!state.alive[playerIndex]) return 'ek_you_are_out';
+
+  const { cardId, targetPlayer } = data || {};
+  const hand = state.hands[playerIndex];
+
+  if (playerIndex !== state.currentPlayer) return 'g_not_your_turn';
+
+  // "Draw" straight from the play phase: skip playing and end the turn in one click
+  if (state.phase === 'play' && data && data.draw && !cardId) state.phase = 'draw';
+
+  // ---- PLACE phase: put the defused kitten back where the player chooses ----
+  if (state.phase === 'place') {
+    placeBomb(state, data && data.position);
+    state.phase = 'play';
+    endDrawTurn(state, playerIndex);
+    return null;
+  }
+
+  // ---- DRAW phase ----
+  if (state.phase === 'draw') {
+    // Must draw a card
+    if (state.deck.length === 0) return 'ek_deck_empty';
+    const card = state.deck.pop();
+    state.peekedCards = null;
+    state.lastSteal = null;
+    if (card.type === 'explode') {
+      // Check for defuse
+      const defuseIdx = hand.findIndex(c => c.type === 'defuse');
+      if (defuseIdx >= 0) {
+        // Defuse! The player then chooses where the kitten goes back (phase 'place')
+        hand.splice(defuseIdx, 1);
+        state.discard.push({ type: 'defuse', id: 'defuse-used' });
+        // Public: player used a defuse to survive
+        setAction(state, playerIndex, 'defuse', { defused: true });
+        state.pendingBomb = card;
+        if (state.deck.length === 0) { // only one place it can go
+          placeBomb(state, 'top');
+          state.phase = 'play';
+          endDrawTurn(state, playerIndex);
+          return null;
+        }
+        state.phase = 'place';
+        return null;
+      } else {
+        // BOOM! Eliminated
+        state.alive[playerIndex] = false;
+        state.discard.push(card);
+        state.discard.push(...hand);
+        state.hands[playerIndex] = [];
+        setAction(state, playerIndex, 'explode', { exploded: true });
+        if (aliveCount(state) <= 1) {
+          state.winner = state.alive.findIndex(a => a);
+          state.phase = 'over';
+          return null;
+        }
+        state.currentPlayer = nextAlive(state, playerIndex);
+        state.phase = 'play';
+        state.extraTurns = Array(state.alive.length).fill(0);
+        return null;
+      }
+    } else {
+      hand.push(card);
+      // Normal draw: contents stay secret, but the turn-ending draw is public
+      setAction(state, playerIndex, 'draw');
+    }
+
+    state.phase = 'play';
+    endDrawTurn(state, playerIndex);
+    return null;
+  }
+
+  // ---- PLAY phase ----
+  if (state.phase === 'play') {
+    // Player can play cards or pass to draw
+
+    // Play a single card
+    if (cardId) {
+      const idx = hand.findIndex(c => c.id === cardId);
+      if (idx === -1) return 'ek_card_not_in_hand';
+      // Defuse has no effect when played; keep it for the next kitten.
+      if (hand[idx].type === 'defuse') return 'ek_card_no_effect';
+      if (hand[idx].type === 'attack' && targetPlayer !== undefined && targetPlayer !== null &&
+          (!Number.isInteger(targetPlayer) || targetPlayer === playerIndex ||
+           targetPlayer < 0 || targetPlayer >= state.alive.length || !state.alive[targetPlayer])) {
+        return 'ek_invalid_target';
+      }
+      const card = hand.splice(idx, 1)[0];
+      state.discard.push(card);
+      // Public: reveal which card was played (so others can see defuse/skip/etc.)
+      setAction(state, playerIndex, card.type);
+
+      switch (card.type) {
+        case 'skip':
+          // End turn without drawing
+          // Skip ends only one turn: an attacked player still owes the other one.
+          if (state.extraTurns[playerIndex] > 0) {
+            state.extraTurns[playerIndex]--;
+          } else {
+            state.currentPlayer = nextAlive(state, playerIndex);
+            state.peekedCards = null; // See-the-Future results stay with the player who looked
+          }
+          state.phase = 'play';
+          return null;
+
+        case 'attack':
+          // 甩锅：指定目标玩家接 2 个回合（不指定则默认下家）
+          {
+            let target = nextAlive(state, playerIndex);
+            if (targetPlayer !== undefined && targetPlayer !== null) target = targetPlayer; // validated above
+            // Attacking ends all of this player's turns, including any they still owed.
+            state.extraTurns[playerIndex] = 0;
+            state.peekedCards = null;
+            state.currentPlayer = target;
+            state.extraTurns[target] = (state.extraTurns[target] || 0) + 1;
+            state.phase = 'play';
+            if (state.lastAction) state.lastAction.target = target;
+          }
+          return null;
+
+        case 'future':
+          // See top 3 cards
+          state.peekedCards = state.deck.slice(-Math.min(3, state.deck.length)).reverse();
+          // Player can still play more cards or proceed to draw
+          return null;
+
+        case 'shuffle':
+          // Shuffle the deck
+          shuffle(state.deck);
+          state.peekedCards = null;
+          return null;
+
+        case 'favor':
+        case 'steal':
+          // 偷牌 — directly steal a random card from the target player
+          if (!Number.isInteger(targetPlayer) || targetPlayer === playerIndex) {
+            hand.push(card); state.discard.pop(); return 'ek_must_target_player';
+          }
+          if (!state.alive[targetPlayer]) {
+            hand.push(card); state.discard.pop(); return 'ek_target_out';
+          }
+          {
+            const targetHand = state.hands[targetPlayer];
+            if (targetHand && targetHand.length > 0) {
+              const rIdx = Math.floor(Math.random() * targetHand.length);
+              const stolen = targetHand.splice(rIdx, 1)[0];
+              hand.push(stolen);
+              state.lastSteal = { stealer: playerIndex, victim: targetPlayer, cardType: stolen.type };
+            }
+          }
+          // Player can still play more cards (including the stolen one) or proceed to draw
+          return null;
+
+      }
+    }
+
+    // Player passes → draw
+    state.phase = 'draw';
+    return null;
+  }
+
+  return 'g_unknown_action';
+};
+
+// Hide other players' cards, the deck order and See-the-Future results.
+const { maskView } = require('./lib/hidden');
+exports.playerView = function (state, playerIndex) {
+  const view = maskView(state, playerIndex, { piles: ['deck'] });
+  if (view !== state && state.currentPlayer !== playerIndex) {
+    view.peekedCards = null;
+    view.futureCards = null;
+  }
+  const ls = state.lastSteal;
+  if (view !== state && ls && ls.stealer !== playerIndex && ls.victim !== playerIndex) {
+    view.lastSteal = Object.assign({}, ls, { cardType: null });
+  }
+  return view;
+};

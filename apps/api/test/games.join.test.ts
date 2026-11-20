@@ -42,10 +42,14 @@ describe('GET /public/games/catalog', () => {
   it('serves the Persian catalogue without a session', async () => {
     const response = await request(server(context.app)).get('/api/v1/public/games/catalog');
     expect(response.status).toBe(200);
-    expect(response.body.games).toHaveLength(6);
+    expect(response.body.games).toHaveLength(38);
     const ids = response.body.games.map((game: { id: string }) => game.id);
-    expect(ids).toEqual(['tictactoe', 'connect4', 'reversi', 'uno', '2048', 'werewolf']);
+    expect(ids.slice(0, 6)).toEqual(['tictactoe', 'connect4', 'reversi', 'uno', '2048', 'werewolf']);
+    expect(ids).toContain('chess');
     expect(response.body.games[0].nameFa).toBe('دوز');
+    // A game whose screen is not written yet is listed but not startable.
+    const twentyfour = response.body.games.find((game: { id: string }) => game.id === 'twentyfour');
+    expect(twentyfour.playable).toBe(false);
   });
 });
 
@@ -84,10 +88,20 @@ describe('POST /public/games/join', () => {
     const response = await request(server(context.app))
       .post('/api/v1/public/games/join')
       .set('Cookie', deviceCookie())
-      .send({ qrToken: tableToken, gameId: 'chess' });
+      .send({ qrToken: tableToken, gameId: 'not-a-game' });
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('GAME_UNKNOWN');
+  });
+
+  it('refuses a listed game that has no screen yet', async () => {
+    const response = await request(server(context.app))
+      .post('/api/v1/public/games/join')
+      .set('Cookie', deviceCookie())
+      .send({ qrToken: tableToken, gameId: 'doudizhu' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('GAME_NOT_READY');
   });
 
   it('puts two phones that scan the same table QR in one room', async () => {

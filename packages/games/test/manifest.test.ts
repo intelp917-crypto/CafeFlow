@@ -21,6 +21,15 @@ describe('game registry', () => {
     }
   });
 
+  it('only marks a game playable when a room can actually start it', () => {
+    for (const game of GAMES) {
+      if (!game.playable) continue;
+      const module = loadGame(game.id);
+      expect(typeof module.createState).toBe('function');
+      expect(module.maxPlayers).toBeGreaterThanOrEqual(game.maxPlayers);
+    }
+  });
+
   it('refuses a move from the seat that is not on turn, in Persian', () => {
     const tictactoe = loadGame('tictactoe');
     const state = tictactoe.createState();

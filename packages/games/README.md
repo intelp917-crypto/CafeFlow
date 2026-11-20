@@ -8,9 +8,12 @@
 [absswds/GameNest](https://github.com/absswds/GameNest) (v2.2.0، شاخهٔ `master`) برداشته شده‌اند و
 تحت مجوز Apache-2.0 هستند (فایل‌های `LICENSE` و `NOTICE` در همین پوشه).
 
-فقط این شش ماژول منتقل شده‌اند: `tictactoe`, `connect4`, `reversi`, `uno`, `2048`, `werewolf`
-به‌همراه کمکی‌های موردنیازشان (`lib/game2048.js`, `lib/hidden.js`). بقیهٔ ۳۱ بازی و کل
-`server.js`/رندررهای مرورگری آن پروژه استفاده نشده‌اند.
+همهٔ ۳۸ ماژول بازی (تخته‌ای، کارتی، اجتماعی و فکری) به‌همراه فایل‌های داده‌شان
+(`quizrace-questions`, `undercover-words*`, `drawguess-words`)، کمکی‌های `games/lib` و
+`games/vendor` منتقل شده‌اند. تنها فایل بیرون از `games/` که لازم بود
+`public/js/paodekuai-patterns.js` است (تحلیل ترکیب کارت‌ها) که دست‌نخورده در
+`upstream/public/js/` نگه داشته می‌شود. کل `server.js`، صفحه‌های HTML و رندررهای مرورگری آن
+پروژه استفاده نشده‌اند.
 
 ## چه چیزی مال ما است
 

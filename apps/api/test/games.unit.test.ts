@@ -232,6 +232,59 @@ describe('RoomManager', () => {
     expect(rooms.move(host.room, guest, { type: 'vote', target: 0 })).toBeNull();
   });
 
+  it('plays the newly wired games through the same room path', () => {
+    const rooms = manager();
+
+    // گم وکو: یک مهره در مرکز
+    const gomoku = join(rooms, 'gomoku-0', 'gomoku' as never);
+    join(rooms, 'gomoku-1', 'gomoku' as never);
+    readyAll(rooms, gomoku.room);
+    rooms.start(gomoku.room, gomoku.seat);
+    expect(rooms.move(gomoku.room, gomoku.seat, { row: 7, col: 7 })).toBeNull();
+    expect((gomoku.room.state as { board: Array<Array<number | null>> }).board[7]![7]).toBe(0);
+
+    // شطرنج: e2–e4
+    const chess = join(rooms, 'chess-0', 'chess' as never);
+    join(rooms, 'chess-1', 'chess' as never);
+    readyAll(rooms, chess.room);
+    rooms.start(chess.room, chess.seat);
+    expect(
+      rooms.move(chess.room, chess.seat, { from: { row: 6, col: 4 }, to: { row: 4, col: 4 }, promote: 'q' }),
+    ).toBeNull();
+    expect((chess.room.state as { moveHistory: unknown[] }).moveHistory).toHaveLength(1);
+
+    // چکرز: حرکت سادهٔ مهرهٔ پایین
+    const checkers = join(rooms, 'checkers-0', 'checkers' as never);
+    join(rooms, 'checkers-1', 'checkers' as never);
+    readyAll(rooms, checkers.room);
+    rooms.start(checkers.room, checkers.seat);
+    expect(
+      rooms.move(checkers.room, checkers.seat, { from: { row: 5, col: 0 }, to: { row: 4, col: 1 } }),
+    ).toBeNull();
+
+    // سودوکو: تک‌نفره، راهنما یک خانه را پر می‌کند
+    const sudoku = join(rooms, 'sudoku-0', 'sudoku' as never);
+    readyAll(rooms, sudoku.room);
+    rooms.start(sudoku.room, sudoku.seat);
+    expect(rooms.move(sudoku.room, sudoku.seat, { type: 'hint' })).toBeNull();
+    expect((sudoku.room.state as { counts: number[] }).counts[0]).toBe(1);
+
+    // مین‌روبی: تک‌نفره، اولین خانه هیچ‌وقت مین نیست
+    const mines = join(rooms, 'mines-0', 'minesweeper' as never);
+    readyAll(rooms, mines.room);
+    rooms.start(mines.room, mines.seat);
+    expect(rooms.move(mines.room, mines.seat, { action: 'reveal', row: 0, col: 0 })).toBeNull();
+
+    // بمب عددی: عددی که قطعاً بمب نیست
+    const bomb = join(rooms, 'bomb-0', 'numberbomb' as never);
+    join(rooms, 'bomb-1', 'numberbomb' as never);
+    readyAll(rooms, bomb.room);
+    rooms.start(bomb.room, bomb.seat);
+    (bomb.room.state as { bomb: number }).bomb = 50;
+    expect(rooms.move(bomb.room, bomb.seat, { guess: 1 })).toBeNull();
+    expect((bomb.room.state as { low: number }).low).toBe(2);
+  });
+
   it('returns to the lobby only through the host after a hand', () => {
     const rooms = manager();
     const host = join(rooms, 'device-a');

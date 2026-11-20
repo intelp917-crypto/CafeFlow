@@ -21,6 +21,8 @@ export interface GameCatalogItem {
   minPlayers: number;
   maxPlayers: number;
   mode: GameMode;
+  /** The rules exist and a Persian screen is ready, so a table may start it. */
+  playable: boolean;
 }
 
 export interface GameCatalogResponse {
