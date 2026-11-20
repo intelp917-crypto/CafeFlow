@@ -10,14 +10,16 @@ WORKDIR /app
 # loudly here and `python3 make g++` can be added back for node-gyp.
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/
+COPY packages/games/package.json packages/games/
 COPY packages/ui/package.json packages/ui/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
-RUN npm ci --workspace @cafeflow/shared --workspace @cafeflow/api --include-workspace-root
+RUN npm ci --workspace @cafeflow/shared --workspace @cafeflow/games --workspace @cafeflow/api --include-workspace-root
 
 COPY packages/shared packages/shared
+COPY packages/games packages/games
 COPY apps/api apps/api
-RUN npm run build:shared && npm run build -w @cafeflow/api
+RUN npm run build:shared && npm run build:games && npm run build -w @cafeflow/api
 
 FROM node:24-slim AS runtime
 ENV NODE_ENV=production
@@ -27,6 +29,10 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/packages/shared/package.json packages/shared/package.json
 COPY --from=build /app/packages/shared/dist packages/shared/dist
+COPY --from=build /app/packages/games/package.json packages/games/package.json
+COPY --from=build /app/packages/games/dist packages/games/dist
+COPY --from=build /app/packages/games/LICENSE packages/games/LICENSE
+COPY --from=build /app/packages/games/NOTICE packages/games/NOTICE
 COPY --from=build /app/apps/api/package.json apps/api/package.json
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/migrations apps/api/migrations

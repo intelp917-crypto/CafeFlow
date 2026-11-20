@@ -93,6 +93,8 @@ process.on('SIGHUP', () => shutdown(0));
 
 console.log(`${label.shared} building @cafeflow/shared`);
 runOnce(['run', 'build:shared'], label.shared);
+console.log(`${label.shared} building @cafeflow/games`);
+runOnce(['run', 'build:games'], label.shared);
 
 // Both servers listen on every interface, so the same app is reachable from a
 // phone or another computer on the same network. Printing the addresses here
