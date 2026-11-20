@@ -111,7 +111,7 @@ export function CategoryRail({ categories, activeCategory, onSelect }: CategoryR
   }, [open]);
 
   return (
-    <aside className="fixed left-4 top-1/2 z-40 -translate-y-1/2 sm:left-5">
+    <aside className="fixed left-4 top-1/2 z-40 hidden -translate-y-1/2 lg:block">
       <div
         className={`flex max-h-[78vh] flex-col rounded-[2rem] border border-line/70 bg-surface/95 shadow-[0_30px_80px_-30px_rgba(36,22,17,0.55)] backdrop-blur transition-[width] duration-300 ${
           open ? 'w-48' : 'w-[4.5rem]'

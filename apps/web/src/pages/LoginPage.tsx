@@ -3,10 +3,12 @@ import { Navigate } from 'react-router-dom';
 import { Alert, Button, Card, Field, Input } from '@cafeflow/ui';
 import { ApiError, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useBranding } from '../lib/branding';
 import { DeveloperCredit } from '../components/DeveloperCredit';
 
 export function LoginPage() {
   const { login, user, loading } = useAuth();
+  const { nameFa: brandName } = useBranding();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
@@ -47,7 +49,7 @@ export function LoginPage() {
             </svg>
           </span>
           <div>
-            <h1 className="font-display text-xl font-bold text-ink">ورود به کافه‌فلو</h1>
+            <h1 className="font-display text-xl font-bold text-ink">ورود به {brandName}</h1>
             <p className="text-[11px] text-muted">سامانه مدیریت کافه و رستوران</p>
           </div>
         </div>
@@ -131,7 +133,7 @@ export function LoginPage() {
         />
         <div aria-hidden="true" className="absolute inset-0 bg-espresso/60" />
         <div className="relative flex h-full flex-col justify-between p-10 text-cream">
-          <span className="font-display text-xl font-bold">کافه‌فلو</span>
+          <span className="font-display text-xl font-bold">{brandName}</span>
           <div>
             <p className="font-display text-3xl font-bold leading-snug">
               هر فنجان،<br />یک تصمیم دقیق.

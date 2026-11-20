@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -152,7 +153,7 @@ export function RequestsPage() {
       <PageHeader
         title="درخواست‌های مشتری"
         description="درخواست‌هایی که مشتری از روی QR میز می‌فرستد: گارسون، آب، دستمال، صورتحساب و کارت‌خوان. هر درخواست یک بار بسته می‌شود."
-        breadcrumb="کافه‌فلو / درخواست‌ها"
+        breadcrumb={<Breadcrumb page="درخواست‌ها" />}
         actions={
           <div className="flex items-center gap-2">
             <button

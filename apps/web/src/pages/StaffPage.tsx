@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -205,7 +206,7 @@ export function StaffPage() {
       <PageHeader
         title="کارکنان و نقش‌ها"
         description="ساخت و ویرایش حساب کارکنان، تخصیص نقش و بازنشانی گذرواژه. دسترسی‌ها همیشه در سرور بررسی می‌شوند."
-        breadcrumb="کافه‌فلو / کارکنان"
+        breadcrumb={<Breadcrumb page="کارکنان" />}
         actions={
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted">{staff.length} حساب کاربری</span>

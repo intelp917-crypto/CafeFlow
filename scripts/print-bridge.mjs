@@ -12,7 +12,7 @@
  *
  * Optional:
  *   API_BASE=http://127.0.0.1:3000/api/v1
- *   PRINT_OUTPUT_DIR=./print-output
+ *   PRINT_OUTPUT_DIR=./print-output   (default: $CAFEFLOW_DATA_DIR/print-output)
  *   PRINT_INTERVAL_MS=3000
  *
  * The account only needs `orders.read`. The text file can be fed to any
@@ -25,7 +25,8 @@ import { join, resolve } from 'node:path';
 const API_BASE = process.env.API_BASE ?? 'http://127.0.0.1:3000/api/v1';
 const USERNAME = process.env.PRINT_BRIDGE_USERNAME;
 const PASSWORD = process.env.PRINT_BRIDGE_PASSWORD;
-const OUTPUT_DIR = resolve(process.env.PRINT_OUTPUT_DIR ?? './print-output');
+const dataDirectory = resolve(process.env.CAFEFLOW_DATA_DIR ?? 'data');
+const OUTPUT_DIR = resolve(process.env.PRINT_OUTPUT_DIR ?? join(dataDirectory, 'print-output'));
 const INTERVAL_MS = Number(process.env.PRINT_INTERVAL_MS ?? 3000);
 const COOKIE_NAME = process.env.SESSION_COOKIE_NAME ?? 'cafe_session';
 
@@ -75,6 +76,15 @@ async function login() {
 async function tick() {
   const { items } = await call('/print/jobs?status=queued');
   for (const job of items) {
+    // Claim the job before writing: only one bridge can move queued → sent, so
+    // two pollers never print the same receipt twice.
+    try {
+      await call(`/print/jobs/${job.id}/sent`, { method: 'POST', body: '{}' });
+    } catch (claimError) {
+      console.log(`print-bridge: skipped ${job.orderCode ?? job.id}: ${claimError.message}`);
+      continue;
+    }
+
     const file = join(OUTPUT_DIR, `${safeFileName(job.orderCode)}-${job.id.slice(0, 8)}.txt`);
     try {
       mkdirSync(OUTPUT_DIR, { recursive: true });

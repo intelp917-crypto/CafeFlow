@@ -456,3 +456,153 @@ describe('payment summary endpoint', () => {
     expect(missing.body.error.code).toBe('ORDER_NOT_FOUND');
   });
 });
+
+describe('bill splitting', () => {
+  it('splits equally, keeps the total and marks shares paid in order', async () => {
+    const order = await createServedOrder(1);
+    const cashier = (await login(context.app, 'cashier', DEMO_PASSWORD)).agent;
+
+    const split = await cashier.post(`/api/v1/orders/${order.id}/splits`).send({ parts: 3 });
+    expect(split.status).toBe(201);
+    expect(split.body.splits).toHaveLength(3);
+
+    const shares = split.body.splits as { id: string; amount: number; isPaid: boolean }[];
+    expect(shares.reduce((sum, share) => sum + share.amount, 0)).toBe(order.total);
+    expect(Math.max(...shares.map((share) => share.amount)) - Math.min(...shares.map((share) => share.amount))).toBeLessThanOrEqual(1);
+    expect(shares.every((share) => !share.isPaid)).toBe(true);
+
+    const first = await cashier
+      .post(`/api/v1/orders/${order.id}/payments`)
+      .send({ method: 'cash', amount: shares[0]!.amount });
+    expect(first.status).toBe(201);
+    expect(first.body.splits.map((share: { isPaid: boolean }) => share.isPaid)).toEqual([true, false, false]);
+
+    const second = await cashier
+      .post(`/api/v1/orders/${order.id}/payments`)
+      .send({ method: 'card', amount: shares[1]!.amount });
+    expect(second.body.status).not.toBe('paid');
+    expect(second.body.splits.map((share: { isPaid: boolean }) => share.isPaid)).toEqual([true, true, false]);
+
+    const last = await cashier
+      .post(`/api/v1/orders/${order.id}/payments`)
+      .send({ method: 'cash', amount: shares[2]!.amount });
+    expect(last.body.status).toBe('paid');
+    expect(last.body.splits.every((share: { isPaid: boolean }) => share.isPaid)).toBe(true);
+  });
+
+  it('refuses splitting once money has been recorded', async () => {
+    const order = await createServedOrder(2);
+    const cashier = (await login(context.app, 'cashier', DEMO_PASSWORD)).agent;
+
+    await cashier
+      .post(`/api/v1/orders/${order.id}/payments`)
+      .send({ method: 'cash', amount: 1000 });
+
+    const refused = await cashier.post(`/api/v1/orders/${order.id}/splits`).send({ parts: 2 });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe('SPLITS_AFTER_PAYMENT');
+  });
+
+  it('clears an unused split and blocks a discount while shares exist', async () => {
+    const order = await createServedOrder(0);
+    const cashier = (await login(context.app, 'cashier', DEMO_PASSWORD)).agent;
+
+    const split = await cashier.post(`/api/v1/orders/${order.id}/splits`).send({ parts: 2 });
+    expect(split.status).toBe(201);
+
+    const discount = await cashier
+      .post(`/api/v1/orders/${order.id}/discount`)
+      .send({ amount: 1000, reason: 'آزمون تقسیم فاکتور' });
+    expect(discount.status).toBe(409);
+    expect(discount.body.error.code).toBe('SPLITS_EXIST');
+
+    const cleared = await cashier.delete(`/api/v1/orders/${order.id}/splits`);
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.splits).toHaveLength(0);
+
+    const again = await cashier.delete(`/api/v1/orders/${order.id}/splits`);
+    expect(again.status).toBe(404);
+    expect(again.body.error.code).toBe('SPLITS_NOT_FOUND');
+  });
+
+  it('validates the number of shares', async () => {
+    const order = await createServedOrder(3);
+    const cashier = (await login(context.app, 'cashier', DEMO_PASSWORD)).agent;
+
+    const one = await cashier.post(`/api/v1/orders/${order.id}/splits`).send({ parts: 1 });
+    expect(one.status).toBe(400);
+
+    const tooMany = await cashier.post(`/api/v1/orders/${order.id}/splits`).send({ parts: 21 });
+    expect(tooMany.status).toBe(400);
+  });
+
+  it('accepts explicit shares that add up to the bill and settles each one on its own', async () => {
+    const order = await createServedOrder(4);
+    const cashier = (await login(context.app, 'cashier', DEMO_PASSWORD)).agent;
+    const shared = Math.floor(order.total / 3);
+
+    const wrongSum = await cashier.put(`/api/v1/orders/${order.id}/splits`).send({
+      splits: [
+        { label: 'میزبان', amount: order.total - shared - 1 },
+        { label: 'مهمان', amount: shared },
+      ],
+    });
+    expect(wrongSum.status).toBe(400);
+    expect(wrongSum.body.error.code).toBe('SPLIT_TOTAL_MISMATCH');
+
+    const duplicate = await cashier.put(`/api/v1/orders/${order.id}/splits`).send({
+      splits: [
+        { label: 'نفر', amount: order.total - shared },
+        { label: 'نفر', amount: shared },
+      ],
+    });
+    expect(duplicate.status).toBe(400);
+    expect(duplicate.body.error.code).toBe('SPLIT_LABEL_DUPLICATE');
+
+    const explicit = await cashier.put(`/api/v1/orders/${order.id}/splits`).send({
+      splits: [
+        { label: 'میزبان', amount: order.total - shared },
+        { label: 'مهمان', amount: shared },
+      ],
+    });
+    expect(explicit.status).toBe(200);
+    const shares = explicit.body.splits as { id: string; label: string; amount: number; isPaid: boolean }[];
+    expect(shares.map((share) => share.label)).toEqual(['میزبان', 'مهمان']);
+    expect(shares.reduce((sum, share) => sum + share.amount, 0)).toBe(order.total);
+
+    const guest = shares[1]!;
+    const wrongAmount = await cashier
+      .post(`/api/v1/orders/${order.id}/payments`)
+      .send({ method: 'cash', amount: guest.amount + 1, splitId: guest.id });
+    expect(wrongAmount.status).toBe(400);
+    expect(wrongAmount.body.error.code).toBe('SPLIT_AMOUNT_MISMATCH');
+
+    const foreignSplit = await cashier
+      .post(`/api/v1/orders/${order.id}/payments`)
+      .send({ method: 'cash', amount: guest.amount, splitId: 'not-a-share' });
+    expect(foreignSplit.status).toBe(400);
+    expect(foreignSplit.body.error.code).toBe('SPLIT_NOT_FOUND');
+
+    const paid = await cashier
+      .post(`/api/v1/orders/${order.id}/payments`)
+      .send({ method: 'card', amount: guest.amount, splitId: guest.id });
+    expect(paid.status).toBe(201);
+    expect(paid.body.status).not.toBe('paid');
+    expect(paid.body.splits.map((share: { isPaid: boolean }) => share.isPaid)).toEqual([false, true]);
+    expect(paid.body.payments[0].splitLabelFa).toBe(guest.label);
+
+    const again = await cashier
+      .post(`/api/v1/orders/${order.id}/payments`)
+      .send({ method: 'cash', amount: guest.amount, splitId: guest.id });
+    expect(again.status).toBe(409);
+    expect(again.body.error.code).toBe('SPLIT_ALREADY_PAID');
+
+    const rest = await cashier
+      .post(`/api/v1/orders/${order.id}/payments`)
+      .send({ method: 'cash', amount: shares[0]!.amount });
+    expect(rest.body.status).toBe('paid');
+    expect(rest.body.splits.every((share: { isPaid: boolean }) => share.isPaid)).toBe(true);
+    expect(rest.body.payments[0].splitLabelFa).toBe(guest.label);
+    expect(rest.body.payments[1].splitLabelFa).toBeNull();
+  });
+});

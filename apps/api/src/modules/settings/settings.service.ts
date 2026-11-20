@@ -9,7 +9,7 @@ import {
 } from '@cafeflow/shared';
 import { DB_SERVICE } from '../../common/tokens';
 import { DatabaseService } from '../../db/database.service';
-import { conflict, forbidden, notFound } from '../../common/errors';
+import { badRequest, conflict, forbidden, notFound } from '../../common/errors';
 import { AuditService } from '../audit/audit.service';
 import type { RequestMeta } from '../auth/auth.service';
 
@@ -25,6 +25,8 @@ interface SettingsRow {
   address_fa: string;
   phone: string;
   email: string;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface ActingUser {
@@ -54,6 +56,8 @@ export class SettingsService {
         address_fa: '',
         phone: '',
         email: '',
+        latitude: null,
+        longitude: null,
       } satisfies SettingsRow);
 
     return {
@@ -62,6 +66,8 @@ export class SettingsService {
       addressFa: row.address_fa,
       phone: row.phone,
       email: row.email,
+      latitude: row.latitude,
+      longitude: row.longitude,
       currency: row.currency,
       digitMode: row.digit_mode,
       timezone: row.timezone,
@@ -73,6 +79,17 @@ export class SettingsService {
 
   updateSettings(input: UpdateSettingsInput, actor: ActingUser, meta: RequestMeta): AppSettingsDto {
     const before = this.getSettings();
+
+    // A pin without both axes cannot be mapped, and a half-cleared pair would
+    // make the public menu silently keep an old marker. Both move together.
+    const nextLatitude = input.latitude !== undefined ? input.latitude : before.latitude;
+    const nextLongitude = input.longitude !== undefined ? input.longitude : before.longitude;
+    if ((nextLatitude === null) !== (nextLongitude === null)) {
+      throw badRequest(
+        'عرض و طول جغرافیایی باید با هم ثبت یا با هم پاک شوند.',
+        'LOCATION_INCOMPLETE',
+      );
+    }
 
     const columns: string[] = [];
     const values: unknown[] = [];
@@ -86,6 +103,8 @@ export class SettingsService {
       ['addressFa', 'address_fa'],
       ['phone', 'phone'],
       ['email', 'email'],
+      ['latitude', 'latitude'],
+      ['longitude', 'longitude'],
     ];
 
     for (const [key, column] of map) {

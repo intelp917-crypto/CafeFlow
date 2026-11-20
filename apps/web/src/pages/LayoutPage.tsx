@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Modal, PageHeader, Spinner, cn } from '@cafeflow/ui';
+import { Breadcrumb } from '../lib/branding';
 import type {
   CreateLayoutTableInput,
   LayoutFloorDto,
@@ -855,7 +856,7 @@ export function LayoutPage() {
       <PageHeader
         title="طراحی سالن"
         description="پلان طبقات را با کشیدن میز و تجهیزات بسازید؛ هر میز به سفارش‌ها، رزروها و QR اختصاصی همان میز وصل است."
-        breadcrumb="کافه‌فلو / طراحی سالن"
+        breadcrumb={<Breadcrumb page="طراحی سالن" />}
         actions={
           <div className="flex items-center gap-2">
             <Button size="sm" variant="ghost" onClick={() => window.location.assign('/admin/tables')}>

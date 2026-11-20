@@ -26,6 +26,59 @@ export const orderTransitionSchema = z.object({
 });
 export type OrderTransitionInput = z.infer<typeof orderTransitionSchema>;
 
+/**
+ * A staff-entered order line. The waiter picks freely from the live menu; the
+ * server prices every line with the same engine as the customer QR flow, so a
+ * manual order can never carry a client-side price.
+ */
+export const staffOrderLineSchema = z.object({
+  productId: z.string({ error: 'محصول الزامی است.' }).trim().min(1, 'محصول الزامی است.'),
+  quantity: z
+    .number({ error: 'تعداد باید عدد باشد.' })
+    .int('تعداد باید عدد صحیح باشد.')
+    .min(1, 'تعداد حداقل ۱ است.')
+    .max(30, 'از هر قلم حداکثر ۳۰ عدد مجاز است.'),
+  optionIds: z.array(z.string().trim().max(64)).max(20, 'حداکثر ۲۰ گزینه برای هر قلم مجاز است.').default([]),
+  extraIds: z.array(z.string().trim().max(64)).max(20, 'حداکثر ۲۰ افزودنی برای هر قلم مجاز است.').default([]),
+  note: z.string().trim().max(200, 'یادداشت قلم بیش از حد طولانی است.').optional(),
+});
+export type StaffOrderLineInput = z.infer<typeof staffOrderLineSchema>;
+
+export const createStaffOrderSchema = z.object({
+  /** Empty or null means a takeaway order without a table. */
+  tableId: z.string().trim().max(64).nullable().optional(),
+  note: z.string().trim().max(300, 'یادداشت سفارش بیش از حد طولانی است.').optional(),
+  items: z
+    .array(staffOrderLineSchema)
+    .min(1, 'حداقل یک قلم برای سفارش لازم است.')
+    .max(30, 'تعداد اقلام سفارش بیش از حد مجاز است.'),
+});
+export type CreateStaffOrderInput = z.infer<typeof createStaffOrderSchema>;
+
+export const addStaffOrderItemsSchema = z.object({
+  items: z
+    .array(staffOrderLineSchema)
+    .min(1, 'حداقل یک قلم لازم است.')
+    .max(30, 'تعداد اقلام بیش از حد مجاز است.'),
+});
+export type AddStaffOrderItemsInput = z.infer<typeof addStaffOrderItemsSchema>;
+
+/** `0` removes the line; any other value replaces the quantity. */
+export const updateOrderItemSchema = z.object({
+  quantity: z
+    .number({ error: 'تعداد باید عدد باشد.' })
+    .int('تعداد باید عدد صحیح باشد.')
+    .min(0, 'تعداد نمی‌تواند منفی باشد.')
+    .max(99, 'تعداد بیش از حد مجاز است.'),
+});
+export type UpdateOrderItemInput = z.infer<typeof updateOrderItemSchema>;
+
+/** `proforma: true` prints the bill before the order is served. */
+export const receiptRequestSchema = z.object({
+  proforma: z.boolean({ error: 'نوع رسید باید درست یا نادرست باشد.' }).optional(),
+});
+export type ReceiptRequestInput = z.infer<typeof receiptRequestSchema>;
+
 export const prepTransitionSchema = z.object({
   to: z.enum(PREP_STATUSES, { error: 'وضعیت آماده‌سازی نامعتبر است.' }),
 });
@@ -216,6 +269,8 @@ export const recordPaymentSchema = z.object({
     .min(1, 'مبلغ باید بیشتر از صفر باشد.')
     .max(10_000_000_000, 'مبلغ بیش از حد مجاز است.'),
   reference: z.string().trim().max(80, 'شماره پیگیری بیش از حد طولانی است.').optional(),
+  /** When set, the payment must match that share exactly and settles it. */
+  splitId: z.string().trim().max(64).optional(),
 });
 export type RecordPaymentInput = z.infer<typeof recordPaymentSchema>;
 
@@ -235,6 +290,8 @@ export interface PaymentRecord {
   reference: string | null;
   receivedByName: string | null;
   paidAt: string;
+  /** Set when the payment settled one explicit share of a split bill. */
+  splitLabelFa: string | null;
 }
 
 export interface OrderBill {
@@ -243,6 +300,45 @@ export interface OrderBill {
   total: number;
   paidTotal: number;
   settledAt: string | null;
+}
+
+/** Splitting is only offered before the first payment, so the shares are final. */
+export const splitBillSchema = z.object({
+  parts: z
+    .number({ error: 'تعداد سهم باید عدد باشد.' })
+    .int('تعداد سهم باید عدد صحیح باشد.')
+    .min(2, 'تقسیم دست‌کم دو سهم دارد.')
+    .max(20, 'حداکثر ۲۰ سهم مجاز است.'),
+});
+export type SplitBillInput = z.infer<typeof splitBillSchema>;
+
+/**
+ * Explicit shares typed by the cashier. Labels are optional (a default
+ * «سهم n» is used); the server only requires that the amounts add up to the
+ * order total, so no rial is invented or lost.
+ */
+export const customSplitSchema = z.object({
+  splits: z
+    .array(
+      z.object({
+        label: z.string().trim().max(40, 'برچسب سهم بیش از حد طولانی است.').optional(),
+        amount: z
+          .number({ error: 'مبلغ سهم باید عدد باشد.' })
+          .int('مبلغ سهم باید عدد صحیح ریال باشد.')
+          .min(1, 'مبلغ هر سهم باید بیشتر از صفر باشد.')
+          .max(10_000_000_000, 'مبلغ سهم بیش از حد مجاز است.'),
+      }),
+    )
+    .min(2, 'تقسیم دست‌کم دو سهم دارد.')
+    .max(20, 'حداکثر ۲۰ سهم مجاز است.'),
+});
+export type CustomSplitInput = z.infer<typeof customSplitSchema>;
+
+export interface BillSplit {
+  id: string;
+  label: string;
+  amount: number;
+  isPaid: boolean;
 }
 
 export interface OrderPaymentsResponse {
@@ -255,6 +351,7 @@ export interface OrderPaymentsResponse {
   remaining: number;
   payable: boolean;
   bill: OrderBill | null;
+  splits: BillSplit[];
   payments: PaymentRecord[];
 }
 

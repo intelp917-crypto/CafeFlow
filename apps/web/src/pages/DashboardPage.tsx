@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Badge,
   Card,
@@ -57,7 +58,7 @@ export function DashboardPage() {
       <PageHeader
         title="داشبورد عملیات"
         description="نمای زنده فروش، سفارش‌ها، میزها و درخواست‌های مشتری. همه اعداد از پایگاه داده خوانده می‌شوند."
-        breadcrumb="کافه‌فلو / داشبورد"
+        breadcrumb={<Breadcrumb page="داشبورد" />}
         actions={
           <div className="flex items-center gap-2 text-xs text-muted">
             {loading ? <Spinner size="sm" /> : null}

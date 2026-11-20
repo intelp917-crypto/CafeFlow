@@ -28,8 +28,8 @@ function audienceClause(audience: NotificationAudience): { sql: string; params: 
 
 /**
  * Personal and role-addressed notifications. A role row is shared by everyone
- * holding that role, so marking it read marks it for the whole role — see the
- * documented limitation in PROGRESS.
+ * holding that role, but read state is per user (`notification_reads`), so one
+ * cashier opening the inbox does not clear it for the next shift.
  */
 @Injectable()
 export class NotificationsRepository {
@@ -38,12 +38,15 @@ export class NotificationsRepository {
   list(audience: NotificationAudience, unreadOnly: boolean, limit = 50): NotificationItem[] {
     const scope = audienceClause(audience);
     const rows = this.database.all<NotificationRow>(
-      `SELECT n.id, n.type, n.title_fa, n.body_fa, n.role_key, n.is_read, n.created_at
+      `SELECT n.id, n.type, n.title_fa, n.body_fa, n.role_key,
+              CASE WHEN n.is_read = 1 OR r.notification_id IS NOT NULL THEN 1 ELSE 0 END AS is_read,
+              n.created_at
          FROM notifications n
-        WHERE ${scope.sql}${unreadOnly ? ' AND n.is_read = 0' : ''}
+         LEFT JOIN notification_reads r ON r.notification_id = n.id AND r.user_id = ?
+        WHERE ${scope.sql}${unreadOnly ? ' AND n.is_read = 0 AND r.notification_id IS NULL' : ''}
         ORDER BY n.created_at DESC
         LIMIT ?`,
-      [...scope.params, limit],
+      [audience.userId, ...scope.params, limit],
     );
 
     return rows.map((row) => ({
@@ -60,26 +63,50 @@ export class NotificationsRepository {
   countUnread(audience: NotificationAudience): number {
     const scope = audienceClause(audience);
     return this.database.count(
-      `SELECT COUNT(*) AS n FROM notifications n WHERE ${scope.sql} AND n.is_read = 0`,
-      scope.params,
+      `SELECT COUNT(*) AS n
+         FROM notifications n
+         LEFT JOIN notification_reads r ON r.notification_id = n.id AND r.user_id = ?
+        WHERE ${scope.sql} AND n.is_read = 0 AND r.notification_id IS NULL`,
+      [audience.userId, ...scope.params],
     );
   }
 
   markRead(id: string, audience: NotificationAudience): boolean {
     const scope = audienceClause(audience);
-    const result = this.database.run(
-      `UPDATE notifications SET is_read = 1 WHERE id = ? AND ${scope.sql.replace(/n\./g, '')}`,
+    const row = this.database.get<{ user_id: string | null }>(
+      `SELECT n.user_id FROM notifications n WHERE n.id = ? AND ${scope.sql}`,
       [id, ...scope.params],
     );
-    return result.changes > 0;
+    if (!row) return false;
+
+    this.database.run(
+      `INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)
+       ON CONFLICT (notification_id, user_id) DO NOTHING`,
+      [id, audience.userId],
+    );
+    // The legacy column stays meaningful for rows addressed to one person.
+    if (row.user_id) {
+      this.database.run('UPDATE notifications SET is_read = 1 WHERE id = ?', [id]);
+    }
+    return true;
   }
 
   markAllRead(audience: NotificationAudience): number {
     const scope = audienceClause(audience);
-    const result = this.database.run(
-      `UPDATE notifications SET is_read = 1 WHERE ${scope.sql.replace(/n\./g, '')} AND is_read = 0`,
-      scope.params,
+    const before = this.countUnread(audience);
+    if (before === 0) return 0;
+
+    this.database.run(
+      `INSERT INTO notification_reads (notification_id, user_id)
+       SELECT n.id, ? FROM notifications n
+         LEFT JOIN notification_reads r ON r.notification_id = n.id AND r.user_id = ?
+        WHERE ${scope.sql} AND n.is_read = 0 AND r.notification_id IS NULL
+       ON CONFLICT (notification_id, user_id) DO NOTHING`,
+      [audience.userId, audience.userId, ...scope.params],
     );
-    return result.changes;
+    this.database.run('UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0', [
+      audience.userId,
+    ]);
+    return before;
   }
 }

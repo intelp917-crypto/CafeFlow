@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -140,7 +141,7 @@ export function PrintPage() {
       <PageHeader
         title="صف چاپ"
         description="رسیدها ابتدا در صف چاپ ذخیره می‌شوند؛ پل چاپ (scripts/print-bridge.mjs) آن‌ها را برمی‌دارد یا از همین صفحه چاپ‌شدن را تأیید می‌کنید."
-        breadcrumb="کافه‌فلو / صف چاپ"
+        breadcrumb={<Breadcrumb page="صف چاپ" />}
         actions={
           <div className="flex gap-1.5">
             {FILTERS.map((option) => (

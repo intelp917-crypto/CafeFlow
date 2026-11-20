@@ -2,10 +2,49 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { preload } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@cafeflow/ui';
+import { useBranding } from '../lib/branding';
 
 const POSTER = '/scenes/hero-cup.webp';
-const FILM = '/scenes/hero-cup.mp4';
 const MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
+/** Every clip in public/videos; the entrance draws one of them per page load. */
+const FILMS = [
+  '/videos/hero-1.mp4',
+  '/videos/hero-2.mp4',
+  '/videos/hero-3.mp4',
+  '/videos/hero-4.mp4',
+  '/videos/hero-5.mp4',
+  '/videos/hero-6.mp4',
+];
+
+const LAST_FILM_KEY = 'cafeflow:intro-film';
+
+/** Random on every load, but never the same clip twice in a row. */
+function pickFilm() {
+  const count = FILMS.length;
+  if (count < 2) return FILMS[0];
+
+  let last = -1;
+  try {
+    const stored = Number(sessionStorage.getItem(LAST_FILM_KEY));
+    if (Number.isInteger(stored) && stored >= 0 && stored < count) last = stored;
+  } catch {
+    // Blocked storage: any clip is fine.
+  }
+
+  const index =
+    last < 0
+      ? Math.floor(Math.random() * count)
+      : (last + 1 + Math.floor(Math.random() * (count - 1))) % count;
+
+  try {
+    sessionStorage.setItem(LAST_FILM_KEY, String(index));
+  } catch {
+    // Nothing to remember; the next load simply draws again.
+  }
+
+  return FILMS[index];
+}
 
 /** Shared framing for the plate, so the poster and the film never disagree. */
 const MEDIA = 'size-full object-cover object-[76%_50%] lg:object-[8%_50%]';
@@ -53,11 +92,13 @@ function useStillPreference() {
  */
 export function IntroPage() {
   const navigate = useNavigate();
+  const { nameFa: brandName } = useBranding();
   const stageRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const frame = useRef(0);
   const leaveTimer = useRef<number | undefined>(undefined);
   const still = useStillPreference();
+  const [source] = useState(pickFilm);
   const [failed, setFailed] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [entering, setEntering] = useState(false);
@@ -149,7 +190,7 @@ export function IntroPage() {
             {film ? (
               <video
                 ref={videoRef}
-                src={FILM}
+                src={source}
                 autoPlay
                 loop
                 muted
@@ -176,7 +217,7 @@ export function IntroPage() {
 
       <header className="relative z-10 flex items-center justify-between gap-4 px-5 py-5 sm:px-10 sm:py-7">
         <Link to="/" className="font-display text-lg font-bold tracking-tight text-cream">
-          کافه‌فلو
+          {brandName}
         </Link>
         <Link
           to="/"
@@ -194,7 +235,7 @@ export function IntroPage() {
               style={{ animationDelay: '120ms' }}
             >
               <span aria-hidden className="h-px w-8 bg-cream/35" />
-              تجربهٔ کافه‌فلو
+              تجربهٔ {brandName}
             </div>
 
             <h1
@@ -208,8 +249,8 @@ export function IntroPage() {
               className="intro-reveal mt-5 max-w-md text-[13px] leading-7 text-cream/70 sm:text-sm sm:leading-8"
               style={{ animationDelay: '360ms' }}
             >
-              عطر قهوهٔ تازه‌دم، میزهای آماده و منویی که با یک اسکن باز می‌شود. وارد شوید و روز را از
-              کافه‌فلو شروع کنید.
+              عطر قهوهٔ تازه‌دم، میزهای آماده و منویی که با یک اسکن باز می‌شود. وارد شوید و روز را از{' '}
+              {brandName} شروع کنید.
             </p>
 
             <div

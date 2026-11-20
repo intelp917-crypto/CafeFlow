@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -80,7 +81,7 @@ export function AuditPage() {
       <PageHeader
         title="گزارش رویدادها"
         description="تمام عملیات حساس — ورود، تغییر تنظیمات، تغییر ماژول‌ها و تصمیم‌های تأیید — با زمان، کاربر و مقادیر قبل/بعد ثبت می‌شوند."
-        breadcrumb="کافه‌فلو / گزارش رویدادها"
+        breadcrumb={<Breadcrumb page="گزارش رویدادها" />}
         actions={<span className="text-xs text-muted">{total} رویداد</span>}
       />
 

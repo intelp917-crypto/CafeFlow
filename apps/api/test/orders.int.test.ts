@@ -405,3 +405,337 @@ describe('order listing filters', () => {
     expect(missing.body.error.code).toBe('ORDER_NOT_FOUND');
   });
 });
+
+describe('staff-entered orders', () => {
+  let admin: Agent;
+
+  beforeAll(async () => {
+    admin = (await login(context.app, ADMIN_USERNAME, ADMIN_PASSWORD)).agent;
+  });
+
+  function priceOf(productId: string): { basePrice: number; prepMinutes: number } {
+    return context.db
+      .prepare('SELECT base_price AS basePrice, prep_minutes AS prepMinutes FROM products WHERE id = ?')
+      .get(productId) as { basePrice: number; prepMinutes: number };
+  }
+
+  function percents(): { service: number; tax: number } {
+    const row = context.db
+      .prepare("SELECT service_charge_percent, tax_percent FROM settings WHERE id = 'singleton'")
+      .get() as { service_charge_percent: number; tax_percent: number };
+    return { service: row.service_charge_percent, tax: row.tax_percent };
+  }
+
+  function billFor(subtotal: number): { service: number; tax: number; total: number } {
+    const { service, tax } = percents();
+    const serviceCharge = Math.round((subtotal * service) / 100);
+    const taxTotal = Math.round(((subtotal + serviceCharge) * tax) / 100);
+    return { service: serviceCharge, tax: taxTotal, total: subtotal + serviceCharge + taxTotal };
+  }
+
+  it('creates a waiter order priced by the server, confirms it and queues prep', async () => {
+    const table = tableByIndex(0);
+    const price = priceOf(espresso.id);
+    const expected = billFor(price.basePrice * 2);
+
+    const response = await admin.post('/api/v1/orders').send({
+      tableId: table.id,
+      note: 'مهمان عجله دارد',
+      items: [{ productId: espresso.id, quantity: 2 }],
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.status).toBe('confirmed');
+    expect(response.body.source).toBe('waiter');
+    expect(response.body.subtotal).toBe(price.basePrice * 2);
+    expect(response.body.serviceCharge).toBe(expected.service);
+    expect(response.body.taxTotal).toBe(expected.tax);
+    expect(response.body.total).toBe(expected.total);
+    expect(response.body.items).toHaveLength(1);
+    expect(response.body.items[0]).toMatchObject({
+      productNameFa: expect.any(String),
+      quantity: 2,
+      unitPrice: price.basePrice,
+      prepStatus: 'queued',
+      targetMinutes: price.prepMinutes,
+    });
+
+    expect(openSessionsFor(table.id)).toBe(1);
+    const tableRow = context.db.prepare('SELECT status FROM dining_tables WHERE id = ?').get(table.id) as {
+      status: string;
+    };
+    expect(tableRow.status).toBe('occupied');
+
+    const events = context.db
+      .prepare("SELECT COUNT(*) AS n FROM order_events WHERE order_id = ? AND type = 'order.created'")
+      .get(response.body.id) as { n: number };
+    expect(events.n).toBe(1);
+    expect(countAudit(context.db, 'order.created_by_staff')).toBeGreaterThan(0);
+  });
+
+  it('adds a second round to the same order and grows the bill once', async () => {
+    const table = tableByIndex(1);
+    const price = priceOf(espresso.id);
+
+    const created = await admin
+      .post('/api/v1/orders')
+      .send({ tableId: table.id, items: [{ productId: espresso.id, quantity: 1 }] });
+    expect(created.status).toBe(201);
+
+    const added = await admin
+      .post(`/api/v1/orders/${created.body.id}/items`)
+      .send({ items: [{ productId: espresso.id, quantity: 2 }] });
+
+    expect(added.status).toBe(200);
+    expect(added.body.items).toHaveLength(2);
+    const expected = billFor(price.basePrice * 3);
+    expect(added.body.subtotal).toBe(price.basePrice * 3);
+    expect(added.body.total).toBe(expected.total);
+
+    const queued = context.db
+      .prepare("SELECT COUNT(*) AS n FROM prep_tasks WHERE order_id = ? AND status = 'queued'")
+      .get(created.body.id) as { n: number };
+    expect(queued.n).toBe(2);
+    expect(countAudit(context.db, 'order.items_added')).toBeGreaterThan(0);
+
+    const event = context.db
+      .prepare("SELECT COUNT(*) AS n FROM order_events WHERE order_id = ? AND type = 'order.items_added'")
+      .get(created.body.id) as { n: number };
+    expect(event.n).toBe(1);
+  });
+
+  it('refuses an unavailable product and a closed order', async () => {
+    const table = tableByIndex(2);
+    context.db.prepare('UPDATE products SET is_available = 0 WHERE id = ?').run(espresso.id);
+
+    const unavailable = await admin
+      .post('/api/v1/orders')
+      .send({ tableId: table.id, items: [{ productId: espresso.id, quantity: 1 }] });
+    expect(unavailable.status).toBe(409);
+    expect(unavailable.body.error.code).toBe('PRODUCT_UNAVAILABLE');
+    context.db.prepare('UPDATE products SET is_available = 1 WHERE id = ?').run(espresso.id);
+
+    const created = await admin
+      .post('/api/v1/orders')
+      .send({ tableId: table.id, items: [{ productId: espresso.id, quantity: 1 }] });
+    expect(created.status).toBe(201);
+
+    const cancelled = await admin
+      .post(`/api/v1/orders/${created.body.id}/transition`)
+      .send({ to: 'cancelled', reason: 'اشتباه ثبت شد' });
+    expect(cancelled.status).toBe(200);
+
+    const closed = await admin
+      .post(`/api/v1/orders/${created.body.id}/items`)
+      .send({ items: [{ productId: espresso.id, quantity: 1 }] });
+    expect(closed.status).toBe(409);
+    expect(closed.body.error.code).toBe('ORDER_CLOSED');
+  });
+
+  it('rejects an empty or malformed line with a Persian validation message', async () => {
+    const empty = await admin.post('/api/v1/orders').send({ items: [] });
+    expect(empty.status).toBe(400);
+    expect(empty.body.error.code).toBe('VALIDATION_FAILED');
+
+    const zero = await admin
+      .post('/api/v1/orders')
+      .send({ items: [{ productId: espresso.id, quantity: 0 }] });
+    expect(zero.status).toBe(400);
+  });
+});
+
+describe('department tickets', () => {
+  let admin: Agent;
+
+  beforeAll(async () => {
+    admin = (await login(context.app, ADMIN_USERNAME, ADMIN_PASSWORD)).agent;
+  });
+
+  it('queues one ticket per department and never duplicates the same round', async () => {
+    const table = tableByIndex(3);
+    const created = await admin
+      .post('/api/v1/orders')
+      .send({ tableId: table.id, items: [{ productId: espresso.id, quantity: 2 }] });
+    expect(created.status).toBe(201);
+
+    const first = await admin.post(`/api/v1/orders/${created.body.id}/tickets`);
+    expect(first.status).toBe(201);
+    expect(first.body.created).toBeGreaterThan(0);
+
+    const job = first.body.jobs[0] as { id: string; status: string; receipt: string[] };
+    expect(job.status).toBe('queued');
+    const text = job.receipt.join('\n');
+    expect(text).toContain(created.body.code);
+    expect(text).toContain('بلیت');
+
+    const second = await admin.post(`/api/v1/orders/${created.body.id}/tickets`);
+    expect(second.body.created).toBe(0);
+    expect(second.body.jobs.map((row: { id: string }) => row.id)).toEqual(
+      first.body.jobs.map((row: { id: string }) => row.id),
+    );
+  });
+
+  it('queues a new ticket for a later round and refuses a cancelled order', async () => {
+    const table = tableByIndex(4);
+    const created = await admin
+      .post('/api/v1/orders')
+      .send({ tableId: table.id, items: [{ productId: espresso.id, quantity: 1 }] });
+    expect(created.status).toBe(201);
+
+    await admin.post(`/api/v1/orders/${created.body.id}/tickets`);
+    await admin
+      .post(`/api/v1/orders/${created.body.id}/items`)
+      .send({ items: [{ productId: espresso.id, quantity: 1 }] });
+
+    const round2 = await admin.post(`/api/v1/orders/${created.body.id}/tickets`);
+    expect(round2.body.created).toBeGreaterThan(0);
+
+    const cancelled = await admin
+      .post(`/api/v1/orders/${created.body.id}/transition`)
+      .send({ to: 'cancelled', reason: 'آزمون بلیت' });
+    expect(cancelled.status).toBe(200);
+
+    const refused = await admin.post(`/api/v1/orders/${created.body.id}/tickets`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe('ORDER_CLOSED');
+  });
+});
+
+describe('editing order items', () => {
+  let admin: Agent;
+
+  beforeAll(async () => {
+    admin = (await login(context.app, ADMIN_USERNAME, ADMIN_PASSWORD)).agent;
+  });
+
+  it('shrinks a line and recomputes totals from the remaining lines', async () => {
+    const table = tableByIndex(5);
+    const created = await admin.post('/api/v1/orders').send({
+      tableId: table.id,
+      items: [{ productId: espresso.id, quantity: 2 }],
+    });
+    expect(created.status).toBe(201);
+
+    const item = created.body.items[0] as { id: string; unitPrice: number };
+    const updated = await admin
+      .patch(`/api/v1/orders/${created.body.id}/items/${item.id}`)
+      .send({ quantity: 1 });
+
+    expect(updated.status).toBe(200);
+    expect(updated.body.items[0].quantity).toBe(1);
+    expect(updated.body.subtotal).toBe(item.unitPrice);
+    expect(updated.body.total).toBeLessThan(created.body.total);
+
+    const event = context.db
+      .prepare("SELECT type FROM order_events WHERE order_id = ? AND type = 'order.item_updated'")
+      .get(created.body.id) as { type: string } | undefined;
+    expect(event?.type).toBe('order.item_updated');
+  });
+
+  it('removes a line, cancels its prep task and then refuses edits on the closed order', async () => {
+    const table = tableByIndex(6);
+    const created = await admin.post('/api/v1/orders').send({
+      tableId: table.id,
+      items: [{ productId: espresso.id, quantity: 1 }],
+    });
+    expect(created.status).toBe(201);
+
+    const item = created.body.items[0] as { id: string };
+    const removed = await admin
+      .patch(`/api/v1/orders/${created.body.id}/items/${item.id}`)
+      .send({ quantity: 0 });
+
+    expect(removed.status).toBe(200);
+    expect(removed.body.items[0].itemStatus).toBe('cancelled');
+    expect(removed.body.subtotal).toBe(0);
+
+    const prep = context.db
+      .prepare('SELECT status FROM prep_tasks WHERE order_item_id = ?')
+      .get(item.id) as { status: string };
+    expect(prep.status).toBe('cancelled');
+
+    await admin
+      .post(`/api/v1/orders/${created.body.id}/transition`)
+      .send({ to: 'cancelled', reason: 'آزمون ویرایش قلم' });
+
+    const refused = await admin
+      .patch(`/api/v1/orders/${created.body.id}/items/${item.id}`)
+      .send({ quantity: 1 });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe('ORDER_CLOSED');
+  });
+
+  it('validates the quantity and the item id', async () => {
+    const table = tableByIndex(7);
+    const created = await admin.post('/api/v1/orders').send({
+      tableId: table.id,
+      items: [{ productId: espresso.id, quantity: 1 }],
+    });
+    const item = created.body.items[0] as { id: string };
+
+    const negative = await admin
+      .patch(`/api/v1/orders/${created.body.id}/items/${item.id}`)
+      .send({ quantity: -1 });
+    expect(negative.status).toBe(400);
+
+    const missing = await admin
+      .patch(`/api/v1/orders/${created.body.id}/items/does-not-exist`)
+      .send({ quantity: 1 });
+    expect(missing.status).toBe(404);
+    expect(missing.body.error.code).toBe('ORDER_ITEM_NOT_FOUND');
+  });
+});
+
+describe('proforma receipt', () => {
+  let admin: Agent;
+
+  beforeAll(async () => {
+    admin = (await login(context.app, ADMIN_USERNAME, ADMIN_PASSWORD)).agent;
+  });
+
+  it('prints a proforma before the order is served and never duplicates it', async () => {
+    const table = tableByIndex(4);
+    const created = await admin.post('/api/v1/orders').send({
+      tableId: table.id,
+      items: [{ productId: espresso.id, quantity: 1 }],
+    });
+    expect(created.status).toBe(201);
+
+    const beforeServed = await admin.post(`/api/v1/orders/${created.body.id}/receipt`);
+    expect(beforeServed.status).toBe(409);
+    expect(beforeServed.body.error.code).toBe('RECEIPT_NOT_AVAILABLE');
+
+    const proforma = await admin
+      .post(`/api/v1/orders/${created.body.id}/receipt`)
+      .send({ proforma: true });
+    expect(proforma.status).toBe(201);
+    expect(proforma.body.existed).toBe(false);
+    expect(proforma.body.job.kind).toBe('proforma');
+    const text = (proforma.body.job.receipt as string[]).join('\n');
+    expect(text).toContain('پیش‌فاکتور');
+    expect(text).toContain('رسید نهایی نیست');
+
+    const again = await admin
+      .post(`/api/v1/orders/${created.body.id}/receipt`)
+      .send({ proforma: true });
+    expect(again.body.existed).toBe(true);
+    expect(again.body.job.id).toBe(proforma.body.job.id);
+  });
+
+  it('refuses a proforma for a cancelled order', async () => {
+    const table = tableByIndex(5);
+    const created = await admin.post('/api/v1/orders').send({
+      tableId: table.id,
+      items: [{ productId: espresso.id, quantity: 1 }],
+    });
+    await admin
+      .post(`/api/v1/orders/${created.body.id}/transition`)
+      .send({ to: 'cancelled', reason: 'آزمون پیش‌فاکتور' });
+
+    const refused = await admin
+      .post(`/api/v1/orders/${created.body.id}/receipt`)
+      .send({ proforma: true });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe('ORDER_CLOSED');
+  });
+});

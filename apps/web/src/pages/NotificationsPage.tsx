@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -92,7 +93,7 @@ export function NotificationsPage() {
       <PageHeader
         title="اعلان‌ها"
         description="اعلان‌های شخصی و نقش‌محور شما. هر اعلان فقط برای کاربر هدف یا دارندگان نقش مربوط نمایش داده می‌شود."
-        breadcrumb="کافه‌فلو / اعلان‌ها"
+        breadcrumb={<Breadcrumb page="اعلان‌ها" />}
         actions={
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted">{unreadCount.toLocaleString('fa-IR')} خوانده‌نشده</span>

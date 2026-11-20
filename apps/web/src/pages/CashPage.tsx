@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -129,7 +130,7 @@ export function CashPage() {
       <PageHeader
         title="صندوق و جلسات نقدی"
         description="باز کردن صندوق با موجودی اولیه، محاسبه خودکار مبلغ انتظار از پرداخت‌های نقدی تأییدشده و بستن با ثبت مغایرت."
-        breadcrumb="کافه‌فلو / مالی"
+        breadcrumb={<Breadcrumb page="مالی" />}
         actions={
           <div className="flex items-center gap-2">
             <select

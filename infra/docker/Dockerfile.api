@@ -1,15 +1,14 @@
 # CafeFlow API image
-# NOTE: Docker is not installed in the current development environment, so this
-# file is delivered but not built/verified here. See docs/11-deployment.md.
+# Built and run on Docker Desktop (Linux engine) on 2026-11-20. See
+# docs/11-deployment.md for the verified compose workflow.
 
 FROM node:24-slim AS build
 WORKDIR /app
 
-# Build toolchain for native modules (better-sqlite3) when no prebuild matches.
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY package.json package-lock.json ./
+# better-sqlite3 ships prebuilt binaries for this Node line, so no compiler
+# toolchain is needed; if a future Node version lacks a prebuild, npm ci fails
+# loudly here and `python3 make g++` can be added back for node-gyp.
+COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/ui/package.json packages/ui/
 COPY apps/api/package.json apps/api/
@@ -23,8 +22,6 @@ RUN npm run build:shared && npm run build -w @cafeflow/api
 FROM node:24-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
@@ -33,11 +30,18 @@ COPY --from=build /app/packages/shared/dist packages/shared/dist
 COPY --from=build /app/apps/api/package.json apps/api/package.json
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/migrations apps/api/migrations
+# The daily backup job reuses this image, so the script and better-sqlite3 are
+# already present and no package is installed at runtime.
+COPY scripts/backup.mjs scripts/backup.mjs
 
-# Data lives on a volume so it survives container replacement.
-RUN mkdir -p /data && chown -R node:node /data /app
+# Runtime state (database + WAL, backups, print receipts) lives on one volume
+# so a container rebuild or host restart never touches it. A fresh named volume
+# inherits this folder's ownership from the image.
+RUN mkdir -p /var/lib/cafeflow/backups /var/lib/cafeflow/print-output \
+    && chown -R node:node /var/lib/cafeflow /app
 USER node
-ENV DATABASE_PATH=/data/cafeflow.db
+ENV CAFEFLOW_DATA_DIR=/var/lib/cafeflow
+ENV CAFEFLOW_BACKUP_DIR=/var/lib/cafeflow/backups
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

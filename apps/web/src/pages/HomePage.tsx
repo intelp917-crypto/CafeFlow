@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@cafeflow/ui';
 import { customerApi } from '../lib/customer';
+import { useBranding } from '../lib/branding';
 import { formatCountFa } from '../lib/format';
 import { HeroCarousel, type HeroItem } from '../components/customer/HeroCarousel';
+import { CafeLocation } from '../components/customer/CafeLocation';
 import { DeveloperCredit } from '../components/DeveloperCredit';
 
 interface LandingCategory {
@@ -36,14 +38,16 @@ function useReducedMotion(): boolean {
 }
 
 function Wordmark({ className = '' }: { className?: string }) {
+  const { nameFa } = useBranding();
   return (
     <span className={`font-display text-xl font-bold ${className}`} dir="rtl">
-      کافه‌فلو
+      {nameFa}
     </span>
   );
 }
 
 export function HomePage() {
+  const { nameFa, addressFa, phone, latitude, longitude } = useBranding();
   const [categories, setCategories] = useState<LandingCategory[] | null>(null);
   const [productTotal, setProductTotal] = useState(0);
   const reduced = useReducedMotion();
@@ -159,6 +163,21 @@ export function HomePage() {
           </div>
         </div>
       </main>
+
+      {latitude !== null && longitude !== null ? (
+        <section aria-label="موقعیت کافه" className="border-t border-cream/10">
+          <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-12">
+            <CafeLocation
+              tone="dark"
+              nameFa={nameFa}
+              addressFa={addressFa}
+              phone={phone}
+              latitude={latitude}
+              longitude={longitude}
+            />
+          </div>
+        </section>
+      ) : null}
 
       <footer className="border-t border-cream/10">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-5 py-8 sm:flex-row sm:justify-between sm:px-8">

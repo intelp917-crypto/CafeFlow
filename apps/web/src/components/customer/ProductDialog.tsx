@@ -121,6 +121,16 @@ function ProductDialogBody({ product, onClose, onAdd }: { product: PublicMenuPro
       }
     >
       <div className="space-y-4">
+        {product.imageUrl ? (
+          <img
+            src={product.imageUrl}
+            alt={product.nameFa}
+            width={1248}
+            height={832}
+            className="aspect-[16/9] w-full rounded-2xl border border-line object-cover"
+          />
+        ) : null}
+
         {!product.isAvailable ? (
           <Alert tone="warning" title="ناموجود">
             {product.unavailableReasonFa ?? 'این محصول در حال حاضر قابل سفارش نیست.'}
@@ -138,7 +148,9 @@ function ProductDialogBody({ product, onClose, onAdd }: { product: PublicMenuPro
               {group.nameFa}
               {group.isRequired ? <Badge tone="brand">الزامی</Badge> : <Badge tone="neutral">اختیاری</Badge>}
               <span className="text-[10px] font-normal text-muted">
-                تا {formatCountFa(group.maxSelect)} انتخاب
+                {group.minSelect > 1
+                  ? `حداقل ${formatCountFa(group.minSelect)} انتخاب`
+                  : `تا ${formatCountFa(group.maxSelect)} انتخاب`}
               </span>
             </legend>
             <div className="grid gap-2 sm:grid-cols-2">
@@ -153,7 +165,9 @@ function ProductDialogBody({ product, onClose, onAdd }: { product: PublicMenuPro
                   >
                     <span className="flex items-center gap-2">
                       <input
-                        type={group.maxSelect === 1 ? 'radio' : 'checkbox'}
+                        // A radio cannot be unchecked, so an optional single-choice
+                        // group uses a checkbox; only a required one behaves as radio.
+                        type={group.isRequired && group.maxSelect === 1 ? 'radio' : 'checkbox'}
                         name={`group-${group.id}`}
                         checked={checked}
                         onChange={() => toggleOption(group.id, option.id, group.maxSelect)}

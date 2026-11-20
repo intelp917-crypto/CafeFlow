@@ -1,0 +1,22 @@
+# Build context hygiene: images install their own dependencies and only copy
+# source, so host modules, runtime data, tests and screenshots never enter it.
+node_modules
+**/node_modules
+**/dist
+.git
+.github
+.agents
+.freebuff
+.cloud-attachments
+data
+backups
+test-results
+playwright-report
+print-output
+*.log
+preview-*.jpg
+review-*.png
+testrun.txt
+.env
+.env.*
+!.env.example

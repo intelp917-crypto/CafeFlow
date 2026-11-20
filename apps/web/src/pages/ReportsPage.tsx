@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Button,
@@ -21,6 +22,7 @@ import {
   toLatinDigits,
   type ReportSummary,
 } from '@cafeflow/shared';
+import { JalaliDatePicker } from '../components/reports/JalaliDatePicker';
 import { api, errorMessage } from '../lib/api';
 import { formatRial } from '../lib/format';
 
@@ -110,6 +112,10 @@ export function ReportsPage() {
     window.open(`/api/v1/reports/payments.csv?from=${range.from}&to=${range.to}`, '_blank', 'noopener');
   };
 
+  const downloadXlsx = () => {
+    window.open(`/api/v1/reports/payments.xlsx?from=${range.from}&to=${range.to}`, '_blank', 'noopener');
+  };
+
   const methodColumns: Column<ReportSummary['byMethod'][number]>[] = [
     { key: 'method', header: 'روش', render: (row) => row.methodLabelFa },
     { key: 'count', header: 'تعداد', align: 'center', render: (row) => row.count.toLocaleString('fa-IR') },
@@ -137,11 +143,19 @@ export function ReportsPage() {
       <PageHeader
         title="گزارش‌ها"
         description="فروش روزانه از پرداخت‌های تأییدشده محاسبه می‌شود و بازپرداخت‌ها از آن کسر می‌شوند. بازه بر اساس روز تقویم تهران است."
-        breadcrumb="کافه‌فلو / گزارش‌ها"
+        breadcrumb={<Breadcrumb page="گزارش‌ها" />}
         actions={
-          <Button size="sm" variant="outline" onClick={downloadCsv}>
-            دریافت CSV پرداخت‌ها
-          </Button>
+          <div className="flex flex-wrap gap-1.5 print:hidden">
+            <Button size="sm" variant="outline" onClick={downloadCsv}>
+              دریافت CSV پرداخت‌ها
+            </Button>
+            <Button size="sm" variant="outline" onClick={downloadXlsx}>
+              دریافت Excel
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => window.print()}>
+              چاپ / PDF
+            </Button>
+          </div>
         }
       />
 
@@ -168,10 +182,10 @@ export function ReportsPage() {
 
           <div className="flex flex-wrap items-end gap-2">
             <Field label="از تاریخ">
-              <Input dir="ltr" value={fromInput} onChange={(event) => setFromInput(event.target.value)} placeholder="1405/08/27" />
+              <JalaliDatePicker value={fromInput} onChange={setFromInput} ariaLabel="تاریخ شروع گزارش" />
             </Field>
             <Field label="تا تاریخ">
-              <Input dir="ltr" value={toInput} onChange={(event) => setToInput(event.target.value)} placeholder="1405/08/27" />
+              <JalaliDatePicker value={toInput} onChange={setToInput} ariaLabel="تاریخ پایان گزارش" />
             </Field>
             <Button size="sm" onClick={applyCustom}>
               اعمال

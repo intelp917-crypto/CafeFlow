@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -75,6 +76,7 @@ export function InventoryPage() {
   const [adjustForm, setAdjustForm] = useState({ delta: '', reason: '' });
 
   const [recipeProductId, setRecipeProductId] = useState('');
+  const [recipeYieldQty, setRecipeYieldQty] = useState('1');
   const [recipeItems, setRecipeItems] = useState<RecipeItemForm[]>([{ ingredientId: '', qty: '' }]);
 
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
@@ -131,6 +133,7 @@ export function InventoryPage() {
   const selectRecipeProduct = (productId: string) => {
     setRecipeProductId(productId);
     const existing = recipeByProduct.get(productId);
+    setRecipeYieldQty(String(existing?.yieldQty ?? 1));
     setRecipeItems(
       existing && existing.items.length > 0
         ? existing.items.map((item) => ({ ingredientId: item.ingredientId, qty: String(item.qty) }))
@@ -180,12 +183,18 @@ export function InventoryPage() {
 
   const saveRecipe = async () => {
     if (!recipeProductId) return;
+    const yieldQty = Number(recipeYieldQty);
+    if (!Number.isFinite(yieldQty) || yieldQty <= 0 || yieldQty > 10_000) {
+      setError('مقدار خروجی دستور پخت باید بیشتر از صفر و حداکثر ۱۰٬۰۰۰ باشد.');
+      return;
+    }
     setBusy(true);
+    setError(null);
     try {
       const items = recipeItems
         .filter((item) => item.ingredientId && Number(item.qty) > 0)
         .map((item) => ({ ingredientId: item.ingredientId, qty: Number(item.qty) }));
-      await api.post(`/inventory/recipes/${recipeProductId}`, { yieldQty: 1, items });
+      await api.post(`/inventory/recipes/${recipeProductId}`, { yieldQty, items });
       setNotice(items.length === 0 ? 'دستور پخت پاک شد.' : 'دستور پخت ذخیره شد.');
       await load();
     } catch (caught) {
@@ -360,7 +369,7 @@ export function InventoryPage() {
       <PageHeader
         title="انبار و مواد اولیه"
         description="موجودی، دستور پخت و گردش انبار. با فعال بودن ماژول، مواد اولیه هر دستور پخت هنگام ثبت سفارش کسر و هنگام لغو بازگردانده می‌شود."
-        breadcrumb="کافه‌فلو / انبار"
+        breadcrumb={<Breadcrumb page="انبار" />}
         actions={
           <Button size="sm" onClick={() => setIngredientModal(true)}>
             ماده اولیه جدید
@@ -400,7 +409,7 @@ export function InventoryPage() {
           <Card>
             <CardHeader
               title="دستور پخت"
-              description="مقدار هر ماده اولیه برای یک واحد محصول؛ مبنای کسر خودکار هنگام فروش."
+              description="مقدار مواد اولیه برای تعداد خروجی ثبت‌شده؛ هنگام فروش، مصرف به‌ازای هر محصول محاسبه می‌شود."
             />
             <CardBody className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -422,7 +431,20 @@ export function InventoryPage() {
               </div>
 
               {recipeProductId ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  <div className="max-w-xs">
+                    <Field label="تعداد محصولِ حاصل از این دستور" required hint="مصرف مواد به این تعداد تقسیم می‌شود.">
+                      <Input
+                        type="number"
+                        min={0.001}
+                        max={10000}
+                        step="0.001"
+                        inputMode="decimal"
+                        value={recipeYieldQty}
+                        onChange={(event) => setRecipeYieldQty(event.target.value)}
+                      />
+                    </Field>
+                  </div>
                   {recipeItems.map((item, index) => (
                     <div key={index} className="flex items-end gap-2">
                       <div className="flex-1">

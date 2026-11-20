@@ -45,7 +45,7 @@ async function main(): Promise<void> {
           adminUsername: process.env.SEED_ADMIN_USERNAME ?? 'admin',
           adminPassword: process.env.SEED_ADMIN_PASSWORD ?? 'CafeFlow@1404',
           demoStaff: (process.env.SEED_DEMO_STAFF ?? 'true') === 'true',
-          demoMenu: true,
+          demoMenu: (process.env.SEED_DEMO_MENU ?? 'true') === 'true',
         });
         console.log(`✅ داده اولیه آماده شد. فایل پایگاه داده: ${config.databasePath}`);
         console.log('⚠️ گذرواژه مدیر را پس از نخستین ورود تغییر دهید.');

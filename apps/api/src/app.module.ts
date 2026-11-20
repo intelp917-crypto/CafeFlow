@@ -7,6 +7,7 @@ import { SessionGuard } from './common/guards/session.guard';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EmployeesModule } from './modules/employees/employees.module';
@@ -33,6 +34,7 @@ import { UsersModule } from './modules/users/users.module';
     DashboardModule,
     SettingsModule,
     UsersModule,
+    CatalogModule,
     ApprovalsModule,
     InventoryModule,
     PublicModule,

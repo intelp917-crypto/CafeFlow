@@ -13,3 +13,6 @@ backups/
 .vite/
 playwright-report/
 test-results/
+
+# Print bridge output (receipts) and local runtime folders
+print-output/

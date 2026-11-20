@@ -115,7 +115,9 @@ describe('POST /public/orders', () => {
 
     expect(response.body.total).toBe(subtotal + serviceCharge + tax);
 
-    const status = await agent.get(`/api/v1/public/orders/${response.body.code}`);
+    const status = await agent.get(
+      `/api/v1/public/orders/${response.body.code}?token=${response.body.statusToken}`,
+    );
     expect(status.status).toBe(200);
     expect(status.body.subtotal).toBe(subtotal);
     expect(status.body.serviceCharge).toBe(serviceCharge);
@@ -315,5 +317,309 @@ describe('customer service requests', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('VALIDATION_FAILED');
+  });
+});
+
+function createCampaign(
+  options: {
+    type?: 'percent' | 'fixed';
+    value?: number;
+    scope?: 'all' | 'products' | 'categories';
+    endsAt?: string | null;
+    maxUses?: number | null;
+    maxUsesPerDevice?: number | null;
+    usedCount?: number;
+    isActive?: 0 | 1;
+    targetProductId?: string;
+  } = {},
+): { id: string; token: string } {
+  const id = randomUUID();
+  context.db
+    .prepare(
+      `INSERT INTO campaigns
+         (id, name_fa, type, value, scope, starts_at, ends_at, max_uses, max_uses_per_device, used_count, is_active)
+       VALUES (?, 'کمپین آزمون', ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      id,
+      options.type ?? 'percent',
+      options.value ?? 20,
+      options.scope ?? 'all',
+      options.endsAt ?? null,
+      options.maxUses ?? null,
+      options.maxUsesPerDevice ?? null,
+      options.usedCount ?? 0,
+      options.isActive ?? 1,
+    );
+
+  if (options.targetProductId) {
+    context.db
+      .prepare("INSERT INTO campaign_targets (campaign_id, target_type, target_id) VALUES (?, 'product', ?)")
+      .run(id, options.targetProductId);
+  }
+
+  const token = `promo-${id}`;
+  context.db
+    .prepare("INSERT INTO qr_codes (id, kind, token, campaign_id, label) VALUES (?, 'promo', ?, ?, 'آزمون')")
+    .run(randomUUID(), token, id);
+
+  return { id, token };
+}
+
+async function placeWithPromo(
+  qrToken: string,
+  items: unknown[],
+  agent = request.agent(server(context.app)),
+) {
+  const response = await agent.post('/api/v1/public/orders').send({
+    qrToken,
+    clientRequestId: randomUUID(),
+    items,
+  });
+  expect(response.status).toBe(201);
+  return response;
+}
+
+function orderMoney(orderId: string) {
+  return context.db
+    .prepare('SELECT subtotal, discount_total, service_charge, tax_total, total FROM orders WHERE id = ?')
+    .get(orderId) as {
+    subtotal: number;
+    discount_total: number;
+    service_charge: number;
+    tax_total: number;
+    total: number;
+  };
+}
+
+describe('order status token', () => {
+  it('serves the status only to the guest holding the token', async () => {
+    const agent = request.agent(server(context.app));
+    const created = await agent.post('/api/v1/public/orders').send({
+      qrToken: tableQrToken,
+      clientRequestId: randomUUID(),
+      items: [{ productId: anotherProduct.id, quantity: 1, optionIds: [], extraIds: [] }],
+    });
+    expect(created.status).toBe(201);
+    expect(typeof created.body.statusToken).toBe('string');
+
+    const withToken = await agent.get(
+      `/api/v1/public/orders/${created.body.code}?token=${created.body.statusToken}`,
+    );
+    expect(withToken.status).toBe(200);
+    expect(withToken.body.code).toBe(created.body.code);
+
+    const withoutToken = await agent.get(`/api/v1/public/orders/${created.body.code}`);
+    expect(withoutToken.status).toBe(404);
+    expect(withoutToken.body.error.code).toBe('ORDER_NOT_FOUND');
+
+    const wrongToken = await agent.get(`/api/v1/public/orders/${created.body.code}?token=${randomUUID()}`);
+    expect(wrongToken.status).toBe(404);
+  });
+
+  it('keeps orders created before the token readable by code', async () => {
+    const created = await request(server(context.app))
+      .post('/api/v1/public/orders')
+      .set('Cookie', freshDeviceCookie())
+      .send({
+        qrToken: tableQrToken,
+        clientRequestId: randomUUID(),
+        items: [{ productId: anotherProduct.id, quantity: 1, optionIds: [], extraIds: [] }],
+      });
+    expect(created.status).toBe(201);
+
+    context.db.prepare('UPDATE orders SET status_token_hash = NULL WHERE id = ?').run(created.body.id);
+
+    const legacy = await request(server(context.app)).get(`/api/v1/public/orders/${created.body.code}`);
+    expect(legacy.status).toBe(200);
+    expect(legacy.body.code).toBe(created.body.code);
+  });
+});
+
+describe('promo QR campaigns', () => {
+  it('applies a percent campaign and charges service/tax on the net subtotal', async () => {
+    const { id, token } = createCampaign({ value: 20 });
+    const response = await placeWithPromo(token, [
+      { productId: anotherProduct.id, quantity: 1, optionIds: [], extraIds: [] },
+    ]);
+
+    const subtotal = anotherProduct.base_price;
+    const discount = Math.round((subtotal * 20) / 100);
+    const net = subtotal - discount;
+    const service = Math.round((net * 10) / 100);
+    const tax = Math.round(((net + service) * 9) / 100);
+
+    const money = orderMoney(response.body.id as string);
+    expect(money.discount_total).toBe(discount);
+    expect(money.service_charge).toBe(service);
+    expect(money.tax_total).toBe(tax);
+    expect(money.total).toBe(net + service + tax);
+
+    const campaign = context.db.prepare('SELECT used_count FROM campaigns WHERE id = ?').get(id) as {
+      used_count: number;
+    };
+    expect(campaign.used_count).toBe(1);
+
+    const redemption = context.db
+      .prepare('SELECT amount FROM campaign_redemptions WHERE order_id = ?')
+      .get(response.body.id) as { amount: number };
+    expect(redemption.amount).toBe(discount);
+  });
+
+  it('ignores an expired campaign instead of failing the order', async () => {
+    const { id, token } = createCampaign({ endsAt: new Date(Date.now() - 3_600_000).toISOString() });
+    const response = await placeWithPromo(token, [
+      { productId: anotherProduct.id, quantity: 1, optionIds: [], extraIds: [] },
+    ]);
+
+    const money = orderMoney(response.body.id as string);
+    expect(money.discount_total).toBe(0);
+    expect(money.total).toBe(money.subtotal + money.service_charge + money.tax_total);
+
+    const campaign = context.db.prepare('SELECT used_count FROM campaigns WHERE id = ?').get(id) as {
+      used_count: number;
+    };
+    expect(campaign.used_count).toBe(0);
+  });
+
+  it('honours the per-device use limit', async () => {
+    const { token } = createCampaign({ value: 10, maxUsesPerDevice: 1 });
+    const agent = request.agent(server(context.app));
+
+    const first = await placeWithPromo(
+      token,
+      [{ productId: anotherProduct.id, quantity: 1, optionIds: [], extraIds: [] }],
+      agent,
+    );
+    const second = await placeWithPromo(
+      token,
+      [{ productId: anotherProduct.id, quantity: 1, optionIds: [], extraIds: [] }],
+      agent,
+    );
+
+    expect(orderMoney(first.body.id as string).discount_total).toBeGreaterThan(0);
+    expect(orderMoney(second.body.id as string).discount_total).toBe(0);
+  });
+
+  it('discounts only the targeted products of a scoped campaign', async () => {
+    const { token } = createCampaign({ value: 50, scope: 'products', targetProductId: anotherProduct.id });
+
+    const targeted = await placeWithPromo(token, [
+      { productId: anotherProduct.id, quantity: 1, optionIds: [], extraIds: [] },
+    ]);
+    const untargeted = await placeWithPromo(token, [
+      { productId: latte.id, quantity: 1, optionIds: [milkOption.id], extraIds: [] },
+    ]);
+
+    expect(orderMoney(targeted.body.id as string).discount_total).toBe(
+      Math.round((anotherProduct.base_price * 50) / 100),
+    );
+    expect(orderMoney(untargeted.body.id as string).discount_total).toBe(0);
+  });
+});
+
+describe('order status abuse protection', () => {
+  it('throttles repeated failed lookups from one address but keeps a valid code open', async () => {
+    // A guest polls their own order every 15 seconds and never misses, so the
+    // miss budget is spent only by guessing. This runs last on purpose: it
+    // exhausts the per-IP budget shared by the whole file.
+    const agent = request.agent(server(context.app));
+    const created = await agent.post('/api/v1/public/orders').send({
+      qrToken: tableQrToken,
+      clientRequestId: randomUUID(),
+      items: [{ productId: anotherProduct.id, quantity: 1, optionIds: [], extraIds: [] }],
+    });
+    expect(created.status).toBe(201);
+
+    let blocked = false;
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const response = await request(server(context.app)).get(`/api/v1/public/orders/CF-ZZ${attempt}`);
+      if (response.status === 429) {
+        expect(response.body.error.code).toBe('RATE_LIMITED');
+        blocked = true;
+        break;
+      }
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe('ORDER_NOT_FOUND');
+    }
+    expect(blocked).toBe(true);
+
+    // The real guest holds the token and is not part of the guessing traffic.
+    const own = await agent.get(
+      `/api/v1/public/orders/${created.body.code}?token=${created.body.statusToken}`,
+    );
+    expect(own.status).toBe(200);
+    expect(own.body.code).toBe(created.body.code);
+  });
+});
+
+describe('guest adds another round', () => {
+  it('appends items, updates totals and is idempotent with the status token', async () => {
+    const agent = request.agent(server(context.app));
+    const created = await agent.post('/api/v1/public/orders').send({
+      qrToken: tableQrToken,
+      clientRequestId: randomUUID(),
+      items: [{ productId: anotherProduct.id, quantity: 1, optionIds: [], extraIds: [] }],
+    });
+    expect(created.status).toBe(201);
+
+    const payload = {
+      clientRequestId: randomUUID(),
+      items: [{ productId: anotherProduct.id, quantity: 2, optionIds: [], extraIds: [] }],
+    };
+
+    const added = await agent
+      .post(`/api/v1/public/orders/${created.body.code}/items?token=${created.body.statusToken}`)
+      .send(payload);
+    expect(added.status).toBe(201);
+    expect(added.body.replayed).toBe(false);
+    expect(added.body.itemCount).toBe(1);
+    expect(added.body.total).toBeGreaterThan(created.body.total);
+
+    const status = await agent.get(
+      `/api/v1/public/orders/${created.body.code}?token=${created.body.statusToken}`,
+    );
+    expect(status.body.items).toHaveLength(2);
+
+    const again = await agent
+      .post(`/api/v1/public/orders/${created.body.code}/items?token=${created.body.statusToken}`)
+      .send(payload);
+    expect(again.body.replayed).toBe(true);
+    expect(again.body.total).toBe(added.body.total);
+
+    const count = context.db
+      .prepare('SELECT COUNT(*) AS n FROM order_items WHERE order_id = ?')
+      .get(created.body.id) as { n: number };
+    expect(count.n).toBe(2);
+  });
+
+  it('requires the status token and refuses an order that is already ready', async () => {
+    const created = await request(server(context.app))
+      .post('/api/v1/public/orders')
+      .set('Cookie', freshDeviceCookie())
+      .send({
+        qrToken: tableQrToken,
+        clientRequestId: randomUUID(),
+        items: [{ productId: anotherProduct.id, quantity: 1, optionIds: [], extraIds: [] }],
+      });
+    expect(created.status).toBe(201);
+
+    const payload = {
+      clientRequestId: randomUUID(),
+      items: [{ productId: anotherProduct.id, quantity: 1, optionIds: [], extraIds: [] }],
+    };
+
+    const noToken = await request(server(context.app))
+      .post(`/api/v1/public/orders/${created.body.code}/items`)
+      .send(payload);
+    expect(noToken.status).toBe(404);
+
+    context.db.prepare("UPDATE orders SET status = 'ready' WHERE id = ?").run(created.body.id);
+
+    const refused = await request(server(context.app))
+      .post(`/api/v1/public/orders/${created.body.code}/items?token=${created.body.statusToken}`)
+      .send(payload);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe('ORDER_NOT_EDITABLE');
   });
 });

@@ -2,13 +2,17 @@ import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } fr
 import { Alert, Button, Card, CardBody, CardHeader, ErrorState, Field, Input, PageHeader, Spinner } from '@cafeflow/ui';
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { parseAmountFa, parseCoordinateFa } from '../lib/format';
 import type { SettingsResponse } from '../lib/types';
+import { Breadcrumb, useBranding } from '../lib/branding';
+import { CafeLocation } from '../components/customer/CafeLocation';
 
 const SELECT_CLASS =
   'h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm text-ink focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-500/10';
 
 export function SettingsPage() {
   const { hasPermission } = useAuth();
+  const { refresh: refreshBranding } = useBranding();
   const canWrite = hasPermission('settings.write');
 
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
@@ -20,12 +24,14 @@ export function SettingsPage() {
   const [form, setForm] = useState({
     restaurantNameFa: '',
     digitMode: 'fa' as 'fa' | 'latin',
-    serviceChargePercent: 0,
-    taxPercent: 0,
+    serviceChargePercent: '',
+    taxPercent: '',
     logoUrl: '',
     addressFa: '',
     phone: '',
     email: '',
+    latitude: '',
+    longitude: '',
   });
 
   const load = useCallback(async () => {
@@ -37,12 +43,14 @@ export function SettingsPage() {
       setForm({
         restaurantNameFa: data.restaurantNameFa,
         digitMode: data.digitMode,
-        serviceChargePercent: data.serviceChargePercent,
-        taxPercent: data.taxPercent,
+        serviceChargePercent: String(data.serviceChargePercent),
+        taxPercent: String(data.taxPercent),
         logoUrl: data.logoUrl,
         addressFa: data.addressFa,
         phone: data.phone,
         email: data.email,
+        latitude: data.latitude === null ? '' : String(data.latitude),
+        longitude: data.longitude === null ? '' : String(data.longitude),
       });
     } catch (caught) {
       setError(errorMessage(caught));
@@ -58,6 +66,36 @@ export function SettingsPage() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (saving) return;
+    // The percentage boxes accept Persian digits; parsing them here means a
+    // typed «۹» can never collapse into a silent zero when the form is saved.
+    const serviceChargePercent = parseAmountFa(form.serviceChargePercent);
+    const taxPercent = parseAmountFa(form.taxPercent);
+    if (
+      !Number.isInteger(serviceChargePercent) ||
+      !Number.isInteger(taxPercent) ||
+      serviceChargePercent < 0 ||
+      serviceChargePercent > 30 ||
+      taxPercent < 0 ||
+      taxPercent > 30
+    ) {
+      setError('درصد حق سرویس و مالیات باید عدد صحیح بین ۰ تا ۳۰ باشد.');
+      return;
+    }
+
+    const latitude = form.latitude.trim() === '' ? null : parseCoordinateFa(form.latitude);
+    const longitude = form.longitude.trim() === '' ? null : parseCoordinateFa(form.longitude);
+    if ((latitude === null) !== (longitude === null)) {
+      setError('برای نمایش روی نقشه، هم عرض و هم طول جغرافیایی را وارد کنید.');
+      return;
+    }
+    if (
+      (latitude !== null && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)) ||
+      (longitude !== null && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180))
+    ) {
+      setError('مختصات معتبر نیست؛ عرض بین ۹۰- و ۹۰ و طول بین ۱۸۰- و ۱۸۰ باشد.');
+      return;
+    }
+
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -65,15 +103,20 @@ export function SettingsPage() {
       const updated = await api.patch<SettingsResponse>('/settings', {
         restaurantNameFa: form.restaurantNameFa.trim(),
         digitMode: form.digitMode,
-        serviceChargePercent: Number(form.serviceChargePercent),
-        taxPercent: Number(form.taxPercent),
+        serviceChargePercent,
+        taxPercent,
         logoUrl: form.logoUrl,
         addressFa: form.addressFa.trim(),
         phone: form.phone.trim(),
         email: form.email.trim(),
+        latitude,
+        longitude,
       });
       setSettings(updated);
       setNotice('تنظیمات ذخیره شد.');
+      // The name appears in the sidebar, breadcrumbs and page title, so the
+      // shell has to follow the saved settings immediately.
+      void refreshBranding();
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -101,12 +144,26 @@ export function SettingsPage() {
     reader.readAsDataURL(file);
   };
 
+  const previewLatitude = form.latitude.trim() === '' ? null : parseCoordinateFa(form.latitude);
+  const previewLongitude = form.longitude.trim() === '' ? null : parseCoordinateFa(form.longitude);
+  const previewPoint =
+    previewLatitude !== null &&
+    previewLongitude !== null &&
+    Number.isFinite(previewLatitude) &&
+    Number.isFinite(previewLongitude) &&
+    previewLatitude >= -90 &&
+    previewLatitude <= 90 &&
+    previewLongitude >= -180 &&
+    previewLongitude <= 180
+      ? { latitude: previewLatitude, longitude: previewLongitude }
+      : null;
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="تنظیمات سیستم"
-        description="نام مجموعه، نحوه نمایش اعداد و درصدهای مالی. تغییرات در گزارش رویدادها با مقدار قبل و بعد ثبت می‌شود."
-        breadcrumb="کافه‌فلو / تنظیمات"
+        title="تنظیمات و برند"
+        description="نام کافه، لوگو، مشخصات تماس، نحوه نمایش اعداد و درصدهای مالی. تغییرات در گزارش رویدادها با مقدار قبل و بعد ثبت می‌شود."
+        breadcrumb={<Breadcrumb page="تنظیمات" />}
       />
 
       {notice ? <Alert tone="success">{notice}</Alert> : null}
@@ -126,7 +183,12 @@ export function SettingsPage() {
             <CardHeader title="تنظیمات عمومی" description={canWrite ? 'فیلدها را تغییر دهید و ذخیره کنید.' : 'شما فقط اجازه مشاهده تنظیمات را دارید.'} />
             <CardBody>
               <form onSubmit={submit} className="space-y-4">
-                <Field label="نام رستوران (فارسی)" htmlFor="restaurant-name" required>
+                <Field
+                  label="نام کافه/رستوران (فارسی)"
+                  htmlFor="restaurant-name"
+                  required
+                  hint="این نام در سایدبار، عنوان تب، breadcrumb صفحه‌ها، منوی QR و manifest نصب‌شدنی استفاده می‌شود."
+                >
                   <Input
                     id="restaurant-name"
                     value={form.restaurantNameFa}
@@ -159,13 +221,13 @@ export function SettingsPage() {
                   <Field label="درصد حق سرویس" htmlFor="service-charge" hint="بین ۰ تا ۳۰ درصد.">
                     <Input
                       id="service-charge"
-                      type="number"
-                      min={0}
-                      max={30}
+                      type="text"
+                      inputMode="numeric"
+                      dir="ltr"
                       className="num"
                       value={form.serviceChargePercent}
                       onChange={(event) =>
-                        setForm((current) => ({ ...current, serviceChargePercent: Number(event.target.value) }))
+                        setForm((current) => ({ ...current, serviceChargePercent: event.target.value }))
                       }
                       disabled={!canWrite}
                     />
@@ -174,12 +236,12 @@ export function SettingsPage() {
                   <Field label="درصد مالیات بر ارزش افزوده" htmlFor="tax" hint="بین ۰ تا ۳۰ درصد.">
                     <Input
                       id="tax"
-                      type="number"
-                      min={0}
-                      max={30}
+                      type="text"
+                      inputMode="numeric"
+                      dir="ltr"
                       className="num"
                       value={form.taxPercent}
-                      onChange={(event) => setForm((current) => ({ ...current, taxPercent: Number(event.target.value) }))}
+                      onChange={(event) => setForm((current) => ({ ...current, taxPercent: event.target.value }))}
                       disabled={!canWrite}
                     />
                   </Field>
@@ -270,6 +332,59 @@ export function SettingsPage() {
                     disabled={!canWrite}
                   />
                 </Field>
+
+                <div className="rounded-2xl border border-line/80 bg-canvas/60 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-ink">موقعیت روی نقشه</p>
+                      <p className="mt-1 text-[11px] leading-6 text-muted">
+                        مختصات نقطهٔ کافه؛ در منو، صفحهٔ اصلی و صفحهٔ پیگیری سفارش نمایش داده می‌شود و دکمهٔ «ناوبری» مسیر را به برنامهٔ نقشهٔ گوشی می‌دهد.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <Field label="عرض جغرافیایی (Latitude)" htmlFor="cafe-latitude" hint="مثلاً 35.6936023">
+                      <Input
+                        id="cafe-latitude"
+                        className="num"
+                        dir="ltr"
+                        inputMode="decimal"
+                        placeholder="35.6936023"
+                        value={form.latitude}
+                        onChange={(event) => setForm((current) => ({ ...current, latitude: event.target.value }))}
+                        disabled={!canWrite}
+                      />
+                    </Field>
+                    <Field label="طول جغرافیایی (Longitude)" htmlFor="cafe-longitude" hint="مثلاً 51.027541">
+                      <Input
+                        id="cafe-longitude"
+                        className="num"
+                        dir="ltr"
+                        inputMode="decimal"
+                        placeholder="51.027541"
+                        value={form.longitude}
+                        onChange={(event) => setForm((current) => ({ ...current, longitude: event.target.value }))}
+                        disabled={!canWrite}
+                      />
+                    </Field>
+                  </div>
+
+                  {previewPoint ? (
+                    <CafeLocation
+                      className="mt-4"
+                      nameFa={form.restaurantNameFa || 'کافه'}
+                      addressFa={form.addressFa}
+                      phone={form.phone}
+                      latitude={previewPoint.latitude}
+                      longitude={previewPoint.longitude}
+                    />
+                  ) : (
+                    <p className="mt-3 rounded-xl border border-dashed border-line bg-surface px-3 py-4 text-center text-[11px] text-muted">
+                      با وارد کردن هر دو مختصات، پیش‌نمایش نقشه همین‌جا دیده می‌شود.
+                    </p>
+                  )}
+                </div>
 
                 {canWrite ? (
                   <div className="flex justify-end">

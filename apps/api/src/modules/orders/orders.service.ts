@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   ORDER_TRANSITIONS,
@@ -5,6 +6,9 @@ import {
   TERMINAL_ORDER_STATUSES,
   canPrepTransition,
   canTransition,
+  percentOf,
+  type AddStaffOrderItemsInput,
+  type CreateStaffOrderInput,
   type ListOrdersQuery,
   type OrderStatus,
   type PrepQueueItem,
@@ -13,12 +17,15 @@ import {
   type StaffOrderDetail,
   type StaffTablesResponse,
   type TerminalRequestRow,
+  type UpdateOrderItemInput,
 } from '@cafeflow/shared';
 import { DB_SERVICE } from '../../common/tokens';
 import { DatabaseService } from '../../db/database.service';
 import { AuditService } from '../audit/audit.service';
 import { badRequest, conflict, forbidden, notFound } from '../../common/errors';
 import { InventoryService } from '../inventory/inventory.service';
+import type { PricedOrder } from '../public/public.service';
+import { PublicService } from '../public/public.service';
 import { OrdersRepository } from './orders.repository';
 
 export interface ActingUser {
@@ -67,6 +74,7 @@ export class OrdersService {
     @Inject(OrdersRepository) private readonly repository: OrdersRepository,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(InventoryService) private readonly inventory: InventoryService,
+    @Inject(PublicService) private readonly publicMenu: PublicService,
   ) {}
 
   list(query: ListOrdersQuery) {
@@ -104,7 +112,7 @@ export class OrdersService {
 
     if (to === 'paid') {
       throw conflict(
-        'ثبت پرداخت و تسویه در فاز ۴ فعال می‌شود. فعلاً سفارش را به «در انتظار پرداخت» ببرید.',
+        'وضعیت «پرداخت شده» فقط از پرداخت‌های تأییدشده مشتق می‌شود؛ تسویه را از صفحه صندوق ثبت کنید.',
         'PAYMENT_REQUIRED',
       );
     }
@@ -151,6 +159,228 @@ export class OrdersService {
     }
 
     return detail;
+  }
+
+  /* ---------------------------- staff ordering ---------------------------- */
+
+  /**
+   * A waiter enters the order at the table. Lines are priced by the same menu
+   * engine as the QR flow, so availability, options, extras, hours and every
+   * amount are decided server-side; the order starts confirmed because the
+   * guest agreed with the staff member standing there.
+   */
+  createStaffOrder(input: CreateStaffOrderInput, actor: ActingUser): StaffOrderDetail {
+    const priced = this.publicMenu.priceLines(input.items);
+    const table = input.tableId ? this.repository.findTable(input.tableId) : undefined;
+    if (input.tableId && !table) throw notFound('میزی با این شناسه یافت نشد.', 'TABLE_NOT_FOUND');
+
+    const id = randomUUID();
+    const code = this.publicMenu.nextOrderCode();
+
+    this.database.transaction(() => {
+      const sessionId = table
+        ? table.sessionId ?? this.repository.openTableSession(table.id, actor.userId)
+        : null;
+      if (table) this.repository.setTableStatus(table.id, 'occupied');
+
+      this.repository.insertOrder({
+        id,
+        code,
+        tableId: table?.id ?? null,
+        sessionId,
+        source: 'waiter',
+        subtotal: priced.subtotal,
+        discountTotal: 0,
+        serviceCharge: priced.serviceCharge,
+        taxTotal: priced.taxTotal,
+        total: priced.total,
+        note: input.note ?? null,
+        createdByUserId: actor.userId,
+      });
+
+      this.insertPricedItems(id, priced);
+
+      this.repository.insertEvent({
+        orderId: id,
+        type: 'order.created',
+        fromStatus: null,
+        toStatus: 'submitted',
+        actorUserId: actor.userId,
+        payload: {
+          source: 'waiter',
+          itemCount: priced.items.length,
+          total: priced.total,
+          tableId: table?.id ?? null,
+        },
+      });
+
+      this.walk(
+        { id, code, status: 'submitted', tableId: table?.id ?? null, sessionId },
+        ['confirmed'],
+        actor,
+        undefined,
+        false,
+      );
+    });
+
+    this.audit.record({
+      actorUserId: actor.userId,
+      actorUsername: actor.username,
+      action: 'order.created_by_staff',
+      entityType: 'order',
+      entityId: id,
+      before: null,
+      after: { code, tableId: table?.id ?? null, total: priced.total, itemCount: priced.items.length },
+    });
+
+    return this.detail(id);
+  }
+
+  /**
+   * Extra rounds on an open order: the same table keeps one order, so the
+   * kitchen sees a single stream and the bill grows with the new lines.
+   */
+  addStaffItems(orderId: string, input: AddStaffOrderItemsInput, actor: ActingUser): StaffOrderDetail {
+    const state = this.repository.findOrderState(orderId);
+    if (!state) throw notFound('سفارش یافت نشد.', 'ORDER_NOT_FOUND');
+    if (TERMINAL_ORDER_STATUSES.includes(state.status)) {
+      throw conflict('این سفارش بسته شده است و افزودن قلم به آن ممکن نیست.', 'ORDER_CLOSED');
+    }
+
+    const totals = this.repository.findOrderTotals(orderId);
+    if (!totals) throw notFound('سفارش یافت نشد.', 'ORDER_NOT_FOUND');
+
+    const priced = this.publicMenu.priceLines(input.items);
+    const percents = this.publicMenu.chargePercents();
+    const subtotal = totals.subtotal + priced.subtotal;
+    const serviceCharge = percentOf(subtotal, percents.serviceChargePercent);
+    const taxTotal = percentOf(subtotal + serviceCharge, percents.taxPercent);
+    const total = Math.max(0, subtotal - totals.discountTotal + serviceCharge + taxTotal);
+
+    this.database.transaction(() => {
+      this.insertPricedItems(orderId, priced);
+      this.repository.updateOrderTotals(orderId, { subtotal, serviceCharge, taxTotal, total });
+      this.repository.insertEvent({
+        orderId,
+        type: 'order.items_added',
+        fromStatus: state.status,
+        toStatus: state.status,
+        actorUserId: actor.userId,
+        payload: { itemCount: priced.items.length, addedSubtotal: priced.subtotal },
+      });
+    });
+
+    this.audit.record({
+      actorUserId: actor.userId,
+      actorUsername: actor.username,
+      action: 'order.items_added',
+      entityType: 'order',
+      entityId: orderId,
+      before: totals,
+      after: { subtotal, serviceCharge, taxTotal, total, addedItemCount: priced.items.length },
+    });
+
+    return this.detail(orderId);
+  }
+
+  /**
+   * A line can shrink or disappear until the guest is served. Amounts are
+   * recomputed from the remaining lines (never subtracted incrementally), and
+   * an open bill follows the new total.
+   */
+  updateItem(
+    orderId: string,
+    itemId: string,
+    input: UpdateOrderItemInput,
+    actor: ActingUser,
+  ): StaffOrderDetail {
+    const state = this.repository.findOrderState(orderId);
+    if (!state) throw notFound('سفارش یافت نشد.', 'ORDER_NOT_FOUND');
+    if (TERMINAL_ORDER_STATUSES.includes(state.status) || state.status === 'awaiting_payment') {
+      throw conflict('این سفارش بسته شده است و اقلام آن قابل تغییر نیست.', 'ORDER_CLOSED');
+    }
+    if (state.status === 'served') {
+      throw conflict('سفارش سرو شده است و اقلام آن قابل کاهش نیست.', 'ORDER_ALREADY_SERVED');
+    }
+
+    const item = this.repository.findOrderItem(orderId, itemId);
+    if (!item) throw notFound('قلم سفارش یافت نشد.', 'ORDER_ITEM_NOT_FOUND');
+    if (item.status === 'cancelled') throw conflict('این قلم قبلاً حذف شده است.', 'ITEM_CANCELLED');
+    if (item.status === 'served') throw conflict('این قلم سرو شده است و قابل تغییر نیست.', 'ITEM_SERVED');
+
+    const totals = this.repository.findOrderTotals(orderId);
+    if (!totals) throw notFound('سفارش یافت نشد.', 'ORDER_NOT_FOUND');
+
+    const percents = this.publicMenu.chargePercents();
+    const quantity = input.quantity;
+
+    this.database.transaction(() => {
+      if (quantity === 0) {
+        this.repository.cancelOrderItem(itemId);
+      } else {
+        this.repository.setOrderItemQuantity(itemId, quantity, item.unitPrice * quantity);
+      }
+
+      const subtotal = this.repository.sumActiveSubtotal(orderId);
+      const serviceCharge = percentOf(subtotal, percents.serviceChargePercent);
+      const taxTotal = percentOf(subtotal + serviceCharge, percents.taxPercent);
+      const total = Math.max(0, subtotal - totals.discountTotal + serviceCharge + taxTotal);
+      this.repository.updateOrderTotals(orderId, { subtotal, serviceCharge, taxTotal, total });
+
+      this.repository.insertEvent({
+        orderId,
+        type: quantity === 0 ? 'order.item_removed' : 'order.item_updated',
+        fromStatus: state.status,
+        toStatus: state.status,
+        actorUserId: actor.userId,
+        payload: {
+          itemId,
+          productNameFa: item.productNameFa,
+          fromQuantity: item.quantity,
+          toQuantity: quantity,
+        },
+      });
+    });
+
+    const after = this.repository.findOrderTotals(orderId);
+    this.audit.record({
+      actorUserId: actor.userId,
+      actorUsername: actor.username,
+      action: quantity === 0 ? 'order.item_removed' : 'order.item_updated',
+      entityType: 'order',
+      entityId: orderId,
+      before: totals,
+      after: after ?? null,
+      metadata: { itemId, productNameFa: item.productNameFa, fromQuantity: item.quantity, toQuantity: quantity },
+    });
+
+    return this.detail(orderId);
+  }
+
+  /** Writes priced lines plus one preparation task per line, inside a transaction. */
+  private insertPricedItems(orderId: string, priced: PricedOrder): void {
+    for (const item of priced.items) {
+      const itemId = randomUUID();
+      this.repository.insertOrderItem({
+        id: itemId,
+        orderId,
+        productId: item.product.id,
+        productNameFa: item.product.name_fa,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        total: item.total,
+        departmentId: item.product.department_id,
+        options: item.options,
+        extras: item.extras,
+        note: item.note,
+      });
+      this.repository.insertPrepTask({
+        orderItemId: itemId,
+        orderId,
+        departmentId: item.product.department_id,
+        targetMinutes: item.product.prep_minutes,
+      });
+    }
   }
 
   /* ------------------------------ prep flow ----------------------------- */

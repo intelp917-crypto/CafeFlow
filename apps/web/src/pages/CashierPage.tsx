@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -62,6 +63,13 @@ export function CashierPage() {
   const [discountSaving, setDiscountSaving] = useState(false);
   const [discountError, setDiscountError] = useState<string | null>(null);
 
+  const [splitParts, setSplitParts] = useState('3');
+  const [splitSaving, setSplitSaving] = useState(false);
+  const [splitError, setSplitError] = useState<string | null>(null);
+  const [selectedSplitId, setSelectedSplitId] = useState<string | null>(null);
+  const [customSplitOpen, setCustomSplitOpen] = useState(false);
+  const [customShares, setCustomShares] = useState<{ label: string; amount: string }[]>([]);
+
   const [paidOrders, setPaidOrders] = useState<StaffOrderSummary[]>([]);
   const [refundTarget, setRefundTarget] = useState<StaffOrderSummary | null>(null);
   const [refundAmount, setRefundAmount] = useState('');
@@ -88,7 +96,8 @@ export function CashierPage() {
   const loadPaid = useCallback(async () => {
     if (!canRefund) return;
     try {
-      const data = await api.get<{ items: StaffOrderSummary[] }>('/orders?status=paid&pageSize=20');
+      // `scope` defaults to the active orders, which excludes paid ones.
+      const data = await api.get<{ items: StaffOrderSummary[] }>('/orders?scope=all&status=paid&pageSize=20');
       setPaidOrders(data.items);
     } catch {
       // The refund list is secondary; the settlement queue already reports errors.
@@ -115,6 +124,11 @@ export function CashierPage() {
     setDiscountAmount('');
     setDiscountReason('');
     setDiscountError(null);
+    setSplitParts('3');
+    setSplitError(null);
+    setSelectedSplitId(null);
+    setCustomSplitOpen(false);
+    setCustomShares([]);
     setAmount(String(Math.max(order.total - order.paidTotal, 0)));
     setLoadingSummary(true);
     try {
@@ -144,16 +158,21 @@ export function CashierPage() {
         method,
         amount: value,
         reference: reference.trim() || undefined,
+        splitId: selectedSplitId ?? undefined,
       });
       setSummary(result);
       setAmount(String(result.remaining));
+      setSelectedSplitId(null);
       setReference('');
       setNotice(
         result.status === 'paid'
           ? `سفارش ${result.code} کامل تسویه شد.`
           : `پرداخت ثبت شد؛ مانده سفارش ${result.code}: ${formatRial(result.remaining)}`,
       );
+      // The paid list is where the receipt button lives, so it has to refresh
+      // together with the settlement queue.
       await load(true);
+      await loadPaid();
     } catch (caught) {
       setModalError(errorMessage(caught));
     } finally {
@@ -192,6 +211,106 @@ export function CashierPage() {
     } finally {
       setDiscountSaving(false);
     }
+  };
+
+  const splitBill = async () => {
+    if (!selected || splitSaving) return;
+    const parts = parseAmount(splitParts);
+    if (parts < 2) {
+      setSplitError('تقسیم دست‌کم دو سهم دارد.');
+      return;
+    }
+
+    setSplitSaving(true);
+    setSplitError(null);
+    try {
+      const result = await api.post<OrderPaymentsResponse>(`/orders/${selected.id}/splits`, { parts });
+      setSummary(result);
+      setCustomSplitOpen(false);
+      setSelectedSplitId(null);
+      const next = result.splits.find((share) => !share.isPaid);
+      setAmount(String(next?.amount ?? result.remaining));
+      setNotice(`فاکتور سفارش ${result.code} به ${formatCountFa(parts)} سهم تقسیم شد.`);
+    } catch (caught) {
+      setSplitError(errorMessage(caught));
+    } finally {
+      setSplitSaving(false);
+    }
+  };
+
+  const clearSplits = async () => {
+    if (!selected || splitSaving) return;
+    setSplitSaving(true);
+    setSplitError(null);
+    try {
+      const result = await api.del<OrderPaymentsResponse>(`/orders/${selected.id}/splits`);
+      setSummary(result);
+      setAmount(String(result.remaining));
+      setSelectedSplitId(null);
+      setCustomSplitOpen(false);
+      setNotice(`تقسیم فاکتور سفارش ${result.code} لغو شد.`);
+    } catch (caught) {
+      setSplitError(errorMessage(caught));
+    } finally {
+      setSplitSaving(false);
+    }
+  };
+
+  /** Seeds the editor with the current shares so they can be adjusted in place. */
+  const openCustomSplit = () => {
+    if (!summary) return;
+    const half = Math.floor(summary.total / 2);
+    const seed =
+      summary.splits.length >= 2
+        ? summary.splits.map((share) => ({ label: share.label, amount: String(share.amount) }))
+        : [
+            { label: 'سهم ۱', amount: String(half) },
+            { label: 'سهم ۲', amount: String(summary.total - half) },
+          ];
+    setCustomShares(seed);
+    setSplitError(null);
+    setCustomSplitOpen(true);
+  };
+
+  /** The server proves the sum equals the bill; checking here saves a round-trip. */
+  const saveCustomSplit = async () => {
+    if (!selected || !summary || splitSaving) return;
+    const shares = customShares.map((row) => ({ label: row.label.trim(), amount: parseAmount(row.amount) }));
+    if (shares.length < 2) {
+      setSplitError('تقسیم دست‌کم دو سهم دارد.');
+      return;
+    }
+    if (shares.some((share) => share.amount < 1)) {
+      setSplitError('مبلغ هر سهم باید بیشتر از صفر باشد.');
+      return;
+    }
+    const sum = shares.reduce((total, share) => total + share.amount, 0);
+    if (sum !== summary.total) {
+      setSplitError(`جمع سهم‌ها ${formatRial(sum)} است اما مبلغ فاکتور ${formatRial(summary.total)} است.`);
+      return;
+    }
+
+    setSplitSaving(true);
+    setSplitError(null);
+    try {
+      const result = await api.put<OrderPaymentsResponse>(`/orders/${selected.id}/splits`, { splits: shares });
+      setSummary(result);
+      setCustomSplitOpen(false);
+      setSelectedSplitId(null);
+      const next = result.splits.find((share) => !share.isPaid);
+      setAmount(String(next?.amount ?? result.remaining));
+      setNotice(`سهم‌های فاکتور ${result.code} ثبت شد.`);
+    } catch (caught) {
+      setSplitError(errorMessage(caught));
+    } finally {
+      setSplitSaving(false);
+    }
+  };
+
+  const pickShare = (share: OrderPaymentsResponse['splits'][number]) => {
+    setSelectedSplitId(share.id);
+    setAmount(String(share.amount));
+    setModalError(null);
   };
 
   const openRefund = (order: StaffOrderSummary) => {
@@ -317,7 +436,7 @@ export function CashierPage() {
       <PageHeader
         title="صندوق"
         description="تسویه سفارش‌های سروشده. مبلغ نهایی از پایگاه داده خوانده می‌شود؛ پرداخت جزئی مجاز است و سفارش فقط با رسیدن مجموع پرداخت‌ها به مبلغ کل «پرداخت شده» می‌شود."
-        breadcrumb="کافه‌فلو / صندوق"
+        breadcrumb={<Breadcrumb page="صندوق" />}
         actions={
           <span className="text-xs text-muted">
             {loading ? <Spinner size="sm" /> : null} {formatCountFa(orders.length)} سفارش قابل تسویه
@@ -406,6 +525,127 @@ export function CashierPage() {
               ) : null}
             </dl>
 
+            {summary.remaining > 0 && summary.paidTotal === 0 ? (
+              <div className="space-y-2 rounded-xl border border-dashed border-line p-3">
+                <p className="text-[11px] font-semibold text-ink">تقسیم فاکتور</p>
+                <p className="text-[10px] leading-5 text-muted">
+                  تقسیم فقط قبل از اولین پرداخت. باقیماندهٔ ریالی به سهم‌های اول اضافه می‌شود و مجموع سهم‌ها
+                  دقیقاً برابر مبلغ فاکتور است. با «سهم‌های دلبخواه» می‌توانید مبلغ هر نفر را جدا بنویسید.
+                </p>
+                {splitError ? <Alert tone="danger">{splitError}</Alert> : null}
+                <div className="flex flex-wrap items-end gap-2">
+                  <Field label="تعداد سهم">
+                    <Input
+                      value={splitParts}
+                      onChange={(event) => setSplitParts(event.target.value)}
+                      inputMode="numeric"
+                      dir="ltr"
+                    />
+                  </Field>
+                  <Button size="sm" variant="outline" loading={splitSaving} onClick={() => void splitBill()}>
+                    تقسیم مساوی
+                  </Button>
+                  {summary.splits.length > 0 ? (
+                    <Button size="sm" variant="ghost" loading={splitSaving} onClick={() => void clearSplits()}>
+                      لغو تقسیم
+                    </Button>
+                  ) : null}
+                  <Button size="sm" variant="ghost" loading={splitSaving} onClick={openCustomSplit}>
+                    سهم‌های دلبخواه
+                  </Button>
+                </div>
+
+                {customSplitOpen ? (
+                  <div className="space-y-2 rounded-xl border border-line p-2">
+                    <p className="text-[10px] leading-5 text-muted">
+                      مبلغ هر نفر را خودتان بنویسید؛ جمع سهم‌ها باید دقیقاً برابر مبلغ فاکتور باشد.
+                    </p>
+                    {customShares.map((row, index) => (
+                      <div key={index} className="flex items-end gap-2">
+                        <div className="min-w-24 flex-1">
+                          <Input
+                            value={row.label}
+                            onChange={(event) =>
+                              setCustomShares((current) =>
+                                current.map((item, position) =>
+                                  position === index ? { ...item, label: event.target.value } : item,
+                                ),
+                              )
+                            }
+                            aria-label={`برچسب سهم ${index + 1}`}
+                            placeholder={`سهم ${index + 1}`}
+                          />
+                        </div>
+                        <div className="w-32">
+                          <Input
+                            value={row.amount}
+                            onChange={(event) =>
+                              setCustomShares((current) =>
+                                current.map((item, position) =>
+                                  position === index ? { ...item, amount: event.target.value } : item,
+                                ),
+                              )
+                            }
+                            inputMode="numeric"
+                            dir="ltr"
+                            aria-label={`مبلغ سهم ${index + 1}`}
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={customShares.length <= 2}
+                          onClick={() => setCustomShares((current) => current.filter((_, position) => position !== index))}
+                        >
+                          حذف
+                        </Button>
+                      </div>
+                    ))}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setCustomShares((current) => [...current, { label: '', amount: '' }])}
+                      >
+                        افزودن سهم
+                      </Button>
+                      <span className="num text-[10px] text-muted">
+                        جمع: {formatRial(customShares.reduce((total, row) => total + parseAmount(row.amount), 0))} از{' '}
+                        {formatRial(summary.total)}
+                      </span>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="ghost" onClick={() => setCustomSplitOpen(false)}>
+                        انصراف
+                      </Button>
+                      <Button size="sm" variant="outline" loading={splitSaving} onClick={() => void saveCustomSplit()}>
+                        ثبت سهم‌ها
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {summary.splits.length > 0 ? (
+              <div>
+                <p className="mb-2 text-[11px] font-semibold text-ink">سهم‌ها</p>
+                <ul className="space-y-1.5">
+                  {summary.splits.map((share) => (
+                    <li key={share.id} className="flex items-center justify-between gap-2 text-[10px] text-muted">
+                      <span>{share.label}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="num text-ink">{formatRial(share.amount)}</span>
+                        <Badge tone={share.isPaid ? 'success' : 'neutral'}>
+                          {share.isPaid ? 'پرداخت شده' : 'در انتظار'}
+                        </Badge>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             <div className="space-y-2 rounded-xl border border-dashed border-line p-3">
               <p className="text-[11px] font-semibold text-ink">اعمال تخفیف</p>
               <p className="text-[10px] leading-5 text-muted">
@@ -457,10 +697,50 @@ export function CashierPage() {
                   </div>
                 </div>
 
+                {summary.splits.some((share) => !share.isPaid) ? (
+                  <div>
+                    <p className="mb-1 text-[11px] text-muted">پرداخت سهم مشخص (اختیاری)</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {summary.splits
+                        .filter((share) => !share.isPaid)
+                        .map((share) => (
+                          <button
+                            key={share.id}
+                            type="button"
+                            onClick={() => pickShare(share)}
+                            className={`rounded-xl border px-3 py-1.5 text-[11px] ${
+                              selectedSplitId === share.id
+                                ? 'border-brand-500 bg-brand-50 text-brand-700'
+                                : 'border-line bg-surface text-muted'
+                            }`}
+                          >
+                            {share.label} — {formatRial(share.amount)}
+                          </button>
+                        ))}
+                    </div>
+                    {selectedSplitId ? (
+                      <button
+                        type="button"
+                        className="mt-1 text-[10px] text-muted underline"
+                        onClick={() => {
+                          setSelectedSplitId(null);
+                          setAmount(String(summary.remaining));
+                        }}
+                      >
+                        انصراف از سهم
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <Field label="مبلغ (ریال)" hint="پرداخت جزئی مجاز است؛ مقدار پیش‌فرض کل مانده است.">
                   <Input
                     value={amount}
-                    onChange={(event) => setAmount(event.target.value)}
+                    onChange={(event) => {
+                      // Typing a different amount means this is no longer that person's share.
+                      setSelectedSplitId(null);
+                      setAmount(event.target.value);
+                    }}
                     inputMode="numeric"
                     dir="ltr"
                   />
@@ -487,6 +767,7 @@ export function CashierPage() {
                     <li key={payment.id} className="flex items-center justify-between gap-2 text-[10px] text-muted">
                       <span>
                         {payment.methodLabelFa}
+                        {payment.splitLabelFa ? ` — ${payment.splitLabelFa}` : ''}
                         {payment.receivedByName ? ` — ${payment.receivedByName}` : ''}
                         {payment.reference ? ` — ${payment.reference}` : ''}
                       </span>

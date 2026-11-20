@@ -21,6 +21,16 @@ export class ReportsController {
     return this.reports.summary(resolveRange(range.from, range.to));
   }
 
+  @Get('payments.xlsx')
+  @Permissions('reports.read')
+  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  xlsx(@Query() query: unknown, @Res({ passthrough: true }) response: Response) {
+    const range = parseWith(rangeSchema, query);
+    const resolved = resolveRange(range.from, range.to);
+    response.setHeader('Content-Disposition', `attachment; filename="payments-${resolved.from}-${resolved.to}.xlsx"`);
+    return this.reports.paymentsXlsx(resolved);
+  }
+
   @Get('payments.csv')
   @Permissions('reports.read')
   @Header('Content-Type', 'text/csv; charset=utf-8')

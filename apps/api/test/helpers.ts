@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { json } from 'express';
 import request from 'supertest';
 import type { Database } from 'better-sqlite3';
 import { AppModule } from '../src/app.module';
@@ -35,7 +36,9 @@ export async function createTestApp(): Promise<TestContext> {
   process.env.LOGIN_LOCK_MINUTES = '15';
 
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  const app = moduleRef.createNestApplication();
+  // Same JSON limit as production so image uploads behave identically here.
+  const app = moduleRef.createNestApplication({ bodyParser: false });
+  app.use(json({ limit: '2mb' }));
   app.setGlobalPrefix('api/v1');
   app.useGlobalFilters(new AppExceptionFilter());
   await app.init();

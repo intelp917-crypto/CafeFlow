@@ -59,6 +59,19 @@ export const updateSettingsSchema = z.object({
   addressFa: z.string().trim().max(300, 'نشانی بیش از حد طولانی است.').optional(),
   phone: z.string().trim().max(32, 'شماره تماس بیش از حد طولانی است.').optional(),
   email: z.string().trim().max(120).email('ایمیل معتبر نیست.').or(z.literal('')).optional(),
+  /** Null clears the pin; latitude and longitude must always move together. */
+  latitude: z
+    .number()
+    .min(-90, 'عرض جغرافیایی باید بین ۹۰- و ۹۰ باشد.')
+    .max(90, 'عرض جغرافیایی باید بین ۹۰- و ۹۰ باشد.')
+    .nullable()
+    .optional(),
+  longitude: z
+    .number()
+    .min(-180, 'طول جغرافیایی باید بین ۱۸۰- و ۱۸۰ باشد.')
+    .max(180, 'طول جغرافیایی باید بین ۱۸۰- و ۱۸۰ باشد.')
+    .nullable()
+    .optional(),
 });
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

@@ -130,7 +130,9 @@ export function seedDatabase(db: Database, options: SeedOptions): SeedResult {
     }
 
     // --- settings & module flags ----------------------------------------
-    db.prepare(`INSERT OR IGNORE INTO settings (id) VALUES ('singleton')`).run();
+    db.prepare(
+      `INSERT OR IGNORE INTO settings (id, latitude, longitude) VALUES ('singleton', 35.6936023, 51.027541)`,
+    ).run();
     const moduleInsert = db.prepare(
       `INSERT INTO module_settings (key, is_enabled, updated_at) VALUES (?, ?, ?)
        ON CONFLICT (key) DO NOTHING`,
@@ -248,28 +250,29 @@ export function seedDatabase(db: Database, options: SeedOptions): SeedResult {
         department: 'barista' | 'kitchen' | 'bar';
         descriptionFa: string;
         prep: number;
+        imageUrl: string;
       }> = [
-        { nameFa: 'اسپرسو', category: 'hot-drinks', price: 850000, department: 'barista', descriptionFa: 'تک شات اسپرسو با دانه ۱۰۰٪ عربیکا', prep: 3 },
-        { nameFa: 'آمریکانو', category: 'hot-drinks', price: 950000, department: 'barista', descriptionFa: 'اسپرسو با آب گرم', prep: 4 },
-        { nameFa: 'لاته', category: 'hot-drinks', price: 1250000, department: 'barista', descriptionFa: 'اسپرسو با شیر بخارپز و لاته‌آرت', prep: 5 },
-        { nameFa: 'کاپوچینو', category: 'hot-drinks', price: 1180000, department: 'barista', descriptionFa: 'اسپرسو، شیر و فوم مخملی', prep: 5 },
-        { nameFa: 'چای سیاه', category: 'hot-drinks', price: 550000, department: 'bar', descriptionFa: 'چای سیاه با نبات', prep: 4 },
-        { nameFa: 'آیس لاته', category: 'cold-drinks', price: 1380000, department: 'barista', descriptionFa: 'اسپرسو، شیر سرد و یخ', prep: 5 },
-        { nameFa: 'لیموناد', category: 'cold-drinks', price: 980000, department: 'bar', descriptionFa: 'لیموی تازه، نعناع و سودا', prep: 4 },
-        { nameFa: 'موهیتو', category: 'cold-drinks', price: 1050000, department: 'bar', descriptionFa: 'نعناع، لیمو و سودا', prep: 4 },
-        { nameFa: 'پاستا آلفردو', category: 'food', price: 2600000, department: 'kitchen', descriptionFa: 'پاستا با سس سفید و مرغ گریل', prep: 18 },
-        { nameFa: 'ساندویچ مرغ', category: 'food', price: 1950000, department: 'kitchen', descriptionFa: 'نان تست، مرغ گریل و سس مخصوص', prep: 12 },
-        { nameFa: 'سالاد سزار', category: 'food', price: 1750000, department: 'kitchen', descriptionFa: 'کاهو، مرغ، نان تست و سس سزار', prep: 10 },
-        { nameFa: 'چیزکیک', category: 'desserts', price: 1150000, department: 'kitchen', descriptionFa: 'چیزکیک نیویورکی با سس توت', prep: 3 },
-        { nameFa: 'براونی', category: 'desserts', price: 980000, department: 'kitchen', descriptionFa: 'براونی شکلاتی گرم', prep: 4 },
+        { nameFa: 'اسپرسو', category: 'hot-drinks', price: 850000, department: 'barista', descriptionFa: 'تک شات اسپرسو با دانه ۱۰۰٪ عربیکا', prep: 3, imageUrl: '/images/products/espresso.jpg' },
+        { nameFa: 'آمریکانو', category: 'hot-drinks', price: 950000, department: 'barista', descriptionFa: 'اسپرسو با آب گرم', prep: 4, imageUrl: '/images/products/americano.jpg' },
+        { nameFa: 'لاته', category: 'hot-drinks', price: 1250000, department: 'barista', descriptionFa: 'اسپرسو با شیر بخارپز و لاته‌آرت', prep: 5, imageUrl: '/images/products/latte.jpg' },
+        { nameFa: 'کاپوچینو', category: 'hot-drinks', price: 1180000, department: 'barista', descriptionFa: 'اسپرسو، شیر و فوم مخملی', prep: 5, imageUrl: '/images/products/cappuccino.jpg' },
+        { nameFa: 'چای سیاه', category: 'hot-drinks', price: 550000, department: 'bar', descriptionFa: 'چای سیاه با نبات', prep: 4, imageUrl: '/images/products/black-tea.jpg' },
+        { nameFa: 'آیس لاته', category: 'cold-drinks', price: 1380000, department: 'barista', descriptionFa: 'اسپرسو، شیر سرد و یخ', prep: 5, imageUrl: '/images/products/iced-latte.jpg' },
+        { nameFa: 'لیموناد', category: 'cold-drinks', price: 980000, department: 'bar', descriptionFa: 'لیموی تازه، نعناع و سودا', prep: 4, imageUrl: '/images/products/lemonade.jpg' },
+        { nameFa: 'موهیتو', category: 'cold-drinks', price: 1050000, department: 'bar', descriptionFa: 'نعناع، لیمو و سودا', prep: 4, imageUrl: '/images/products/mojito.jpg' },
+        { nameFa: 'پاستا آلفردو', category: 'food', price: 2600000, department: 'kitchen', descriptionFa: 'پاستا با سس سفید و مرغ گریل', prep: 18, imageUrl: '/images/products/alfredo-pasta.jpg' },
+        { nameFa: 'ساندویچ مرغ', category: 'food', price: 1950000, department: 'kitchen', descriptionFa: 'نان تست، مرغ گریل و سس مخصوص', prep: 12, imageUrl: '/images/products/chicken-sandwich.jpg' },
+        { nameFa: 'سالاد سزار', category: 'food', price: 1750000, department: 'kitchen', descriptionFa: 'کاهو، مرغ، نان تست و سس سزار', prep: 10, imageUrl: '/images/products/caesar-salad.jpg' },
+        { nameFa: 'چیزکیک', category: 'desserts', price: 1150000, department: 'kitchen', descriptionFa: 'چیزکیک نیویورکی با سس توت', prep: 3, imageUrl: '/images/products/cheesecake.jpg' },
+        { nameFa: 'براونی', category: 'desserts', price: 980000, department: 'kitchen', descriptionFa: 'براونی شکلاتی گرم', prep: 4, imageUrl: '/images/products/brownie.jpg' },
       ];
 
       const productIds = new Map<string, string>();
       for (const product of products) {
         const id = randomUUID();
         db.prepare(
-          `INSERT INTO products (id, category_id, name_fa, search_key, description_fa, base_price, department_id, prep_minutes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO products (id, category_id, name_fa, search_key, description_fa, base_price, department_id, prep_minutes, image_url)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
           id,
           categoryIds.get(product.category)!,
@@ -279,6 +282,7 @@ export function seedDatabase(db: Database, options: SeedOptions): SeedResult {
           product.price,
           departmentIds.get(product.department)!,
           product.prep,
+          product.imageUrl,
         );
         productIds.set(product.nameFa, id);
       }

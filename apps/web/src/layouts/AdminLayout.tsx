@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Button, cn } from '@cafeflow/ui';
 import type { ModuleKey } from '@cafeflow/shared';
 import { useAuth } from '../lib/auth';
+import { useBranding } from '../lib/branding';
 import { DeveloperCredit } from '../components/DeveloperCredit';
 
 interface NavItem {
@@ -18,6 +19,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: '/admin', label: 'داشبورد', permission: 'dashboard.read', end: true, icon: 'M4 13h6V4H4zm10 7h6v-9h-6zM4 20h6v-3H4zm10-13h6V4h-6z' },
   { to: '/admin/orders', label: 'سفارش‌ها', permission: 'orders.read', icon: 'M6 4h12v16H6zM9 8h6M9 12h6M9 16h4' },
+  { to: '/admin/catalog', label: 'منو و محصولات', permission: 'catalog.read', icon: 'M6 4h12v16H6zM9 8h6M9 12h6M9 16h4' },
   { to: '/admin/prep', label: 'صف آماده‌سازی', permission: 'prep.read', icon: 'M4 7h16M6 7v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7M9 3v4m6-4v4' },
   { to: '/admin/cashier', label: 'صندوق', permission: 'payments.read', icon: 'M4 7h16v10H4zM4 11h16M8 15h3' },
   { to: '/admin/tables', label: 'میزها', permission: 'layout.read', icon: 'M4 10h16M6 10V6h12v4M8 10v6m8-6v6M5 20h14' },
@@ -37,7 +39,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/admin/staff', label: 'کارکنان و نقش‌ها', permission: 'users.read', icon: 'M16 19v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z' },
   { to: '/admin/approvals', label: 'صف تأیید', permission: 'approvals.read', icon: 'M9 12l2 2 4-4M12 3l7 4v6c0 4-3 6.5-7 8-4-1.5-7-4-7-8V7z' },
   { to: '/admin/audit', label: 'گزارش رویدادها', permission: 'audit.read', icon: 'M5 5h14v14H5zM9 9h6M9 13h6M9 17h3' },
-  { to: '/admin/settings', label: 'تنظیمات', permission: 'settings.read', icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12h1.5M3.5 12H5m7-8.5V5m0 14v1.5M17 7l1-1M6 18l1-1m10 0l1 1M6 6l1 1' },
+  { to: '/admin/settings', label: 'تنظیمات و برند', permission: 'settings.read', icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12h1.5M3.5 12H5m7-8.5V5m0 14v1.5M17 7l1-1M6 18l1-1m10 0l1 1M6 6l1 1' },
 ];
 
 function Icon({ path }: { path: string }) {
@@ -60,6 +62,7 @@ function Icon({ path }: { path: string }) {
 export function AdminLayout() {
   const { user, logout, hasPermission, isModuleEnabled } = useAuth();
   const navigate = useNavigate();
+  const { nameFa: brandName } = useBranding();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -80,7 +83,7 @@ export function AdminLayout() {
 
   const sidebar = (
     <nav aria-label="ناوبری اصلی" className="flex h-full flex-col gap-1 p-3.5">
-      <div className="mb-5 flex items-center gap-2.5 px-2 py-1">
+      <div className="mb-4 flex shrink-0 items-center gap-2.5 px-2 py-1">
         <span className="flex size-10 items-center justify-center rounded-full border border-brand-300/30 bg-brand-500/15 text-cream">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="size-5">
             <path d="M5 9h11a4 4 0 0 1 0 8h-1v2H8v-2H5z" strokeLinejoin="round" />
@@ -88,32 +91,37 @@ export function AdminLayout() {
           </svg>
         </span>
         <div className="leading-tight">
-          <p className="font-display text-lg font-bold text-cream">کافه‌فلو</p>
+          <p className="font-display text-lg font-bold text-cream">{brandName}</p>
           <p className="text-[10px] text-cream/50">مدیریت کافه و رستوران</p>
         </div>
       </div>
 
-      {items.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.end}
-          onClick={() => setMobileOpen(false)}
-          className={({ isActive }) =>
-            cn(
-              'flex items-center gap-2.5 rounded-full px-3.5 py-2.5 text-xs font-medium',
-              isActive
-                ? 'bg-brand-500 text-cream shadow-[0_10px_24px_-16px_rgba(0,0,0,0.9)]'
-                : 'text-cream/65 hover:bg-white/5 hover:text-cream',
-            )
-          }
-        >
-          <Icon path={item.icon} />
-          {item.label}
-        </NavLink>
-      ))}
+      {/* The menu is longer than a laptop screen, so the list scrolls on its
+          own: the last entries (تنظیمات, where the café name/logo live) stay
+          reachable while the brand header and the footer stay in place. */}
+      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain px-1 pb-1">
+        {items.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            onClick={() => setMobileOpen(false)}
+            className={({ isActive }) =>
+              cn(
+                'flex shrink-0 items-center gap-2.5 rounded-full px-3.5 py-2.5 text-xs font-medium',
+                isActive
+                  ? 'bg-brand-500 text-cream shadow-[0_10px_24px_-16px_rgba(0,0,0,0.9)]'
+                  : 'text-cream/65 hover:bg-white/5 hover:text-cream',
+              )
+            }
+          >
+            <Icon path={item.icon} />
+            {item.label}
+          </NavLink>
+        ))}
+      </div>
 
-      <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-3.5 text-[10px] leading-5 text-cream/55">
+      <div className="mt-3 shrink-0 rounded-2xl border border-white/10 bg-white/5 p-3.5 text-[10px] leading-5 text-cream/55">
         <p className="font-semibold text-cream/85">نسخه ۰.۹</p>
         <p>طراح سالن، شیفت و عملکرد، مالی و مرکز پیام.</p>
       </div>
@@ -123,7 +131,7 @@ export function AdminLayout() {
   return (
     <div className="min-h-dvh bg-canvas">
       <div className="mx-auto flex max-w-[1600px]">
-        <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 border-e border-white/10 bg-espresso lg:block">
+        <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 border-e border-white/10 bg-espresso lg:block print:hidden">
           {sidebar}
         </aside>
 
@@ -135,7 +143,7 @@ export function AdminLayout() {
         ) : null}
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 border-b border-line bg-canvas/95 backdrop-blur">
+          <header className="sticky top-0 z-30 border-b border-line bg-canvas/95 backdrop-blur print:hidden">
             <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
               <div className="flex items-center gap-3">
                 <button
@@ -169,12 +177,12 @@ export function AdminLayout() {
             </div>
           </header>
 
-          <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 print:p-0">
             <Outlet />
           </main>
 
-          <footer className="space-y-4 border-t border-line px-4 py-5 text-center text-[10px] text-muted sm:px-6">
-            <p>کافه‌فلو — سامانه یکپارچه مدیریت کافه و رستوران</p>
+          <footer className="space-y-4 border-t border-line px-4 py-5 text-center text-[10px] text-muted sm:px-6 print:hidden">
+            <p>{brandName} — سامانه یکپارچه مدیریت کافه و رستوران</p>
             <DeveloperCredit />
           </footer>
         </div>

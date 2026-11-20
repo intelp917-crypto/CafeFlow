@@ -218,12 +218,13 @@ describe('inventory', () => {
     ingredientId = ingredient.body.id;
 
     const recipe = await admin.post(`/api/v1/inventory/recipes/${productId}`).send({
-      yieldQty: 1,
-      items: [{ ingredientId, qty: 18 }],
+      yieldQty: 2,
+      items: [{ ingredientId, qty: 36 }],
     });
     expect(recipe.status).toBe(200);
+    expect(recipe.body.yieldQty).toBe(2);
     expect(recipe.body.items).toHaveLength(1);
-    expect(recipe.body.items[0].qty).toBe(18);
+    expect(recipe.body.items[0].qty).toBe(36);
   });
 
   it('deducts recipe ingredients when an order is placed', async () => {

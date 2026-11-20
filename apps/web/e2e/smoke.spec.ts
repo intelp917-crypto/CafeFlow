@@ -2,6 +2,8 @@ import { expect, test, type Page } from '@playwright/test';
 
 const ADMIN_USERNAME = process.env.E2E_ADMIN_USERNAME ?? 'admin';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'CafeFlow@1404';
+// The suite runs its own API instance (see playwright.config.ts).
+const API_ORIGIN = process.env.E2E_API_ORIGIN ?? 'http://127.0.0.1:3100';
 
 async function loginAsAdmin(page: Page) {
   await page.goto('/staff/login');
@@ -51,9 +53,13 @@ test('security page exposes MFA status', async ({ page }) => {
 });
 
 test('PWA shell and hardened API headers are served', async ({ request }) => {
-  const manifest = await request.get('/manifest.webmanifest');
+  // The installed-app manifest is generated from the café settings, so the
+  // name follows whatever the operator saved instead of a build-time constant.
+  const manifest = await request.get('/api/v1/public/branding/manifest');
   expect(manifest.status()).toBe(200);
-  expect((await manifest.json()).short_name).toBe('کافه‌فلو');
+  const branding = (await manifest.json()) as { name: string; short_name: string };
+  expect(branding.short_name).toBeTruthy();
+  expect(branding.name).toContain(branding.short_name);
 
   const worker = await request.get('/sw.js');
   expect(worker.status()).toBe(200);
@@ -62,7 +68,7 @@ test('PWA shell and hardened API headers are served', async ({ request }) => {
   const offline = await request.get('/offline.html');
   expect(offline.status()).toBe(200);
 
-  const health = await request.get('http://127.0.0.1:3000/api/v1/health');
+  const health = await request.get(`${API_ORIGIN}/api/v1/health`);
   expect(health.status()).toBe(200);
   const headers = health.headers();
   expect(headers['x-content-type-options']).toBe('nosniff');

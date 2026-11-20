@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -23,6 +24,7 @@ import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatCountFa, formatDateTimeFa, formatRial, relativeTimeFa } from '../lib/format';
 import { orderStatusFa, orderStatusTone, prepStatusFa, prepStatusTone } from '../lib/labels';
+import { ManualOrderModal } from '../components/orders/ManualOrderModal';
 
 const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: '', label: 'همه وضعیت‌ها' },
@@ -56,6 +58,8 @@ export function OrdersPage() {
   const [saving, setSaving] = useState<OrderStatus | null>(null);
   const [cancelMode, setCancelMode] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [manualOpen, setManualOpen] = useState(false);
+  const [itemSaving, setItemSaving] = useState<string | null>(null);
 
   const load = useCallback(
     async (silent = false) => {
@@ -85,6 +89,54 @@ export function OrdersPage() {
     const interval = window.setInterval(() => void load(true), 10_000);
     return () => window.clearInterval(interval);
   }, [load]);
+
+  const printTickets = async () => {
+    if (!detail) return;
+    try {
+      const result = await api.post<{ created: number }>(`/orders/${detail.id}/tickets`);
+      setNotice(
+        result.created > 0
+          ? `${formatCountFa(result.created)} بلیت بخش به صف چاپ رفت.`
+          : 'بلیت این دور از قبل در صف چاپ است.',
+      );
+    } catch (caught) {
+      setDetailError(errorMessage(caught));
+    }
+  };
+
+  const changeItemQuantity = async (item: StaffOrderDetail['items'][number], quantity: number) => {
+    if (!detail || itemSaving) return;
+    setItemSaving(item.id);
+    try {
+      const next = await api.patch<StaffOrderDetail>(`/orders/${detail.id}/items/${item.id}`, { quantity });
+      setDetail(next);
+      setDetailError(null);
+      setNotice(
+        quantity === 0
+          ? `«${item.productNameFa}» از سفارش ${next.code} حذف شد.`
+          : `تعداد «${item.productNameFa}» در سفارش ${next.code} به ${formatCountFa(quantity)} رسید.`,
+      );
+      await load(true);
+    } catch (caught) {
+      setDetailError(errorMessage(caught));
+    } finally {
+      setItemSaving(null);
+    }
+  };
+
+  const printProforma = async () => {
+    if (!detail) return;
+    try {
+      const result = await api.post<{ existed: boolean }>(`/orders/${detail.id}/receipt`, { proforma: true });
+      setNotice(
+        result.existed
+          ? `پیش‌فاکتور سفارش ${detail.code} قبلاً در صف چاپ است.`
+          : `پیش‌فاکتور سفارش ${detail.code} در صف چاپ قرار گرفت.`,
+      );
+    } catch (caught) {
+      setDetailError(errorMessage(caught));
+    }
+  };
 
   const openDetail = async (id: string) => {
     setDetailLoading(true);
@@ -170,11 +222,14 @@ export function OrdersPage() {
       <PageHeader
         title="سفارش‌ها"
         description="صف سفارش‌های فعال، آماده‌سازی هر آیتم و تغییر وضعیت با همان ماشین وضعیت سمت سرور."
-        breadcrumb="کافه‌فلو / سفارش‌ها"
+        breadcrumb={<Breadcrumb page="سفارش‌ها" />}
         actions={
-          <span className="text-xs text-muted">
-            {loading ? <Spinner size="sm" /> : null} {formatCountFa(total)} سفارش
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted">
+              {loading ? <Spinner size="sm" /> : null} {formatCountFa(total)} سفارش
+            </span>
+            {canWrite ? <Button onClick={() => setManualOpen(true)}>سفارش دستی</Button> : null}
+          </div>
         }
       />
 
@@ -257,6 +312,12 @@ export function OrdersPage() {
         footer={
           detail && canWrite ? (
             <div className="flex flex-wrap justify-end gap-1.5">
+              <Button size="sm" variant="outline" onClick={() => void printProforma()}>
+                پیش‌فاکتور
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => void printTickets()}>
+                بلیت بخش‌ها
+              </Button>
               {detail.allowedTransitions
                 .filter((entry) => entry.status !== 'cancelled' || canCancel)
                 .map((entry) => (
@@ -317,6 +378,29 @@ export function OrdersPage() {
                       </Badge>
                     </div>
                   </div>
+                  {canWrite &&
+                  item.itemStatus !== 'cancelled' &&
+                  !['served', 'awaiting_payment', 'paid', 'cancelled'].includes(detail.status) ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5 print:hidden">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        loading={itemSaving === item.id}
+                        disabled={item.quantity <= 1}
+                        onClick={() => void changeItemQuantity(item, item.quantity - 1)}
+                      >
+                        کاهش یک عدد
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        loading={itemSaving === item.id}
+                        onClick={() => void changeItemQuantity(item, 0)}
+                      >
+                        حذف قلم
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -386,6 +470,16 @@ export function OrdersPage() {
           </Button>
         </div>
       ) : null}
+
+      <ManualOrderModal
+        open={manualOpen}
+        onClose={() => setManualOpen(false)}
+        onCreated={(createdCode) => {
+          setManualOpen(false);
+          setNotice(`سفارش ${createdCode} ثبت شد و به صف آماده‌سازی رفت.`);
+          void load(true);
+        }}
+      />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Button,
@@ -122,7 +123,7 @@ export function FinancePage() {
       <PageHeader
         title="مالی و سود و زیان"
         description="درآمد از دفتر پرداخت‌های تأییدشده و هزینه‌ها از دفتر هزینه‌ها محاسبه می‌شود؛ سود و حاشیه سود همان‌جا ساخته می‌شوند."
-        breadcrumb="کافه‌فلو / مالی"
+        breadcrumb={<Breadcrumb page="مالی" />}
         actions={
           <div className="flex flex-wrap items-end gap-2">
             <Input

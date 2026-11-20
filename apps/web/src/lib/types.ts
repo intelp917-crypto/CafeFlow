@@ -1,6 +1,11 @@
 import type { ModuleKey } from '@cafeflow/shared';
 
 export type {
+  CatalogCategory,
+  CatalogOption,
+  CatalogOptionGroup,
+  CatalogProduct,
+  CatalogResponse,
   StaffOrderSummary,
   StaffOrderDetail,
   StaffOrderItem,
@@ -129,6 +134,8 @@ export interface SettingsResponse {
   addressFa: string;
   phone: string;
   email: string;
+  latitude: number | null;
+  longitude: number | null;
   currency: string;
   digitMode: 'fa' | 'latin';
   timezone: string;

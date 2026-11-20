@@ -3,6 +3,7 @@ import { Alert, Badge, Card, CardBody, CardHeader, ErrorState, PageHeader, Spinn
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import type { ModuleStatus } from '../lib/types';
+import { Breadcrumb } from '../lib/branding';
 
 export function ModulesPage() {
   const { hasPermission } = useAuth();
@@ -85,7 +86,7 @@ export function ModulesPage() {
       <PageHeader
         title="ماژول‌ها و ویژگی‌ها"
         description="ماژول‌های هسته همیشه فعال‌اند. ماژول‌های کسب‌وکار اختیاری‌اند، به‌صورت پیش‌فرض خاموش هستند و داده‌هایشان با غیرفعال شدن حذف نمی‌شود."
-        breadcrumb="کافه‌فلو / ماژول‌ها"
+        breadcrumb={<Breadcrumb page="ماژول‌ها" />}
         actions={<span className="text-xs text-muted">{modules.length} ماژول ثبت‌شده</span>}
       />
 

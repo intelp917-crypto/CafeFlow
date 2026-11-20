@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -322,7 +323,7 @@ export function EmployeesPage() {
       <PageHeader
         title="کارکنان، شیفت و عملکرد"
         description="پروفایل پرسنلی، برنامه شیفت با جلوگیری از تداخل، ثبت حضور و خروج، و عملکرد هر کارمند از دفتر واقعی سفارش و پرداخت."
-        breadcrumb="کافه‌فلو / کارکنان"
+        breadcrumb={<Breadcrumb page="کارکنان" />}
         actions={
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setEmployeeModal(true)} disabled={!directory?.candidates.length}>

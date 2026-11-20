@@ -1,9 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   PAYMENT_METHOD_LABELS_FA,
+  PAYMENT_STATUS_LABELS_FA,
+  formatJalali,
   type PaymentMethod,
   type ReportSummary,
 } from '@cafeflow/shared';
+import { buildXlsx } from './xlsx';
 import { DB_SERVICE } from '../../common/tokens';
 import { DatabaseService } from '../../db/database.service';
 import { badRequest } from '../../common/errors';
@@ -148,8 +151,8 @@ export class ReportsService {
     };
   }
 
-  paymentsCsv(range: DateRange): string {
-    const rows = this.database.all<{
+  private paymentRows(range: DateRange) {
+    return this.database.all<{
       paid_at: string;
       code: string | null;
       method: string;
@@ -165,6 +168,32 @@ export class ReportsService {
         ORDER BY p.paid_at ASC`,
       [range.startIso, range.endIso],
     );
+  }
+
+  /** A real workbook: each payment is a row, amounts stay numeric. */
+  paymentsXlsx(range: DateRange): Buffer {
+    const rows = this.paymentRows(range);
+
+    return buildXlsx([
+      {
+        name: 'پرداخت‌ها',
+        rows: [
+          ['زمان پرداخت', 'کد سفارش', 'روش', 'مبلغ (ریال)', 'وضعیت', 'دریافت‌کننده'],
+          ...rows.map((row) => [
+            formatJalali(new Date(row.paid_at), { withTime: true }),
+            row.code ?? '',
+            PAYMENT_METHOD_LABELS_FA[row.method as PaymentMethod] ?? row.method,
+            row.amount,
+            PAYMENT_STATUS_LABELS_FA[row.status] ?? row.status,
+            row.receiver ?? '',
+          ]),
+        ],
+      },
+    ]);
+  }
+
+  paymentsCsv(range: DateRange): string {
+    const rows = this.paymentRows(range);
 
     const escape = (value: string | number | null): string => {
       const text = value === null ? '' : String(value);

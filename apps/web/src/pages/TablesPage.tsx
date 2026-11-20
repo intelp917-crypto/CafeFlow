@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -68,7 +69,7 @@ export function TablesPage() {
       <PageHeader
         title="میزها"
         description="وضعیت زنده هر میز، نشست باز، تعداد سفارش فعال و مبلغ باز. این اعداد از سفارش‌های واقعی خوانده می‌شوند."
-        breadcrumb="کافه‌فلو / میزها"
+        breadcrumb={<Breadcrumb page="میزها" />}
         actions={
           <div className="flex items-center gap-2 text-xs text-muted">
             {loading ? <Spinner size="sm" /> : null}

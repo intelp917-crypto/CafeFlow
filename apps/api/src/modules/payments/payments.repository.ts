@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   PAYMENT_METHOD_LABELS_FA,
+  type BillSplit,
   type OrderBill,
   type OrderStatus,
   type PaymentMethod,
@@ -40,6 +41,15 @@ interface PaymentRow {
   reference: string | null;
   paid_at: string;
   receiver: string | null;
+  split_label: string | null;
+}
+
+interface SplitRow {
+  id: string;
+  bill_id: string;
+  label: string;
+  amount: number;
+  is_paid: number;
 }
 
 /**
@@ -102,6 +112,98 @@ export class PaymentsRepository {
     return { id, status: 'open', total: order.total, paidTotal: 0, settledAt: null };
   }
 
+  /* --------------------------------- splits -------------------------------- */
+
+  /** Shares of the latest bill; a settled bill keeps all of them marked paid. */
+  listSplits(orderId: string): BillSplit[] {
+    return this.database
+      .all<{ id: string; label: string; amount: number; is_paid: number }>(
+        `SELECT s.id, s.label, s.amount, s.is_paid
+           FROM bill_splits s
+          WHERE s.bill_id = (SELECT id FROM bills WHERE order_id = ? ORDER BY created_at DESC LIMIT 1)
+          ORDER BY s.rowid ASC`,
+        [orderId],
+      )
+      .map((row) => ({ id: row.id, label: row.label, amount: row.amount, isPaid: row.is_paid === 1 }));
+  }
+
+  hasOpenSplits(orderId: string): boolean {
+    const row = this.database.get<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM bill_splits s
+         JOIN bills b ON b.id = s.bill_id
+        WHERE b.order_id = ? AND b.status = 'open'`,
+      [orderId],
+    );
+    return (row?.n ?? 0) > 0;
+  }
+
+  /** Replaces the shares of the bill; the caller wraps it in a transaction. */
+  replaceSplits(billId: string, shares: { label: string; amount: number }[]): void {
+    this.database.run('DELETE FROM bill_splits WHERE bill_id = ?', [billId]);
+    for (const share of shares) {
+      this.database.run('INSERT INTO bill_splits (id, bill_id, label, amount, is_paid) VALUES (?, ?, ?, ?, 0)', [
+        randomUUID(),
+        billId,
+        share.label,
+        share.amount,
+      ]);
+    }
+  }
+
+  clearSplits(orderId: string): number {
+    const result = this.database.run(
+      `DELETE FROM bill_splits
+        WHERE bill_id IN (SELECT id FROM bills WHERE order_id = ? AND status = 'open')`,
+      [orderId],
+    );
+    return result.changes;
+  }
+
+  /**
+   * Marks shares paid in order while their cumulative amount is covered. A
+   * share already settled by an explicit share payment is never unmarked, and
+   * its amount is subtracted first so a later partial payment cannot settle the
+   * wrong person's share.
+   */
+  syncSplits(billId: string, paidTotal: number): void {
+    const rows = this.database.all<{ id: string; amount: number; is_paid: number }>(
+      'SELECT id, amount, is_paid FROM bill_splits WHERE bill_id = ? ORDER BY rowid ASC',
+      [billId],
+    );
+
+    let covered = paidTotal;
+    for (const row of rows) {
+      if (row.is_paid === 1) covered -= row.amount;
+    }
+
+    let cumulative = 0;
+    for (const row of rows) {
+      if (row.is_paid === 1) continue;
+      cumulative += row.amount;
+      const isPaid = cumulative <= covered ? 1 : 0;
+      if (isPaid !== row.is_paid) {
+        this.database.run('UPDATE bill_splits SET is_paid = ? WHERE id = ?', [isPaid, row.id]);
+      }
+    }
+  }
+
+  /** One share of this order's latest bill, for explicit payment attribution. */
+  findSplit(orderId: string, splitId: string): SplitRow | undefined {
+    return this.database.get<SplitRow>(
+      `SELECT s.id, s.bill_id, s.label, s.amount, s.is_paid
+         FROM bill_splits s
+         JOIN bills b ON b.id = s.bill_id
+        WHERE s.id = ? AND b.order_id = ?
+        ORDER BY b.created_at DESC
+        LIMIT 1`,
+      [splitId, orderId],
+    );
+  }
+
+  markSplitPaid(splitId: string): void {
+    this.database.run('UPDATE bill_splits SET is_paid = 1 WHERE id = ?', [splitId]);
+  }
+
   sumConfirmed(orderId: string): number {
     const row = this.database.get<{ total: number }>(
       `SELECT COALESCE(SUM(amount), 0) AS total FROM payments
@@ -114,9 +216,11 @@ export class PaymentsRepository {
   listPayments(orderId: string): PaymentRecord[] {
     return this.database
       .all<PaymentRow>(
-        `SELECT p.id, p.method, p.amount, p.status, p.reference, p.paid_at, u.full_name AS receiver
+        `SELECT p.id, p.method, p.amount, p.status, p.reference, p.paid_at, u.full_name AS receiver,
+                s.label AS split_label
            FROM payments p
            LEFT JOIN users u ON u.id = p.received_by_user_id
+           LEFT JOIN bill_splits s ON s.id = p.bill_split_id
           WHERE p.order_id = ?
           ORDER BY p.paid_at ASC, p.rowid ASC`,
         [orderId],
@@ -130,6 +234,7 @@ export class PaymentsRepository {
         reference: row.reference,
         receivedByName: row.receiver,
         paidAt: row.paid_at,
+        splitLabelFa: row.split_label,
       }));
   }
 
@@ -154,16 +259,44 @@ export class PaymentsRepository {
     amount: number;
     reference: string;
     receivedByUserId: string;
+    cashRegisterId: string | null;
   }): string {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.database.run(
       `INSERT INTO payments
-         (id, bill_id, order_id, method, amount, status, received_by_user_id, reference, paid_at, created_at)
-       VALUES (?, ?, ?, ?, ?, 'refunded', ?, ?, ?, ?)`,
-      [id, entry.billId, entry.orderId, entry.method, entry.amount, entry.receivedByUserId, entry.reference, now, now],
+         (id, bill_id, order_id, method, amount, status, received_by_user_id, cash_register_id,
+          reference, paid_at, created_at)
+       VALUES (?, ?, ?, ?, ?, 'refunded', ?, ?, ?, ?, ?)`,
+      [
+        id,
+        entry.billId,
+        entry.orderId,
+        entry.method,
+        entry.amount,
+        entry.receivedByUserId,
+        entry.cashRegisterId,
+        entry.reference,
+        now,
+        now,
+      ],
     );
     return id;
+  }
+
+  /**
+   * Which register the money belongs to. One open session is unambiguous and is
+   * used even when another cashier opened it; with several open sessions only
+   * the actor's own session is used, never an arbitrary guess.
+   */
+  openCashRegisterFor(userId: string): string | null {
+    const open = this.database.all<{ cash_register_id: string; opened_by_user_id: string }>(
+      `SELECT cash_register_id, opened_by_user_id FROM cash_sessions
+        WHERE status = 'open' ORDER BY opened_at DESC`,
+    );
+    if (open.length === 0) return null;
+    if (open.length === 1) return open[0]!.cash_register_id;
+    return open.find((row) => row.opened_by_user_id === userId)?.cash_register_id ?? null;
   }
 
   updateOrderDiscount(orderId: string, discountTotal: number, total: number): void {
@@ -202,12 +335,15 @@ export class PaymentsRepository {
     amount: number;
     reference?: string | null;
     receivedByUserId: string;
+    cashRegisterId: string | null;
+    billSplitId: string | null;
   }): string {
     const id = randomUUID();
     this.database.run(
       `INSERT INTO payments
-         (id, bill_id, order_id, method, amount, status, received_by_user_id, reference, paid_at, created_at)
-       VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)`,
+         (id, bill_id, order_id, method, amount, status, received_by_user_id, cash_register_id,
+          bill_split_id, reference, paid_at, created_at)
+       VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?, ?)`,
       [
         id,
         entry.billId,
@@ -215,6 +351,8 @@ export class PaymentsRepository {
         entry.method,
         entry.amount,
         entry.receivedByUserId,
+        entry.cashRegisterId,
+        entry.billSplitId,
         entry.reference ?? null,
         new Date().toISOString(),
         new Date().toISOString(),

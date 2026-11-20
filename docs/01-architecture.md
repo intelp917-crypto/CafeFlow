@@ -9,7 +9,7 @@ apps/api        NestJS 11 — REST API، احراز هویت، RBAC، صف‌ه�
 apps/web        React 19 + Vite + Tailwind 4 — مشتری، کارکنان، مدیریت
 packages/shared منطق دامنه مشترک (ماشین وضعیت، مجوزها، پول، جلالی، نرمال‌سازی فارسی)
 packages/ui     سیستم طراحی RTL-first
-infra/docker    Dockerfile و compose (بدون اجرا در این محیط)
+infra/docker    Dockerfile و compose (اجرا و تأییدشده روی Docker Desktop، ۲۰۲۶-۱۱-۲۰)
 docs            مستندات فنی
 ```
 

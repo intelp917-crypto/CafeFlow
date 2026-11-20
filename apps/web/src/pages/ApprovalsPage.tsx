@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -110,7 +111,7 @@ export function ApprovalsPage() {
       <PageHeader
         title="صف تأیید"
         description="عملیات حساس مانند تغییر قیمت، حذف محصول، تخفیف بزرگ و اصلاح مالی نیازمند تأیید مدیر است. هر تصمیم در گزارش رویدادها ثبت می‌شود."
-        breadcrumb="کافه‌فلو / صف تأیید"
+        breadcrumb={<Breadcrumb page="صف تأیید" />}
         actions={<span className="text-xs text-muted">{items.filter((item) => item.status === 'pending').length} در انتظار</span>}
       />
 

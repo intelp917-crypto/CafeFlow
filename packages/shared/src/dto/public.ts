@@ -32,6 +32,13 @@ export const publicOrderSchema = z.object({
 export type PublicOrderInput = z.infer<typeof publicOrderSchema>;
 export type PublicOrderItemInput = z.infer<typeof publicOrderItemSchema>;
 
+/** Another round on an existing order; the status token authorises it. */
+export const publicOrderItemsSchema = publicOrderSchema.pick({
+  clientRequestId: true,
+  items: true,
+});
+export type PublicOrderItemsInput = z.infer<typeof publicOrderItemsSchema>;
+
 export const customerRequestTypes = [
   'waiter',
   'water',
@@ -126,11 +133,24 @@ export interface PublicMenuResponse {
     logoUrl: string;
     addressFa: string;
     phone: string;
+    /** The café pin, editable in Settings; null until an admin sets it. */
+    latitude: number | null;
+    longitude: number | null;
   };
   qr: { kind: 'table' | 'promo'; label: string | null } | null;
   table: { id: string; nameFa: string; code: string; floorNameFa: string | null } | null;
   categories: PublicMenuCategory[];
   serverTime: string;
+}
+
+/** Public shell identity, used by the landing page, status page and footers. */
+export interface PublicBrandingResponse {
+  nameFa: string;
+  logoUrl: string;
+  addressFa: string;
+  phone: string;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface PublicOrderResponse {
@@ -142,6 +162,17 @@ export interface PublicOrderResponse {
   itemCount: number;
   tableNameFa: string | null;
   createdAt: string;
+  replayed: boolean;
+  /** Bearer token for the status page; returned once, on creation. */
+  statusToken?: string | null;
+}
+
+export interface PublicOrderItemsResponse {
+  code: string;
+  status: string;
+  total: number;
+  addedSubtotal: number;
+  itemCount: number;
   replayed: boolean;
 }
 

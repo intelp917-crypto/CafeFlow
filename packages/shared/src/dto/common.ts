@@ -57,6 +57,8 @@ export interface AppSettingsDto {
   addressFa: string;
   phone: string;
   email: string;
+  latitude: number | null;
+  longitude: number | null;
   currency: string;
   digitMode: 'fa' | 'latin';
   timezone: string;

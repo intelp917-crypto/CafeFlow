@@ -43,7 +43,7 @@
 
 | GET | `/modules` | `modules.read` | فهرست ماژول‌ها با وضعیت و قابلیت پیکربندی |
 | PATCH | `/modules/:key` | `modules.manage` | `{ enabled: boolean }`؛ ماژول هسته ۴۰۳، وابستگی غیرفعال ۴۰۹ |
-| GET | `/settings` | `settings.read` | نام مجموعه، واحد پول، حالت ارقام، حق سرویس، مالیات |
+| GET | `/settings` | `settings.read` | نام مجموعه، واحد پول، حالت ارقام، حق سرویس، مالیات، نشانی و مختصات نقشه |
 | PATCH | `/settings` | `settings.write` | تغییر فیلدهای مجاز + ثبت حسابرسی قبل/بعد |
 
 ## کارکنان و نقش‌ها
@@ -73,9 +73,12 @@
 
 | متد | مسیر | توضیح |
 |---|---|---|
+| GET | `/public/branding` | نام، لوگو، نشانی، تلفن و مختصات کافه از تنظیمات؛ مبنای سایدبار، breadcrumb، عنوان صفحه، کارت نقشه و manifest |
+| GET | `/public/product-images/:file` | تصویر آپلودی محصول (PNG/JPEG/WebP) با کش `immutable`؛ نام فایل UUID است و مسیر بیرون از پوشه خوانده نمی‌شود |
 | GET | `/public/menu?qr=<token>` | منوی همان میز: رستوران، دسته‌ها، محصولات، گروهِ گزینه‌ها، گزینه‌ها، افزودنی‌ها، در دسترس بودن بر اساس `availability_windows` به وقت تهران |
-| POST | `/public/orders` | ثبت سفارش؛ `201` با `{ id, code, status, total, itemCount, tableNameFa, replayed }` |
-| GET | `/public/orders/:code` | وضعیت سفارش برای صفحه پیگیری (اقلام، مبالغ، دلیل لغو) |
+| POST | `/public/orders` | ثبت سفارش؛ `201` با `{ id, code, status, total, itemCount, tableNameFa, replayed, statusToken }` |
+| POST | `/public/orders/:code/items?token=` | افزودن دور جدید به همان سفارش؛ `{ clientRequestId, items }`؛ قیمت سمت سرور، تکرار با همان `clientRequestId` بی‌اثر و پس از `ready`/`served` خطای `ORDER_NOT_EDITABLE` |
+| GET | `/public/orders/:code?token=` | وضعیت سفارش برای صفحه پیگیری (اقلام، مبالغ، دلیل لغو)؛ `token` برای سفارش‌های تازه الزامی است |
 | POST | `/public/requests` | درخواست مشتری: `waiter` \| `water` \| `tissues` \| `bill` \| `terminal` |
 | POST | `/public/terminal-requests` | درخواست کارت‌خوان؛ ردیف در `terminal_requests` + اعلان صندوق |
 
@@ -111,9 +114,18 @@
 تولید. توکن تصادفی است و فقط `sha256` آن در `customer_devices` ذخیره می‌شود. اگر کلاینت توکنی بفرستد که
 سرور صادر نکرده باشد، نادیده گرفته و توکن تازه صادر می‌شود (کلاینت نمی‌تواند هویت دستگاه را انتخاب کند).
 
-**محدودیت شناخته‌شده:** دسترسی به `/public/orders/:code` تنها با کد سفارش کنترل می‌شود (۶ کاراکتر از
-الفبای ۳۲ حرفی، بدون کاراکترهای اشتباه‌پذیر). این مثل رسید کاغذی است: هر کسی کد را بداند، اقلام و مبلغ
-را می‌بیند، ولی هیچ داده هویتی برنمی‌گردد. توکن امضاشده در فاز ۴ بررسی می‌شود.
+**توکن وضعیت سفارش:** هنگام ساخت سفارش، سرور یک توکن تصادفی ۲۴ بایتی برمی‌گرداند و فقط
+`sha256` آن را در `orders.status_token_hash` نگه می‌دارد. صفحهٔ پیگیری باید همان توکن را در `?token=`
+بفرستد؛ توکن نادرست یا جاافتاده همان `404 ORDER_NOT_FOUND` را می‌دهد تا کسی با آزمودن خطاها کدها را
+پیدا نکند. توکن فقط یک بار (هنگام ساخت) صادر می‌شود و در رابط مشتری در `sessionStorage` همان تب
+می‌ماند، پس لینک به‌اشتراک‌گذاشته‌شده توکن را لو نمی‌دهد. سفارش‌های پیش از مهاجرت ۱۱ (یا رسیدهای
+چاپی قدیمی) `status_token_hash = NULL` دارند و مثل قبل با کد خوانده می‌شوند.
+
+**محدودیت نرخ مسیر وضعیت:** فقط پاسخ‌های ناموفق (کد ناموجود یا توکن نادرست) برای هر IP شمرده می‌شوند؛
+پس از ۱۲۰ خطا در ۱۰ دقیقه پاسخ `429 RATE_LIMITED` می‌آید. درخواست موفق با توکن درست هرگز به این بودجه
+دست نمی‌زند، چون مشتری واقعی همان سفارش را هر ۱۵ ثانیه می‌پرسد و خطا تولید نمی‌کند. کد سفارش ۶ کاراکتر
+از الفبای ۳۲ حرفی است؛ شمارش کدها با این بودجه در عمل محدود می‌شود، اما مسیر وضعیت همچنان یک نقطهٔ
+شمارش ممکن است و ضد‌تکرار در حافظهٔ فرایند است.
 
 ## عملیات کارکنان (فاز ۳)
 
@@ -124,6 +136,9 @@
 |---|---|---|---|
 | GET | `/orders?scope=active\|all&status=&tableId=&kind=&q=&page=&pageSize=` | `orders.read` | صف سفارش‌ها با شمارش آماده‌سازی، پرچم تأخیر و صفحه‌بندی |
 | GET | `/orders/:id` | `orders.read` | اقلام، گزینه‌ها/افزودنی‌ها، وضعیت آماده‌سازی هر آیتم، تاریخچه و انتقال‌های مجاز |
+| POST | `/orders` | `orders.write` | سفارش دستی کارمند: `{ tableId?, note?, items: [{ productId, quantity, optionIds?, extraIds?, note? }] }`؛ قیمت‌ها از منوی زنده سمت سرور محاسبه و سفارش `confirmed` ثبت می‌شود |
+| PATCH | `/orders/:id/items/:itemId` | `orders.write` | `{ quantity }`: جایگزینی تعداد یا `0` برای حذف قلم؛ جمع‌ها از اقلام باقی‌مانده بازمحاسبه و وظیفهٔ آماده‌سازی لغو می‌شود؛ پس از سرو `409` |
+| POST | `/orders/:id/items` | `orders.write` | افزودن دور بعدی به سفارش باز؛ همان ساختار `items`، جمع‌ها و صورت‌حساب باز بازمحاسبه می‌شوند؛ سفارش بسته `409 ORDER_CLOSED` |
 | POST | `/orders/:id/transition` | `orders.write` (و `orders.cancel` برای لغو) | `{ to, reason? }` |
 | GET | `/prep/queue?kind=barista\|kitchen\|bar\|other&includeFinished=` | `prep.read` | صف آیتم‌های آماده‌سازی با زمان سپری‌شده و تأخیر |
 | POST | `/prep/:id/transition` | `prep.update` | `{ to: queued\|in_progress\|ready\|delayed\|cancelled }` |
@@ -160,7 +175,7 @@
 | متد | مسیر | مجوز | توضیح |
 |---|---|---|---|
 | GET | `/orders/:id/payments` | `payments.read` | صورت‌حساب، مجموع پرداخت‌شده، مانده و تاریخچه پرداخت |
-| POST | `/orders/:id/payments` | `payments.create` | `{ method, amount, reference? }`؛ `201` با همان نمای صورت‌حساب |
+| POST | `/orders/:id/payments` | `payments.create` | `{ method, amount, reference?, splitId? }`؛ با `splitId` مبلغ باید دقیقاً برابر همان سهم باشد و همان سهم تسویه می‌شود؛ `201` با همان نمای صورت‌حساب |
 | POST | `/tables/:id/close` | `layout.write` یا `payments.create` | بستن نشست میز بعد از تسویه کامل |
 | POST | `/terminal-requests/:id/complete` | `payments.create` | `{ orderId?, method?, amount? }` — پرداخت کارتی + تکمیل درخواست |
 
@@ -196,10 +211,15 @@
 
 | متد | مسیر | مجوز | توضیح |
 |---|---|---|---|
+| POST | `/orders/:id/splits` | `payments.create` | `{ parts }` (۲ تا ۲۰)؛ تقسیم مساوی پیش از اولین پرداخت؛ `201` با نمای صورت‌حساب و `splits` |
+| PUT | `/orders/:id/splits` | `payments.create` | `{ splits: [{ label?, amount }] }` (۲ تا ۲۰)؛ تقسیم دلبخواه؛ جمع باید برابر مبلغ فاکتور باشد (`400 SPLIT_TOTAL_MISMATCH`) و برچسب تکراری رد می‌شود (`SPLIT_LABEL_DUPLICATE`)؛ `200` |
+| DELETE | `/orders/:id/splits` | `payments.create` | پاک‌کردن تقسیم استفاده‌نشده؛ `404 SPLITS_NOT_FOUND` وقتی سهمی نیست |
 | POST | `/orders/:id/discount` | `orders.discount` | `{ amount?, percent?, reason }` (دقیقاً یکی از مبلغ/درصد)؛ `200` با نمای صورت‌حساب |
 | POST | `/orders/:id/refunds` | `payments.refund` | `{ amount, reason, method? }`؛ `201` با `{ refundId, amount, paidTotal, remaining, status }` |
-| POST | `/orders/:id/receipt` | `orders.read` | صف‌کردن رسید متن سفارش؛ `201` با `{ job, existed }` |
+| POST | `/orders/:id/receipt` | `orders.read` | صف‌کردن رسید متن سفارش؛ `201` با `{ job, existed }`؛ با `{ proforma: true }` پیش‌فاکتور پیش از سرو (کلید یکتای `proforma:{order}:{total}`) |
+| POST | `/orders/:id/tickets` | `orders.read` | یک بلیت چاپ برای هر واحد آماده‌سازی؛ `201` با `{ jobs, created }` و کلید یکتای `ticket:{order}:{dept}:{qty}` |
 | GET | `/print/jobs?status=` | `orders.read` | صف چاپ (`queued`\|`sent`\|`printed`\|`failed`\|`cancelled`)، حداکثر ۱۰۰ ردیف با متن رسید |
+| POST | `/print/jobs/:id/sent` | `orders.read` | claim اتمی `queued → sent` برای پل چاپ؛ تکرار روی کار `sent` بی‌خطر، روی کار چاپ‌شده `409 PRINT_JOB_ALREADY_PRINTED` و روی کار برداشته‌شده `409 PRINT_JOB_NOT_QUEUED` |
 | POST | `/print/jobs/:id/printed` | `orders.read` | تأیید چاپ (`attempts += 1`, `printed_at`) |
 | POST | `/print/jobs/:id/failed` | `orders.read` | `{ error }`؛ ثبت خطای چاپ |
 
@@ -229,8 +249,9 @@
 - `job_key = receipt:{orderId}:{paidTotal}` ایندکس یکتاست: کلیک دوباره همان کار را برمی‌گرداند
   (`existed: true`) و کاغذ دوم تولید نمی‌کند. پس از تغییر مبلغ (تخفیف/بازپرداخت) رسید تازه مجاز است.
 - رسید فقط برای سفارش `served`/`awaiting_payment`/`paid` صف می‌شود؛ زودتر `409 RECEIPT_NOT_AVAILABLE`.
-- چاپ واقعی با `scripts/print-bridge.mjs` (ورود با حساب کارمند دارای `orders.read`، نوشتن فایل متنی و
-  POST نتیجه) یا با تأیید دستی در `/admin/print`. اتصال مستقیم به پرینتر در API وجود ندارد.
+- چاپ واقعی با `scripts/print-bridge.mjs` (ورود با حساب کارمند دارای `orders.read`، claim با
+  `POST /print/jobs/:id/sent`، نوشتن فایل متنی و POST نتیجه) یا با تأیید دستی در `/admin/print`.
+  claim اتمی است تا دو پل هم‌زمان یک رسید را دو بار چاپ نکنند. اتصال مستقیم به پرینتر در API وجود ندارد.
 
 ## اعلان‌ها (فاز ۵)
 
@@ -249,6 +270,7 @@
 |---|---|---|---|
 | GET | `/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD` | `reports.read` | فروش، بازپرداخت، خالص، تعداد پرداخت/سفارش، میانگین، تفکیک روش، فروش روزانه، ۱۰ محصول پرفروش |
 | GET | `/reports/payments.csv?from=&to=` | `reports.read` | CSV با BOM (Excel فارسی) از همه پرداخت‌ها/بازپرداخت‌های بازه |
+| GET | `/reports/payments.xlsx?from=&to=` | `reports.read` | کتاب کار واقعی XLSX (یک برگ «پرداخت‌ها»، مبلغ عددی، تاریخ جلالی) بدون کتابخانهٔ خارجی |
 
 - بازه بر اساس **روز تقویم تهران** است؛ `from`/`to` میلادی `YYYY-MM-DD` و شامل هر دو روز.
   بدون پارامتر، امروز تهران. تاریخ بی‌معنی `400 INVALID_DATE_RANGE`، شروع بعد از پایان هم `400`.
@@ -279,10 +301,10 @@
 | POST | `/inventory/ingredients/:id/adjustments` | `inventory.write` | `{ delta, reason }`؛ منفی‌شدن موجودی `400 INSUFFICIENT_STOCK` |
 | GET | `/inventory/movements?limit=60` | `inventory.read` | گردش انبار با نوع، مرجع سفارش و کاربر |
 | GET | `/inventory/recipes` | `inventory.read` | دستور پخت محصولات |
-| POST | `/inventory/recipes/:productId` | `inventory.write` | `{ yieldQty, items:[{ingredientId, qty}] }`؛ آرایه خالی دستور پخت را پاک می‌کند |
+| POST | `/inventory/recipes/:productId` | `inventory.write` | `{ yieldQty, items:[{ingredientId, qty}] }`؛ `qty` مقدار مصرف برای `yieldQty` محصول است؛ آرایه خالی دستور پخت را پاک می‌کند |
 
-- هنگام ثبت سفارش، اگر ماژول روشن باشد، برای هر آیتم `qty × recipe_items.qty / yield_qty` از موجودی کم و
-  ردیف `sale_deduction` ثبت می‌شود؛ فراخوانی دوباره بی‌اثر است.
+- هنگام ثبت سفارش، اگر ماژول روشن باشد، برای هر محصول `تعداد فروخته‌شده × مقدار ماده / yieldQty` از موجودی کم و
+  ردیف `sale_deduction` ثبت می‌شود؛ فراخوانی دوباره بی‌اثر است. رابط انبار بازده دستور (تعداد محصول حاصل) را جداگانه می‌گیرد و هنگام ویرایش مقدار قبلی را بازیابی می‌کند.
 - لغو سفارش فقط خالص کسر‌شده را با ردیف `restore` برمی‌گرداند.
 - ماژول پیش‌فرض خاموش است؛ در حالت خاموش هیچ کسر/بازگردانی انجام نمی‌شود و داده حذف نمی‌شود.
 
@@ -343,6 +365,36 @@
   `Permissions-Policy` و CSP سخت‌گیرانه دارند؛ HSTS فقط در تولید.
 - ورود: ۶۰ تلاش در ۱۰ دقیقه برای هر IP، علاو‌ه بر قفل حساب (۵ تلاش ناموفق → ۱۵ دقیقه).
 - `/health` نسخه API را برمی‌گرداند (`0.7.0`).
+
+## کاتالوگ و منو (فاز ۱۰)
+
+| متد | مسیر | دسترسی | توضیح |
+|---|---|---|---|
+| GET | `/catalog` | `catalog.read` | دسته‌ها، محصولات (شامل بایگانی‌شده)، واحدهای آماده‌سازی، گزینه‌ها، افزودنی‌ها و ساعت‌های سرو |
+| POST | `/catalog/categories` | `catalog.write` | `{ nameFa, sortOrder?, isActive? }` |
+| PUT | `/catalog/categories/order` | `catalog.write` | `{ ids }` — ترتیب کامل و اتمی؛ فهرست ناقص `400 CATEGORY_ORDER_INCOMPLETE` و شناسهٔ ناشناس/تکراری `400 CATEGORY_ORDER_STALE` |
+| PUT | `/catalog/products/order` | `catalog.write` | `{ categoryId, ids }` — ترتیب نمایش محصولات همان دسته؛ فهرست ناقص `400 PRODUCT_ORDER_INCOMPLETE` و شناسهٔ ناشناس/تکراری `400 PRODUCT_ORDER_STALE` |
+| PATCH | `/catalog/categories/:id` | `catalog.write` | حداقل یکی از `nameFa/sortOrder/isActive` |
+| DELETE | `/catalog/categories/:id` | `catalog.write` | حذف نرم؛ دستهٔ دارای محصول `409 CATEGORY_NOT_EMPTY` |
+| POST | `/catalog/products` | `catalog.write` | `{ categoryId, nameFa, basePrice, descriptionFa?, imageUrl?, departmentId?, prepMinutes?, isAvailable?, isActive? }` |
+| PATCH | `/catalog/products/:id` | `catalog.write` | همان فیلدها + `isArchived` برای بازگردانی؛ `imageUrl: null` تصویر را پاک می‌کند |
+| PUT | `/catalog/products/:id/options` | `catalog.write` | `{ groups: [{ nameFa, minSelect, maxSelect, isRequired, options[] }] }` |
+| PUT | `/catalog/products/:id/extras` | `catalog.write` | `{ extras: [{ nameFa, price, isActive? }] }`؛ حداکثر ۳۰ افزودنی برای هر محصول |
+| PUT | `/catalog/products/:id/availability` | `catalog.write` | `{ windows: [{ weekday: 0..6 \| null, startTime: "HH:mm", endTime: "HH:mm" }] }`؛ روز ۰=یکشنبه، ۶=شنبه، `null`=هر روز؛ حداکثر ۳۰ بازه |
+| DELETE | `/catalog/products/:id` | `catalog.write` | بایگانی (`isArchived = 1`)، نه حذف ردیف |
+| POST | `/catalog/images` | `catalog.write` | `{ dataUrl }` — فقط PNG/JPEG/WebP با امضای معتبر، حداکثر ۴۰۰ کیلوبایت؛ پاسخ `{ url, bytes, mime }` با مسیر هم‌مبدأ |
+| POST | `/catalog/import` | `catalog.write` | `{ csv, dryRun? }` — ایمپورت انبوه؛ سطرهای معتبر در یک تراکنش نوشته و سطرهای خطادار گزارش می‌شوند. ستون‌ها: `category,name,price,description,department,prepMinutes,imageUrl,isAvailable,isActive` |
+
+- قیمت همیشه عدد صحیح ریال است؛ مقدار منفی `400` با پیام فارسی برمی‌گرداند. قیمت نهایی هر قلم پس از گزینه‌ها
+  و افزودنی‌ها نمی‌تواند منفی شود: `400 UNIT_PRICE_NEGATIVE`. `imageUrl` فقط HTTPS یا مسیر نسبی هم‌مبدأ می‌پذیرد؛ آپلود فایل در این API وجود ندارد.
+- نام دسته و نام محصول (در هر دسته) پس از نرمال‌سازی فارسی یکتاست: `409 CATEGORY_EXISTS` / `409 PRODUCT_EXISTS`.
+- محصول فقط وقتی در منوی QR دیده می‌شود که دسته و خودِ محصول فعال و بایگانی‌نشده باشند؛ تغییر در همین صفحه
+  بلافاصله روی `/public/menu` اثر می‌گذارد.
+- `PUT .../options` کل درخت گزینه‌ها را در یک تراکنش جایگزین می‌کند. شناسهٔ گزینهٔ قبلی در `order_item_options`
+  با کلید خارجی `SET NULL` پاک می‌شود ولی نام و قیمت snapshot می‌ماند، پس رسید قدیمی تغییر نمی‌کند.
+- `PUT .../extras` فهرست افزودنی‌های همان محصول را در یک تراکنش جایگزین می‌کند؛ افزودنی‌های فعال در منوی QR نمایش داده می‌شوند و قیمت انتخاب‌شده سمت سرور محاسبه می‌شود. snapshot سفارش‌های قبلی مستقل می‌ماند.
+- `PUT .../availability` بازه‌ها را اتمی جایگزین می‌کند؛ ساعت‌ها HH:mm و بر مبنای ساعت تهران‌اند. پایان باید بعد از شروع باشد و بازه از نیمه‌شب نمی‌گذرد. بدون بازه، محدودیت زمانی وجود ندارد؛ اگر بازه تعریف شود، محصول بیرون از همهٔ بازه‌های فعال در منوی مشتری ناموجود و سفارش آن با `409 PRODUCT_OUTSIDE_HOURS` رد می‌شود.
+- هر تغییر (دسته، محصول، گزینه‌ها، افزودنی‌ها، ساعت سرو) ردیف حسابرسی با مقدار قبل و بعد می‌نویسد.
 
 ## مسیرهای فازهای بعد
 

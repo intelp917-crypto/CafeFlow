@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
-import { badRequest } from '../../common/errors';
+import { receiptRequestSchema } from '@cafeflow/shared';
+import { badRequest, parseWith } from '../../common/errors';
 import { CurrentAuth, Permissions } from '../../common/decorators';
 import type { RequestAuth } from '../../common/tokens';
 import { PrintService } from './print.service';
@@ -10,12 +11,20 @@ const PRINT_STATUSES = ['queued', 'sent', 'printed', 'failed', 'cancelled'] as c
 export class OrderReceiptController {
   constructor(@Inject(PrintService) private readonly print: PrintService) {}
 
-  /** Queues (or returns) the receipt job for an order; safe to click twice. */
+  /** Queues (or returns) the receipt or proforma job; safe to click twice. */
   @Post(':id/receipt')
   @HttpCode(201)
   @Permissions('orders.read')
-  receipt(@Param('id') id: string, @CurrentAuth() auth: RequestAuth) {
-    return this.print.queueReceipt(id, auth);
+  receipt(@Param('id') id: string, @Body() body: unknown, @CurrentAuth() auth: RequestAuth) {
+    return this.print.queueReceipt(id, auth, parseWith(receiptRequestSchema, body ?? {}));
+  }
+
+  /** Queues one ticket per preparation department; safe to click twice. */
+  @Post(':id/tickets')
+  @HttpCode(201)
+  @Permissions('orders.read')
+  tickets(@Param('id') id: string, @CurrentAuth() auth: RequestAuth) {
+    return this.print.queueTickets(id, auth);
   }
 }
 
@@ -33,6 +42,13 @@ export class PrintJobsController {
       return this.print.list(status as (typeof PRINT_STATUSES)[number]);
     }
     return this.print.list();
+  }
+
+  @Post('jobs/:id/sent')
+  @HttpCode(200)
+  @Permissions('orders.read')
+  sent(@Param('id') id: string) {
+    return this.print.markSent(id);
   }
 
   @Post('jobs/:id/printed')

@@ -1,0 +1,13 @@
+# TLS terminator for a real installation.
+#
+# Default: an internal CA (`tls internal`) for a LAN/localhost trial — browsers
+# warn until the CA is trusted, but the session cookie is genuinely Secure.
+# For a public domain set CAFEFLOW_TLS to the ACME e-mail instead:
+#   CAFEFLOW_HOST=cafe.example.com CAFEFLOW_TLS=owner@example.com
+# and publish ports 80/443 (port 80 is used for the ACME challenge).
+
+{$CAFEFLOW_HOST:localhost} {
+	tls {$CAFEFLOW_TLS:internal}
+	encode gzip
+	reverse_proxy web:80
+}

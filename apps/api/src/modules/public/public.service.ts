@@ -8,7 +8,10 @@ import {
   type PublicMenuCategory,
   type PublicMenuProduct,
   type PublicMenuResponse,
+  type PublicBrandingResponse,
   type PublicOrderInput,
+  type PublicOrderItemsInput,
+  type PublicOrderItemsResponse,
   type PublicOrderResponse,
   type PublicOrderStatusResponse,
   type PublicRequestInput,
@@ -19,7 +22,7 @@ import { AppError, badRequest, conflict, notFound } from '../../common/errors';
 import { createOpaqueToken } from '../../common/password';
 import { SlidingWindowLimiter } from '../../common/rate-limit';
 import { InventoryService } from '../inventory/inventory.service';
-import { PublicRepository, type ProductRow } from './public.repository';
+import { PublicRepository, type CampaignRow, type ProductRow } from './public.repository';
 
 const TEHRAN_OFFSET_MINUTES = 210;
 const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -87,6 +90,10 @@ export class PublicService {
   // per-IP budget is what actually bounds anonymous abuse.
   private readonly ipOrderLimiter = new SlidingWindowLimiter(10 * 60_000, 40);
   private readonly ipRequestLimiter = new SlidingWindowLimiter(60_000, 30);
+  // Only failed order lookups are counted. A real guest polls the same order
+  // every 15 seconds, so a blanket poll limit would throttle a busy café, while
+  // guessing order codes is exactly what produces misses.
+  private readonly statusMissLimiter = new SlidingWindowLimiter(10 * 60_000, 120);
 
   constructor(
     @Inject(PublicRepository) private readonly repository: PublicRepository,
@@ -129,6 +136,32 @@ export class PublicService {
     return { mime: match[1]!, bytes: Buffer.from(match[2]!, 'base64') };
   }
 
+  /**
+   * The café's identity for the shell: sidebar, breadcrumbs, intro, login and
+   * the installed-app manifest all read this, so renaming the café in Settings
+   * renames it everywhere without a deploy.
+   */
+  /** Charge percentages for callers that recompute a bill (staff ordering). */
+  chargePercents(): { serviceChargePercent: number; taxPercent: number } {
+    const settings = this.repository.getSettings();
+    return {
+      serviceChargePercent: settings.service_charge_percent,
+      taxPercent: settings.tax_percent,
+    };
+  }
+
+  getBranding(): PublicBrandingResponse {
+    const settings = this.repository.getSettings();
+    return {
+      nameFa: settings.restaurant_name_fa,
+      logoUrl: settings.logo_url,
+      addressFa: settings.address_fa,
+      phone: settings.phone,
+      latitude: settings.latitude,
+      longitude: settings.longitude,
+    };
+  }
+
   getMenu(qrToken: string | undefined): PublicMenuResponse {
     const settings = this.repository.getSettings();
     let qr: PublicMenuResponse['qr'] = null;
@@ -164,6 +197,8 @@ export class PublicService {
         logoUrl: settings.logo_url,
         addressFa: settings.address_fa,
         phone: settings.phone,
+        latitude: settings.latitude,
+        longitude: settings.longitude,
       },
       qr,
       table,
@@ -281,7 +316,15 @@ export class PublicService {
     if (input.items.length > MAX_ITEMS_PER_ORDER) {
       throw badRequest(`حداکثر ${MAX_ITEMS_PER_ORDER} قلم در هر سفارش مجاز است.`);
     }
+    return this.priceLines(input.items);
+  }
 
+  /**
+   * Prices an arbitrary list of lines against the live menu. The staff order
+   * flow reuses this so a manual order and a QR order can never disagree, and
+   * no price ever arrives from the client.
+   */
+  priceLines(items: PublicOrderInput['items']): PricedOrder {
     const settings = this.repository.getSettings();
     const { weekday, minutes } = tehranClock();
     const groups = this.repository.listOptionGroups();
@@ -294,7 +337,7 @@ export class PublicService {
 
     const priced: PricedItem[] = [];
 
-    for (const line of input.items) {
+    for (const line of items) {
       const product = this.repository.findProductById(line.productId);
       if (!product) {
         throw badRequest('یکی از محصولات انتخاب‌شده دیگر در منو نیست.', 'PRODUCT_UNAVAILABLE');
@@ -363,6 +406,14 @@ export class PublicService {
         selectedOptions.reduce((sum, option) => sum + option.priceDelta, 0) +
         selectedExtras.reduce((sum, extra) => sum + extra.price, 0);
 
+      // A negative option delta must never produce a line that pays the guest.
+      if (unitPrice < 0) {
+        throw badRequest(
+          `قیمت نهایی «${product.name_fa}» با گزینه‌های انتخاب‌شده منفی می‌شود.`,
+          'UNIT_PRICE_NEGATIVE',
+        );
+      }
+
       priced.push({
         product,
         quantity: line.quantity,
@@ -387,6 +438,88 @@ export class PublicService {
       taxTotal,
       total: subtotal + serviceCharge + taxTotal,
     };
+  }
+
+  /** Lines, their option snapshots and one prep task each, inside a transaction. */
+  private insertPricedItems(orderId: string, items: PricedOrder['items']): void {
+    for (const item of items) {
+      const itemId = randomUUID();
+      this.database.run(
+        `INSERT INTO order_items
+           (id, order_id, product_id, product_name_snapshot, unit_price_snapshot, quantity,
+            options_json, extras_json, note, department_id, status, total)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+        [
+          itemId,
+          orderId,
+          item.product.id,
+          item.product.name_fa,
+          item.unitPrice,
+          item.quantity,
+          item.options.length > 0 ? JSON.stringify(item.options) : null,
+          item.extras.length > 0 ? JSON.stringify(item.extras) : null,
+          item.note,
+          item.product.department_id,
+          item.total,
+        ],
+      );
+
+      for (const option of item.options) {
+        this.database.run(
+          `INSERT INTO order_item_options (id, order_item_id, option_id, name_snapshot, price_snapshot)
+           VALUES (?, ?, ?, ?, ?)`,
+          [randomUUID(), itemId, option.id, option.nameFa, option.priceDelta],
+        );
+      }
+
+      this.database.run(
+        `INSERT INTO prep_tasks (id, order_item_id, order_id, department_id, status, priority, target_minutes)
+         VALUES (?, ?, ?, ?, 'queued', 0, ?)`,
+        [randomUUID(), itemId, orderId, item.product.department_id, item.product.prep_minutes],
+      );
+    }
+  }
+
+  /**
+   * A promo QR is only a hint: the campaign must still be active, inside its
+   * window and under its use limits. An ineligible campaign simply means the
+   * order is placed at full price rather than failing the guest's order.
+   */
+  private campaignForOrder(
+    campaignId: string | null,
+    priced: PricedOrder,
+    deviceId: string,
+  ): { row: CampaignRow; discount: number } | null {
+    if (!campaignId) return null;
+    const row = this.repository.findCampaign(campaignId);
+    if (!row || row.is_active !== 1) return null;
+
+    const now = Date.now();
+    if (row.starts_at && Date.parse(row.starts_at) > now) return null;
+    if (row.ends_at && Date.parse(row.ends_at) < now) return null;
+    if (row.max_uses !== null && row.used_count >= row.max_uses) return null;
+    if (
+      row.max_uses_per_device !== null &&
+      this.repository.countCampaignUses(row.id, deviceId) >= row.max_uses_per_device
+    ) {
+      return null;
+    }
+
+    let base = priced.subtotal;
+    if (row.scope !== 'all') {
+      const targets = this.repository.listCampaignTargets(row.id);
+      const productIds = new Set(targets.filter((t) => t.target_type === 'product').map((t) => t.target_id));
+      const categoryIds = new Set(targets.filter((t) => t.target_type === 'category').map((t) => t.target_id));
+      base = priced.items
+        .filter((item) => productIds.has(item.product.id) || categoryIds.has(item.product.category_id))
+        .reduce((sum, item) => sum + item.total, 0);
+    }
+    if (base <= 0) return null;
+
+    const raw = row.type === 'percent' ? Math.round((base * row.value) / 100) : row.value;
+    // A fixed promotion can never push the order below zero.
+    const discount = Math.min(raw, priced.subtotal);
+    return discount > 0 ? { row, discount } : null;
   }
 
   /* ------------------------------- ordering -------------------------------- */
@@ -418,9 +551,20 @@ export class PublicService {
     }
 
     const priced = this.priceOrder(input);
-    const code = this.generateOrderCode();
+    // A promo QR carries a campaign; the discount is computed here, never
+    // trusted from the client, and the percentages are re-applied to the net
+    // subtotal so the guest is not charged service/tax on money they saved.
+    const campaign = this.campaignForOrder(qr.campaign_id, priced, device.deviceId);
+    const discountTotal = campaign?.discount ?? 0;
+    const netSubtotal = priced.subtotal - discountTotal;
+    const pricingSettings = this.repository.getSettings();
+    const serviceCharge = percentOf(netSubtotal, pricingSettings.service_charge_percent);
+    const taxTotal = percentOf(netSubtotal + serviceCharge, pricingSettings.tax_percent);
+    const orderTotal = netSubtotal + serviceCharge + taxTotal;
+    const code = this.nextOrderCode();
     const orderId = randomUUID();
     const nowIso = new Date().toISOString();
+    const statusToken = createOpaqueToken(24);
 
     this.database.transaction(() => {
       let tableSessionId: string | null = null;
@@ -434,7 +578,7 @@ export class PublicService {
            (id, code, table_id, table_session_id, guest_device_id, status, source,
             subtotal, discount_total, service_charge, tax_total, total, note,
             client_request_id, submitted_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'submitted', 'qr', ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, 'submitted', 'qr', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           orderId,
           code,
@@ -442,9 +586,10 @@ export class PublicService {
           tableSessionId,
           device.deviceId,
           priced.subtotal,
-          priced.serviceCharge,
-          priced.taxTotal,
-          priced.total,
+          discountTotal,
+          serviceCharge,
+          taxTotal,
+          orderTotal,
           input.note ?? null,
           input.clientRequestId,
           nowIso,
@@ -453,42 +598,9 @@ export class PublicService {
         ],
       );
 
-      for (const item of priced.items) {
-        const itemId = randomUUID();
-        this.database.run(
-          `INSERT INTO order_items
-             (id, order_id, product_id, product_name_snapshot, unit_price_snapshot, quantity,
-              options_json, extras_json, note, department_id, status, total)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-          [
-            itemId,
-            orderId,
-            item.product.id,
-            item.product.name_fa,
-            item.unitPrice,
-            item.quantity,
-            item.options.length > 0 ? JSON.stringify(item.options) : null,
-            item.extras.length > 0 ? JSON.stringify(item.extras) : null,
-            item.note,
-            item.product.department_id,
-            item.total,
-          ],
-        );
+      this.database.run('UPDATE orders SET status_token_hash = ? WHERE id = ?', [sha256(statusToken), orderId]);
 
-        for (const option of item.options) {
-          this.database.run(
-            `INSERT INTO order_item_options (id, order_item_id, option_id, name_snapshot, price_snapshot)
-             VALUES (?, ?, ?, ?, ?)`,
-            [randomUUID(), itemId, option.id, option.nameFa, option.priceDelta],
-          );
-        }
-
-        this.database.run(
-          `INSERT INTO prep_tasks (id, order_item_id, order_id, department_id, status, priority, target_minutes)
-           VALUES (?, ?, ?, ?, 'queued', 0, ?)`,
-          [randomUUID(), itemId, orderId, item.product.department_id, item.product.prep_minutes],
-        );
-      }
+      this.insertPricedItems(orderId, priced.items);
 
       this.database.run(
         `INSERT INTO order_events (id, order_id, type, from_status, to_status, payload_json, created_at)
@@ -500,11 +612,37 @@ export class PublicService {
             source: 'qr',
             tableId: qr.table_id,
             itemCount: priced.items.length,
-            total: priced.total,
+            total: orderTotal,
+            campaignId: campaign?.row.id ?? null,
+            discountTotal,
           }),
           nowIso,
         ],
       );
+
+      if (campaign) {
+        this.repository.insertCampaignRedemption({
+          campaignId: campaign.row.id,
+          orderId,
+          deviceId: device.deviceId,
+          amount: discountTotal,
+        });
+        this.repository.incrementCampaignUse(campaign.row.id);
+        this.database.run(
+          `INSERT INTO order_events (id, order_id, type, payload_json, created_at)
+           VALUES (?, ?, 'order.campaign_applied', ?, ?)`,
+          [
+            randomUUID(),
+            orderId,
+            JSON.stringify({
+              campaignId: campaign.row.id,
+              nameFa: campaign.row.name_fa,
+              amount: discountTotal,
+            }),
+            nowIso,
+          ],
+        );
+      }
 
       // Optional module: while inventory is disabled this is a no-op, so the
       // ordering path never depends on it.
@@ -524,12 +662,105 @@ export class PublicService {
     const summary = this.repository.findOrderSummaryByCode(code);
     if (!summary) throw new AppError('ORDER_NOT_CREATED', 500, 'ثبت سفارش انجام نشد. دوباره تلاش کنید.');
 
-    return this.toOrderResponse(summary, false);
+    return { ...this.toOrderResponse(summary, false), statusToken };
   }
 
-  getOrderStatus(code: string): PublicOrderStatusResponse {
+  /**
+   * A guest adds another round from the status page. The status token is the
+   * credential; the round table makes a retried request idempotent. Stock is not
+   * deducted twice — the inventory pass already ran for the first submission.
+   */
+  addOrderItems(
+    code: string,
+    token: string | undefined,
+    input: PublicOrderItemsInput,
+  ): PublicOrderItemsResponse {
+    const tokenHash = this.repository.findOrderStatusTokenHash(code);
+    if (tokenHash && (!token || sha256(token) !== tokenHash)) {
+      throw notFound('سفارشی با این کد یافت نشد.', 'ORDER_NOT_FOUND');
+    }
+
+    const order = this.repository.findOrderForRound(code);
+    if (!order) throw notFound('سفارشی با این کد یافت نشد.', 'ORDER_NOT_FOUND');
+
+    if (order.status === 'cancelled' || order.status === 'paid') {
+      throw conflict('این سفارش بسته شده است و قلم تازه نمی‌پذیرد.', 'ORDER_CLOSED');
+    }
+    if (!['submitted', 'confirmed', 'preparing'].includes(order.status)) {
+      throw conflict(
+        'سفارش آماده یا سرو شده است؛ برای دور بعدی با کارکنان هماهنگ کنید.',
+        'ORDER_NOT_EDITABLE',
+      );
+    }
+
+    if (this.repository.findOrderItemRound(order.id, input.clientRequestId)) {
+      return {
+        code,
+        status: order.status,
+        total: order.total,
+        addedSubtotal: 0,
+        itemCount: 0,
+        replayed: true,
+      };
+    }
+
+    const priced = this.priceLines(input.items);
+    const settings = this.repository.getSettings();
+    const subtotal = order.subtotal + priced.subtotal;
+    const serviceCharge = percentOf(subtotal, settings.service_charge_percent);
+    const taxTotal = percentOf(subtotal + serviceCharge, settings.tax_percent);
+    const total = Math.max(0, subtotal - order.discount_total + serviceCharge + taxTotal);
+    const nowIso = new Date().toISOString();
+
+    this.database.transaction(() => {
+      this.insertPricedItems(order.id, priced.items);
+      this.repository.updateOrderTotals(order.id, { subtotal, serviceCharge, taxTotal, total });
+      this.repository.insertOrderItemRound({
+        orderId: order.id,
+        clientRequestId: input.clientRequestId,
+        itemCount: priced.items.length,
+        subtotal: priced.subtotal,
+      });
+      this.database.run(
+        `INSERT INTO order_events (id, order_id, type, payload_json, created_at)
+         VALUES (?, ?, 'order.items_added_by_guest', ?, ?)`,
+        [
+          randomUUID(),
+          order.id,
+          JSON.stringify({ itemCount: priced.items.length, addedSubtotal: priced.subtotal, total }),
+          nowIso,
+        ],
+      );
+    });
+
+    this.repository.insertNotification({
+      roleKey: 'waiter',
+      type: 'order.items_added',
+      titleFa: `دور جدید سفارش ${code}`,
+      bodyFa: `${priced.items.length} قلم — مبلغ کل به‌روز شد`,
+      data: { orderId: order.id, code },
+    });
+
+    return {
+      code,
+      status: order.status,
+      total,
+      addedSubtotal: priced.subtotal,
+      itemCount: priced.items.length,
+      replayed: false,
+    };
+  }
+
+  getOrderStatus(code: string, token?: string, clientIp?: string): PublicOrderStatusResponse {
+    // A wrong token is indistinguishable from a missing order, so the code
+    // space cannot be probed by watching status messages.
+    const tokenHash = this.repository.findOrderStatusTokenHash(code);
+    if (tokenHash && (!token || sha256(token) !== tokenHash)) {
+      throw this.orderNotFound(clientIp);
+    }
+
     const summary = this.repository.findOrderSummaryByCode(code);
-    if (!summary) throw notFound('سفارشی با این کد یافت نشد.', 'ORDER_NOT_FOUND');
+    if (!summary) throw this.orderNotFound(clientIp);
 
     const items = this.repository.listOrderItems(summary.id);
 
@@ -557,6 +788,22 @@ export class PublicService {
         note: item.note,
       })),
     };
+  }
+
+  /**
+   * A failed lookup answers the same 404 as before until the address crosses
+   * the miss budget, then 429; a valid code never reaches this path, so the
+   * distinction leaks nothing about which codes exist.
+   */
+  private orderNotFound(clientIp?: string): AppError {
+    if (clientIp && !this.statusMissLimiter.hit(`status-miss:${clientIp}`)) {
+      return new AppError(
+        'RATE_LIMITED',
+        429,
+        'تعداد جست‌وجوی سفارش از این شبکه زیاد بوده است. چند دقیقه دیگر تلاش کنید.',
+      );
+    }
+    return notFound('سفارشی با این کد یافت نشد.', 'ORDER_NOT_FOUND');
   }
 
   /* ---------------------------- service requests --------------------------- */
@@ -636,7 +883,8 @@ export class PublicService {
     };
   }
 
-  private generateOrderCode(): string {
+  /** Unique `CF-XXXXXX` code; staff orders use the same alphabet and space. */
+  nextOrderCode(): string {
     for (let attempt = 0; attempt < 8; attempt += 1) {
       let suffix = '';
       for (let i = 0; i < 6; i += 1) {

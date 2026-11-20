@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -212,7 +213,7 @@ export function ReservationsPage() {
       <PageHeader
         title="رزرو میز"
         description="ثبت رزرو تلفنی و حضوری با بررسی ظرفیت میز و جلوگیری از تداخل زمانی. هر تغییر وضعیت در سرور بررسی و ثبت می‌شود."
-        breadcrumb="کافه‌فلو / رزروها"
+        breadcrumb={<Breadcrumb page="رزروها" />}
         actions={
           <Button size="sm" onClick={() => setModalOpen(true)}>
             رزرو جدید

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -157,7 +158,7 @@ export function CustomersPage() {
       <PageHeader
         title="باشگاه مشتریان"
         description="پروفایل مشتری با شماره تماس یکتا، امتیاز وفاداری و کیف پول. هر تغییر امتیاز یا کیف پول در دفتر جداگانه ثبت می‌شود."
-        breadcrumb="کافه‌فلو / مشتریان"
+        breadcrumb={<Breadcrumb page="مشتریان" />}
         actions={
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             مشتری جدید

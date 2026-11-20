@@ -3,8 +3,10 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { formatRial, type CustomerRequestType, type PublicOrderStatusResponse } from '@cafeflow/shared';
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Spinner } from '@cafeflow/ui';
 import { errorMessage } from '../lib/api';
-import { customerApi } from '../lib/customer';
+import { customerApi, orderTokenFor } from '../lib/customer';
 import { formatCountFa, formatDateTimeFa } from '../lib/format';
+import { useBranding } from '../lib/branding';
+import { CafeLocation } from '../components/customer/CafeLocation';
 
 const CUSTOMER_PATH = [
   'submitted',
@@ -48,6 +50,7 @@ const QUICK_REQUESTS: Array<{ type: CustomerRequestType; label: string }> = [
 
 export function OrderStatusPage() {
   const { code } = useParams<{ code: string }>();
+  const { nameFa, addressFa, phone, latitude, longitude } = useBranding();
   const [searchParams] = useSearchParams();
   const qrToken = searchParams.get('qr') ?? undefined;
 
@@ -61,7 +64,7 @@ export function OrderStatusPage() {
   const load = useCallback(async () => {
     if (!code) return;
     try {
-      const data = await customerApi.orderStatus(code);
+      const data = await customerApi.orderStatus(code, orderTokenFor(code));
       setOrder(data);
       setError(null);
     } catch (caught) {
@@ -147,6 +150,14 @@ export function OrderStatusPage() {
           </div>
           <div className="flex items-center gap-2">
             {order.tableNameFa ? <Badge tone="brand">{order.tableNameFa}</Badge> : null}
+            {qrToken && ['submitted', 'confirmed', 'preparing'].includes(order.status) ? (
+              <Link
+                to={`/menu/${qrToken}?order=${order.code}`}
+                className="text-[11px] font-medium text-brand-700 hover:underline"
+              >
+                افزودن سفارش
+              </Link>
+            ) : null}
             <Link to={qrToken ? `/menu/${qrToken}` : '/menu'} className="text-[11px] text-brand-600 hover:underline">
               منو
             </Link>
@@ -261,6 +272,15 @@ export function OrderStatusPage() {
             </CardBody>
           </Card>
         ) : null}
+
+        <CafeLocation
+          variant="bar"
+          nameFa={nameFa}
+          addressFa={addressFa}
+          phone={phone}
+          latitude={latitude}
+          longitude={longitude}
+        />
 
         <p className="pb-6 text-center text-[10px] text-muted">
           وضعیت این صفحه هر ۱۵ ثانیه به‌روزرسانی می‌شود.

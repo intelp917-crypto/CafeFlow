@@ -7,6 +7,7 @@ import { ApprovalsPage } from './pages/ApprovalsPage';
 import { AuditPage } from './pages/AuditPage';
 import { CashierPage } from './pages/CashierPage';
 import { CashPage } from './pages/CashPage';
+import { CatalogPage } from './pages/CatalogPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { EmployeesPage } from './pages/EmployeesPage';
@@ -102,6 +103,7 @@ export function App() {
       >
         <Route index element={<DashboardPage />} />
         <Route path="orders" element={<OrdersPage />} />
+        <Route path="catalog" element={<CatalogPage />} />
         <Route path="cashier" element={<CashierPage />} />
         <Route path="prep" element={<PrepPage />} />
         <Route path="tables" element={<TablesPage />} />

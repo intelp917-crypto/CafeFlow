@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   formatRial,
   percentOf,
@@ -8,11 +8,12 @@ import {
 } from '@cafeflow/shared';
 import { Alert, Badge, Button, EmptyState, ErrorState, Spinner } from '@cafeflow/ui';
 import { errorMessage } from '../lib/api';
-import { customerApi } from '../lib/customer';
+import { customerApi, orderTokenFor, rememberOrderToken } from '../lib/customer';
 import { formatCountFa } from '../lib/format';
 import { CartPanel, type CartLine, type CartTotals } from '../components/customer/CartPanel';
 import { ProductDialog, type CartLineDraft } from '../components/customer/ProductDialog';
 import { CategoryRail } from '../components/customer/CategoryRail';
+import { CafeLocation } from '../components/customer/CafeLocation';
 import { DeveloperCredit } from '../components/DeveloperCredit';
 
 function lineKey(draft: CartLineDraft): string {
@@ -45,8 +46,82 @@ function writeCart(storageKey: string, lines: CartLine[]): void {
   }
 }
 
+/** Editorial section index: ۰۱، ۰۲ … */
+function sectionNumber(index: number): string {
+  return formatCountFa(index + 1).padStart(2, '۰');
+}
+
+function CupMark({ className = 'size-10' }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M5 9h11a4 4 0 0 1 0 8h-1v2H8v-2H5z" />
+      <path d="M8 5c0 1.5 1 1.5 1 3M12 5c0 1.5 1 1.5 1 3" />
+    </svg>
+  );
+}
+
+/** A product photo fills a wide frame; without one the card keeps its rhythm. */
+function ProductImage({
+  product,
+  className,
+  sizes,
+  priority = false,
+}: {
+  product: PublicMenuProduct;
+  className: string;
+  sizes?: string;
+  priority?: boolean;
+}) {
+  if (!product.imageUrl) {
+    return (
+      <div
+        aria-hidden="true"
+        className={`flex items-center justify-center bg-[radial-gradient(circle_at_30%_20%,#f7ddc9_0%,#eec0a1_45%,#e19e76_100%)] text-brand-800/50 ${className}`}
+      >
+        <CupMark className="size-12" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={product.imageUrl}
+      alt={product.nameFa}
+      width={1248}
+      height={832}
+      sizes={sizes}
+      loading={priority ? 'eager' : 'lazy'}
+      fetchPriority={priority ? 'high' : undefined}
+      className={`object-cover ${className}`}
+    />
+  );
+}
+
+function AvailabilityBadge({ product }: { product: PublicMenuProduct }) {
+  return product.isAvailable ? (
+    <Badge tone="success" dot>
+      موجود
+    </Badge>
+  ) : (
+    <Badge tone="danger" dot>
+      ناموجود
+    </Badge>
+  );
+}
+
 export function MenuPage() {
   const { qrToken } = useParams<{ qrToken?: string }>();
+  const [searchParams] = useSearchParams();
+  const roundCode = searchParams.get('order');
   const navigate = useNavigate();
   const storageKey = `cafeflow:cart:${qrToken ?? 'browse'}`;
 
@@ -147,6 +222,23 @@ export function MenuPage() {
     });
   };
 
+  /** Products with options open the configurator; simple ones go straight in. */
+  const chooseProduct = (product: PublicMenuProduct) => {
+    if (!canOrder || !product.isAvailable) return;
+    if (product.optionGroups.length > 0 || product.extras.length > 0) {
+      setDialogProduct(product);
+      return;
+    }
+    addLine({
+      productId: product.id,
+      nameFa: product.nameFa,
+      unitPrice: product.price,
+      quantity: 1,
+      optionIds: [],
+      extraIds: [],
+    });
+  };
+
   const increment = (key: string) =>
     setCart((current) =>
       current.map((line) => (line.key === key ? { ...line, quantity: Math.min(20, line.quantity + 1) } : line)),
@@ -171,18 +263,41 @@ export function MenuPage() {
     setSubmitting(true);
     setSubmitError(null);
     try {
+      const items = cart.map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        optionIds: line.optionIds,
+        extraIds: line.extraIds,
+        note: line.note,
+      }));
+      const clientRequestId = pendingRequestId.current;
+
+      // Coming from the status page (`?order=CODE`), the cart extends that
+      // order instead of opening a second one on the same table.
+      if (roundCode) {
+        const response = await customerApi.addOrderItems(roundCode, orderTokenFor(roundCode), {
+          clientRequestId,
+          items,
+        });
+        rememberOrderToken(response.code, orderTokenFor(roundCode));
+        setCart([]);
+        setOrderNote('');
+        pendingRequestId.current = crypto.randomUUID();
+        setCartOpen(false);
+        navigate(`/order/${response.code}?qr=${encodeURIComponent(qrToken)}`);
+        return;
+      }
+
       const response = await customerApi.createOrder({
         qrToken,
-        clientRequestId: pendingRequestId.current,
+        clientRequestId,
         note: orderNote.trim() || undefined,
-        items: cart.map((line) => ({
-          productId: line.productId,
-          quantity: line.quantity,
-          optionIds: line.optionIds,
-          extraIds: line.extraIds,
-          note: line.note,
-        })),
+        items,
       });
+
+      // The token is only issued once, so it is kept for this tab before the
+      // status page takes over.
+      rememberOrderToken(response.code, response.statusToken);
 
       // Server confirmed: the cart can be cleared and the key rotated.
       setCart([]);
@@ -226,107 +341,169 @@ export function MenuPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-canvas pb-24 pl-[6rem] sm:pl-[6.75rem] lg:pb-0">
+    <div className="min-h-dvh bg-canvas pb-28 lg:pb-10 lg:pl-[6.75rem]">
       <CategoryRail
         categories={menu.categories}
         activeCategory={activeCategory}
         onSelect={scrollToCategory}
       />
 
-      <header className="sticky top-0 z-30 border-b border-line bg-canvas/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-8">
-          <Link to="/" className="flex items-center gap-2 leading-tight">
+      <header className="sticky top-0 z-30 border-b border-line/70 bg-canvas/90 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 pt-3 sm:px-8">
+          <Link to="/" className="flex min-w-0 items-center gap-2.5 leading-tight">
             {menu.restaurant.logoUrl ? (
               <img
                 src={menu.restaurant.logoUrl}
                 alt=""
-                className="h-9 w-9 shrink-0 rounded-xl object-cover"
+                width={36}
+                height={36}
+                className="size-9 shrink-0 rounded-full border border-line object-cover"
               />
-            ) : null}
-            <div>
-            <p className="font-display text-base font-bold text-ink">{menu.restaurant.nameFa}</p>
-            <p className="text-[10px] text-muted">
-              {menu.table
-                ? `${menu.table.nameFa}${menu.table.floorNameFa ? ` — ${menu.table.floorNameFa}` : ''}`
-                : 'منوی کافه'}
-            </p>
-            </div>
+            ) : (
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-espresso text-cream">
+                <CupMark className="size-5" />
+              </span>
+            )}
+            <span className="min-w-0">
+              <span className="block truncate font-display text-base font-bold text-ink">
+                {menu.restaurant.nameFa}
+              </span>
+              <span className="block truncate text-[10px] text-muted">
+                {menu.table
+                  ? `${menu.table.nameFa}${menu.table.floorNameFa ? ` — ${menu.table.floorNameFa}` : ''}`
+                  : 'منوی کافه'}
+              </span>
+            </span>
           </Link>
 
-          <div className="flex items-center gap-2">
-            {menu.table ? <Badge tone="brand">{menu.table.nameFa}</Badge> : null}
+          <div className="flex shrink-0 items-center gap-2">
+            {menu.table ? (
+              <span className="hidden rounded-full border border-line bg-surface px-3 py-1.5 text-[10px] text-muted sm:inline">
+                {menu.table.nameFa}
+              </span>
+            ) : null}
             <Button size="sm" onClick={() => setCartOpen(true)} disabled={cart.length === 0}>
               سبد ({formatCountFa(itemCount)})
             </Button>
           </div>
         </div>
+
+        {menu.categories.length > 0 ? (
+          <nav aria-label="دسته‌های منو" className="mx-auto max-w-6xl lg:hidden">
+            <ul className="scroll-thin flex gap-2 overflow-x-auto px-4 pb-3 pt-2.5 sm:px-8">
+              {menu.categories.map((category) => {
+                const active = activeCategory === category.id;
+                return (
+                  <li key={category.id} className="shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => scrollToCategory(category.id)}
+                      aria-current={active ? 'true' : undefined}
+                      className={`flex items-center gap-2 whitespace-nowrap rounded-full border px-3.5 py-2 text-[11px] transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-brand-400 ${
+                        active
+                          ? 'border-espresso bg-espresso text-cream'
+                          : 'border-line bg-surface text-ink hover:border-brand-300 hover:text-brand-700'
+                      }`}
+                    >
+                      {category.nameFa}
+                      <span
+                        className={`num rounded-full px-1.5 text-[9px] ${
+                          active ? 'bg-cream/15 text-cream/80' : 'bg-cream text-muted'
+                        }`}
+                      >
+                        {formatCountFa(category.products.length)}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        ) : null}
       </header>
 
       <main className="mx-auto max-w-6xl px-4 sm:px-8">
-        <section className="mt-5 overflow-hidden rounded-[1.75rem] bg-espresso text-cream sm:mt-6">
-          <div className="grid lg:grid-cols-[1.05fr_0.95fr]">
-            <div className="p-7 sm:p-10 lg:p-11">
-              <p className="text-[11px] text-brand-200">منوی دیجیتال</p>
-              <h1 className="font-display mt-3 text-3xl font-bold leading-[1.3] sm:text-4xl lg:text-5xl">
+        <section className="relative mt-4 overflow-hidden rounded-[2rem] bg-espresso text-cream sm:mt-6">
+          <img
+            src="/images/menu-hero.jpg"
+            alt="میز چوبی تیره با لاته، چیزکیک و دانه‌های قهوه در نور گرم"
+            width={1568}
+            height={672}
+            fetchPriority="high"
+            className="absolute inset-0 size-full object-cover object-[35%_center]"
+          />
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-gradient-to-r from-espresso/30 via-espresso/80 to-espresso/95"
+          />
+
+          <div className="relative grid gap-8 p-6 sm:p-9 lg:grid-cols-[1.1fr_0.9fr] lg:items-end lg:p-12">
+            <div>
+              <p className="flex items-center gap-2 text-[11px] tracking-wide text-brand-200">
+                <span aria-hidden="true" className="h-px w-6 bg-brand-300/70" />
+                منوی دیجیتال کافه
+              </p>
+              <h1 className="mt-3 max-w-lg text-balance font-display text-3xl font-bold leading-[1.35] sm:text-4xl lg:text-5xl">
                 {menu.table ? `سفارش از ${menu.table.nameFa}` : 'منوی امروز کافه'}
               </h1>
-              {menu.restaurant.addressFa || menu.restaurant.phone ? (
-                <p className="mt-3 text-xs leading-6 text-cream/70">
-                  {menu.restaurant.addressFa}
-                  {menu.restaurant.addressFa && menu.restaurant.phone ? ' — ' : ''}
-                  {menu.restaurant.phone ? (
-                    <span dir="ltr" className="num">{menu.restaurant.phone}</span>
-                  ) : null}
-                </p>
-              ) : null}
-              <p className="mt-4 max-w-md text-xs leading-7 text-cream/70 sm:text-sm">
+              <p className="mt-4 max-w-md text-pretty text-xs leading-7 text-cream/75 sm:text-sm">
                 {canOrder
-                  ? 'دسته‌ها را از ریل سمت چپ انتخاب کنید، آیتم‌ها را به سبد بریزید و سفارش را مستقیم برای باریستا بفرستید.'
-                  : 'همه دسته‌ها و قیمت‌های به‌روز را ببینید. برای ثبت سفارش، کد QR روی میز خود را اسکن کنید.'}
+                  ? 'دسته‌ها را انتخاب کنید، آیتم‌ها را به سبد بریزید و سفارش را مستقیم برای باریستا بفرستید.'
+                  : 'همهٔ دسته‌ها و قیمت‌های به‌روز را ببینید. برای ثبت سفارش، کد QR روی میز خود را اسکن کنید.'}
               </p>
-              <div className="mt-6 flex flex-wrap items-center gap-2">
+
+              <div className="mt-6 flex flex-wrap items-center gap-2.5">
                 {menu.categories[0] ? (
                   <Button size="lg" onClick={() => scrollToCategory(menu.categories[0]!.id)}>
-                    رفتن به منو
+                    دیدن منو
                   </Button>
                 ) : null}
                 <Link
                   to="/"
-                  className="rounded-full border border-cream/25 px-5 py-2.5 text-xs text-cream hover:border-cream/60"
+                  className="rounded-full border border-cream/25 px-5 py-2.5 text-xs text-cream transition-colors duration-200 hover:border-cream/60 focus-visible:ring-2 focus-visible:ring-cream/60"
                 >
                   صفحه اصلی کافه
                 </Link>
               </div>
-
-              <dl className="mt-8 flex gap-8 border-t border-cream/12 pt-5">
-                <div>
-                  <dt className="text-[10px] text-cream/50">دسته فعال</dt>
-                  <dd className="num font-display mt-1 text-2xl font-bold">
-                    {formatCountFa(menu.categories.length)}
-                  </dd>
-                </div>
-                <div className="border-s border-cream/12 ps-8">
-                  <dt className="text-[10px] text-cream/50">آیتم در منو</dt>
-                  <dd className="num font-display mt-1 text-2xl font-bold">{formatCountFa(productCount)}</dd>
-                </div>
-              </dl>
             </div>
 
-            <div className="relative min-h-56 lg:min-h-full">
-              <img
-                src="/images/cup-hero.jpg"
-                alt="فنجان قهوه کرم‌رنگ میان دانه‌های برشته با پاشش قهوه"
-                className="absolute inset-0 size-full object-cover object-[60%_center]"
-                width={1392}
-                height={752}
-              />
-              <div
-                aria-hidden="true"
-                className="absolute inset-0 bg-gradient-to-l from-espresso/10 via-espresso/20 to-espresso"
-              />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end lg:flex-col lg:items-stretch">
+              <div className="flex flex-1 gap-2.5">
+                <div className="flex-1 rounded-2xl border border-cream/15 bg-espresso/45 px-4 py-3 backdrop-blur-sm">
+                  <p className="text-[10px] text-cream/55">دسته‌بندی</p>
+                  <p className="num mt-0.5 font-display text-2xl font-bold">
+                    {formatCountFa(menu.categories.length)}
+                  </p>
+                </div>
+                <div className="flex-1 rounded-2xl border border-cream/15 bg-espresso/45 px-4 py-3 backdrop-blur-sm">
+                  <p className="text-[10px] text-cream/55">آیتم در منو</p>
+                  <p className="num mt-0.5 font-display text-2xl font-bold">{formatCountFa(productCount)}</p>
+                </div>
+              </div>
+
+              {menu.restaurant.addressFa || menu.restaurant.phone ? (
+                <p className="text-[11px] leading-6 text-cream/60">
+                  {menu.restaurant.addressFa}
+                  {menu.restaurant.addressFa && menu.restaurant.phone ? ' — ' : ''}
+                  {menu.restaurant.phone ? (
+                    <span dir="ltr" className="num">
+                      {menu.restaurant.phone}
+                    </span>
+                  ) : null}
+                </p>
+              ) : null}
             </div>
           </div>
         </section>
+
+        <CafeLocation
+          className="mt-5"
+          nameFa={menu.restaurant.nameFa}
+          addressFa={menu.restaurant.addressFa}
+          phone={menu.restaurant.phone}
+          latitude={menu.restaurant.latitude}
+          longitude={menu.restaurant.longitude}
+        />
 
         <div className="py-5">
           {!online ? (
@@ -348,99 +525,198 @@ export function MenuPage() {
           {menu.categories.length === 0 ? (
             <EmptyState title="منو در حال آماده‌سازی است" description="هنوز محصول فعالی ثبت نشده است." />
           ) : (
-            <div className="space-y-12 pb-10 pt-3">
-              {menu.categories.map((category) => (
-                <section key={category.id} id={`category-${category.id}`} className="scroll-mt-24">
-                  <div className="mb-5 flex items-end justify-between border-b border-ink/10 pb-3">
-                    <h2 className="font-display text-2xl font-bold text-ink sm:text-3xl">{category.nameFa}</h2>
-                    <span className="num text-[11px] text-muted">
-                      {formatCountFa(category.products.length)} محصول
-                    </span>
-                  </div>
+            <div className="space-y-14 pb-10 pt-2">
+              {menu.categories.map((category, categoryIndex) => {
+                const featured = category.products.length >= 3 ? category.products[0]! : null;
+                const rest = featured ? category.products.slice(1) : category.products;
 
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    {category.products.map((product) => (
-                      <article
-                        key={product.id}
-                        className="flex flex-col justify-between rounded-[1.35rem] border border-line bg-surface p-5 shadow-[0_26px_60px_-54px_rgba(41,27,19,0.6)]"
+                return (
+                  <section
+                    key={category.id}
+                    id={`category-${category.id}`}
+                    className="scroll-mt-40 lg:scroll-mt-24"
+                  >
+                    <div className="mb-5 flex items-start gap-3 sm:items-end sm:gap-5">
+                      <span
+                        aria-hidden="true"
+                        className="num font-display text-4xl font-bold leading-none text-brand-200 sm:text-5xl"
                       >
-                        <div>
-                          <div className="mb-3 flex items-start justify-between gap-3">
-                            <div className="flex min-w-0 items-start gap-3">
-                              {product.imageUrl ? (
-                                <img
-                                  src={product.imageUrl}
-                                  alt={product.nameFa}
-                                  className="size-12 shrink-0 border border-line object-cover"
-                                  loading="lazy"
-                                />
-                              ) : null}
-                              <div className="min-w-0">
-                                <h3 className="text-sm font-bold text-ink">{product.nameFa}</h3>
-                                {product.descriptionFa ? (
-                                  <p className="mt-1 text-[11px] leading-6 text-muted">{product.descriptionFa}</p>
-                                ) : null}
-                              </div>
-                            </div>
-                            {product.isAvailable ? (
-                              <Badge tone="success" dot>موجود</Badge>
-                            ) : (
-                              <Badge tone="danger" dot>ناموجود</Badge>
-                            )}
-                          </div>
-                          {!product.isAvailable && product.unavailableReasonFa ? (
-                            <p className="mt-1 text-[10px] text-danger-700">{product.unavailableReasonFa}</p>
-                          ) : null}
+                        {sectionNumber(categoryIndex)}
+                      </span>
+                      <div className="flex min-w-0 flex-1 items-end justify-between gap-3 border-b border-ink/10 pb-2.5">
+                        <div className="min-w-0">
+                          <h2 className="truncate font-display text-2xl font-bold text-ink sm:text-3xl">
+                            {category.nameFa}
+                          </h2>
+                          <p className="mt-0.5 text-[10px] text-muted">
+                            {formatCountFa(category.products.length)} آیتم در این دسته
+                          </p>
                         </div>
+                        <span aria-hidden="true" className="mb-1 hidden h-1.5 w-1.5 rounded-full bg-brand-400 sm:block" />
+                      </div>
+                    </div>
 
-                        <div className="mt-4 flex items-end justify-between gap-2 border-t border-line pt-3">
-                          <div>
-                            <p className="num text-sm font-bold text-brand-700">{formatRial(product.price)}</p>
-                            <p className="text-[10px] text-muted">
-                              آماده‌سازی ~{formatCountFa(product.prepMinutes)} دقیقه
+                    {featured ? (
+                      <article className="group mb-4 overflow-hidden rounded-[1.75rem] border border-line/70 bg-surface shadow-[0_30px_70px_-58px_rgba(41,27,19,0.65)] sm:mb-5">
+                        <div className="grid md:grid-cols-[0.95fr_1.05fr]">
+                          <div className="order-2 flex flex-col p-5 sm:p-7 md:order-1 md:justify-center">
+                            <p className="flex items-center gap-2 text-[10px] text-brand-600">
+                              <span aria-hidden="true" className="h-px w-5 bg-brand-300" />
+                              پیشنهاد منو
                             </p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <h3 className="font-display text-xl font-bold text-ink sm:text-2xl">
+                                {featured.nameFa}
+                              </h3>
+                              <AvailabilityBadge product={featured} />
+                            </div>
+                            {featured.descriptionFa ? (
+                              <p className="mt-2 line-clamp-2 text-[11px] leading-6 text-muted sm:text-xs">
+                                {featured.descriptionFa}
+                              </p>
+                            ) : null}
+                            {!featured.isAvailable && featured.unavailableReasonFa ? (
+                              <p className="mt-1 text-[10px] text-danger-700">{featured.unavailableReasonFa}</p>
+                            ) : null}
+
+                            <div className="mt-4 flex flex-wrap items-end justify-between gap-3 border-t border-line/80 pt-4">
+                              <div>
+                                <p className="num text-lg font-bold text-brand-700">{formatRial(featured.price)}</p>
+                                <p className="text-[10px] text-muted">
+                                  آماده‌سازی ~{formatCountFa(featured.prepMinutes)} دقیقه
+                                </p>
+                              </div>
+                              <Button
+                                disabled={!featured.isAvailable || !canOrder}
+                                onClick={() => chooseProduct(featured)}
+                              >
+                                {featured.optionGroups.length > 0 || featured.extras.length > 0
+                                  ? 'انتخاب و افزودن'
+                                  : 'افزودن به سبد'}
+                              </Button>
+                            </div>
                           </div>
-                          <Button
-                            size="sm"
-                            disabled={!product.isAvailable || !canOrder}
-                            onClick={() => {
-                              if (!canOrder) return;
-                              if (product.optionGroups.length > 0 || product.extras.length > 0) {
-                                setDialogProduct(product);
-                                return;
-                              }
-                              addLine({
-                                productId: product.id,
-                                nameFa: product.nameFa,
-                                unitPrice: product.price,
-                                quantity: 1,
-                                optionIds: [],
-                                extraIds: [],
-                              });
-                            }}
-                          >
-                            افزودن
-                          </Button>
+
+                          <div className="relative order-1 min-h-52 overflow-hidden md:order-2 md:min-h-full">
+                            <ProductImage
+                              product={featured}
+                              priority
+                              sizes="(min-width: 768px) 45vw, 100vw"
+                              className="absolute inset-0 size-full transition-transform duration-700 group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
+                            />
+                            <div
+                              aria-hidden="true"
+                              className="absolute inset-0 bg-gradient-to-t from-espresso/45 via-transparent to-transparent md:bg-gradient-to-l md:from-espresso/35 md:via-espresso/5 md:to-transparent"
+                            />
+                            <span className="absolute bottom-3 start-3 rounded-full bg-cream/90 px-3 py-1 text-[10px] font-medium text-espresso backdrop-blur-sm">
+                              تازه‌دم
+                            </span>
+                          </div>
                         </div>
                       </article>
-                    ))}
-                  </div>
-                </section>
-              ))}
+                    ) : null}
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                      {rest.map((product) => (
+                        <article
+                          key={product.id}
+                          className="group flex flex-col overflow-hidden rounded-[1.4rem] border border-line/80 bg-surface shadow-[0_24px_55px_-52px_rgba(41,27,19,0.7)] transition-shadow duration-300 hover:shadow-[0_30px_60px_-46px_rgba(41,27,19,0.55)]"
+                        >
+                          <div className="relative aspect-[4/3] overflow-hidden bg-cream">
+                            <ProductImage
+                              product={product}
+                              sizes="(min-width: 1280px) 30vw, (min-width: 640px) 46vw, 100vw"
+                              className="size-full transition-transform duration-500 group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
+                            />
+                            <div
+                              aria-hidden="true"
+                              className="absolute inset-0 bg-gradient-to-t from-espresso/35 via-transparent to-transparent"
+                            />
+
+                            <div className="absolute inset-x-3 top-3 flex items-start justify-between gap-2">
+                              <span className="rounded-full bg-cream/90 px-2.5 py-1 backdrop-blur-sm">
+                                <AvailabilityBadge product={product} />
+                              </span>
+                              <span className="num rounded-full bg-espresso/85 px-3 py-1 text-[11px] font-semibold text-cream backdrop-blur-sm">
+                                {formatRial(product.price, { withUnit: false })}
+                                <span className="ms-1 text-[9px] font-normal text-cream/60">ریال</span>
+                              </span>
+                            </div>
+
+                            <span className="absolute bottom-3 start-3 rounded-full bg-espresso/55 px-2.5 py-1 text-[9px] text-cream backdrop-blur-sm">
+                              ~{formatCountFa(product.prepMinutes)} دقیقه
+                            </span>
+                          </div>
+
+                          <div className="flex flex-1 flex-col p-4">
+                            <h3 className="truncate text-sm font-bold text-ink" title={product.nameFa}>
+                              {product.nameFa}
+                            </h3>
+                            <p className="mt-1 line-clamp-2 text-[11px] leading-6 text-muted">
+                              {product.descriptionFa ?? 'بدون توضیح'}
+                            </p>
+                            {!product.isAvailable && product.unavailableReasonFa ? (
+                              <p className="mt-1 line-clamp-1 text-[10px] text-danger-700">
+                                {product.unavailableReasonFa}
+                              </p>
+                            ) : null}
+
+                            <div className="mt-auto flex items-center justify-between gap-2 pt-3">
+                              <span className="text-[10px] text-muted">
+                                {product.optionGroups.length > 0 || product.extras.length > 0
+                                  ? 'قابل شخصی‌سازی'
+                                  : 'آماده برای سفارش'}
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={!product.isAvailable || !canOrder}
+                                onClick={() => chooseProduct(product)}
+                              >
+                                افزودن
+                              </Button>
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
             </div>
           )}
         </div>
       </main>
 
-      <div className="px-5 pb-28 pt-4">
-        <DeveloperCredit />
+      <div className="mx-auto max-w-6xl px-4 pb-28 pt-4 sm:px-8 lg:pb-10">
+        <CafeLocation
+          variant="bar"
+          nameFa={menu.restaurant.nameFa}
+          addressFa={menu.restaurant.addressFa}
+          phone={menu.restaurant.phone}
+          latitude={menu.restaurant.latitude}
+          longitude={menu.restaurant.longitude}
+        />
+        <div className="px-1 pt-4">
+          <DeveloperCredit />
+        </div>
       </div>
 
       {cart.length > 0 && canOrder ? (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface p-3 pl-[6rem] sm:pl-[6.75rem]">
-          <Button fullWidth size="lg" onClick={() => setCartOpen(true)}>
-            مشاهده سبد — {formatRial(totals.total)}
-          </Button>
+        <div className="fixed inset-x-3 bottom-3 z-30 sm:inset-x-6 lg:inset-x-auto lg:end-8 lg:w-[24rem]">
+          <button
+            type="button"
+            onClick={() => setCartOpen(true)}
+            className="flex w-full items-center justify-between gap-3 rounded-full bg-espresso px-5 py-3.5 text-cream shadow-[0_24px_50px_-22px_rgba(36,22,17,0.7)] transition-colors duration-200 hover:bg-choco focus-visible:ring-2 focus-visible:ring-brand-300"
+          >
+            <span className="flex items-center gap-2 text-xs">
+              <span className="num flex size-6 items-center justify-center rounded-full bg-cream/15 text-[10px]">
+                {formatCountFa(itemCount)}
+              </span>
+              مشاهده سبد
+            </span>
+            <span className="num text-sm font-bold">{formatRial(totals.total)}</span>
+          </button>
         </div>
       ) : null}
 

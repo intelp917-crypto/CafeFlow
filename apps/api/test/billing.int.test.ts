@@ -343,6 +343,38 @@ describe('receipt printing queue', () => {
     expect(failed.body.error).toBe('printer offline');
   });
 
+  it('claims a queued job so two bridges never print the same receipt twice', async () => {
+    const admin = (await login(context.app, ADMIN_USERNAME, ADMIN_PASSWORD)).agent;
+    const cashier = (await login(context.app, 'cashier', DEMO_PASSWORD)).agent;
+    const order = await paidOrder(3, cashier);
+
+    const queued = await admin.post(`/api/v1/orders/${order.id}/receipt`);
+    expect(queued.status).toBe(201);
+    const jobId = queued.body.job.id as string;
+
+    const claimed = await admin.post(`/api/v1/print/jobs/${jobId}/sent`);
+    expect(claimed.status).toBe(200);
+    expect(claimed.body.status).toBe('sent');
+    // Claiming is not an attempt: only a printed/failed result counts one.
+    expect(claimed.body.attempts).toBe(0);
+
+    // Pollers ask for queued jobs, so the claimed job is invisible to a second bridge.
+    const queue = await admin.get('/api/v1/print/jobs?status=queued');
+    expect(queue.body.items.some((job: { id: string }) => job.id === jobId)).toBe(false);
+
+    const again = await admin.post(`/api/v1/print/jobs/${jobId}/sent`);
+    expect(again.status).toBe(200);
+    expect(again.body.status).toBe('sent');
+
+    const printed = await admin.post(`/api/v1/print/jobs/${jobId}/printed`);
+    expect(printed.body.status).toBe('printed');
+    expect(printed.body.attempts).toBe(1);
+
+    const afterPrint = await admin.post(`/api/v1/print/jobs/${jobId}/sent`);
+    expect(afterPrint.status).toBe(409);
+    expect(afterPrint.body.error.code).toBe('PRINT_JOB_ALREADY_PRINTED');
+  });
+
   it('refuses a receipt before the order is served', async () => {
     const admin = (await login(context.app, ADMIN_USERNAME, ADMIN_PASSWORD)).agent;
     const order = await placeOrder(3);

@@ -1,11 +1,14 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { publicOrderSchema, publicRequestSchema, publicTerminalRequestSchema } from '@cafeflow/shared';
+import {
+  publicOrderItemsSchema,
+  publicOrderSchema, publicRequestSchema, publicTerminalRequestSchema } from '@cafeflow/shared';
 import { Public } from '../../common/decorators';
 import { parseWith } from '../../common/errors';
 import { parseCookies } from '../../common/cookies';
 import { loadConfig } from '../../config/env';
 import type { RequestWithAuth } from '../../common/tokens';
+import { MediaService } from '../catalog/media.service';
 import { PublicService } from './public.service';
 
 const DEVICE_COOKIE = 'cafe_device';
@@ -20,7 +23,10 @@ const DEVICE_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
 export class PublicController {
   private readonly config = loadConfig();
 
-  constructor(@Inject(PublicService) private readonly publicService: PublicService) {}
+  constructor(
+    @Inject(PublicService) private readonly publicService: PublicService,
+    @Inject(MediaService) private readonly media: MediaService,
+  ) {}
 
   @Public()
   @Get('menu')
@@ -51,15 +57,34 @@ export class PublicController {
     response.end(logo.bytes);
   }
 
+  /** Uploaded product photo, served same-origin and cached for good. */
+  @Public()
+  @Get('product-images/:file')
+  productImage(@Param('file') file: string, @Res() response: Response) {
+    const image = this.media.read(file);
+    response.setHeader('Content-Type', image.mime);
+    response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.end(image.bytes);
+  }
+
+  /** The café name as configured in Settings, for the whole UI shell. */
+  @Public()
+  @Get('branding')
+  branding() {
+    return this.publicService.getBranding();
+  }
+
   @Public()
   @Get('branding/manifest')
   brandingManifest() {
     const custom = this.publicService.getLogoImage() !== null;
     const iconSrc = (size: number) =>
       custom ? `/api/v1/public/branding/icon/${size}` : `/icon-${size}.png`;
+    const branding = this.publicService.getBranding();
     return {
-      name: 'کافه‌فلو — مدیریت کافه و رستوران',
-      short_name: 'کافه‌فلو',
+      name: `${branding.nameFa} — مدیریت کافه و رستوران`,
+      short_name: branding.nameFa,
       description: 'منوی QR، سفارش، آماده‌سازی، صندوق، رزرو و گزارش‌های کافه و رستوران',
       lang: 'fa-IR',
       dir: 'rtl',
@@ -92,8 +117,22 @@ export class PublicController {
 
   @Public()
   @Get('orders/:code')
-  orderStatus(@Param('code') code: string) {
-    return this.publicService.getOrderStatus(code.trim().toUpperCase());
+  orderStatus(
+    @Param('code') code: string,
+    @Query('token') token: string | undefined,
+    @Req() request: RequestWithAuth,
+  ) {
+    return this.publicService.getOrderStatus(code.trim().toUpperCase(), token, this.clientIp(request));
+  }
+
+  @Public()
+  @Post('orders/:code/items')
+  addItems(@Param('code') code: string, @Query('token') token: string | undefined, @Body() body: unknown) {
+    return this.publicService.addOrderItems(
+      code.trim().toUpperCase(),
+      token,
+      parseWith(publicOrderItemsSchema, body),
+    );
   }
 
   @Public()

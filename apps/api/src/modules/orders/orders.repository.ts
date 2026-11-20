@@ -343,10 +343,13 @@ export class OrdersRepository {
         reference: string | null;
         paid_at: string;
         receiver: string | null;
+        split_label: string | null;
       }>(
-        `SELECT p.id, p.method, p.amount, p.status, p.reference, p.paid_at, u.full_name AS receiver
+        `SELECT p.id, p.method, p.amount, p.status, p.reference, p.paid_at, u.full_name AS receiver,
+                s.label AS split_label
            FROM payments p
            LEFT JOIN users u ON u.id = p.received_by_user_id
+           LEFT JOIN bill_splits s ON s.id = p.bill_split_id
           WHERE p.order_id = ?
           ORDER BY p.paid_at ASC, p.rowid ASC`,
         [id],
@@ -360,6 +363,7 @@ export class OrdersRepository {
         reference: payment.reference,
         receivedByName: payment.receiver,
         paidAt: payment.paid_at,
+        splitLabelFa: payment.split_label,
       }));
 
     return {
@@ -395,6 +399,188 @@ export class OrdersRepository {
     }>('SELECT id, code, status, table_id, table_session_id FROM orders WHERE id = ?', [id]);
     if (!row) return undefined;
     return { id: row.id, code: row.code, status: row.status, tableId: row.table_id, sessionId: row.table_session_id };
+  }
+
+  /* --------------------------- staff ordering --------------------------- */
+
+  /** Opens the single allowed open session for a table and returns its id. */
+  openTableSession(tableId: string, openedByUserId: string): string {
+    const id = randomUUID();
+    this.database.run(
+      `INSERT INTO table_sessions (id, table_id, opened_by_user_id, status, opened_at)
+       VALUES (?, ?, ?, 'open', ?)`,
+      [id, tableId, openedByUserId, new Date().toISOString()],
+    );
+    return id;
+  }
+
+  insertOrder(entry: {
+    id: string;
+    code: string;
+    tableId: string | null;
+    sessionId: string | null;
+    source: 'waiter' | 'cashier' | 'admin';
+    subtotal: number;
+    discountTotal: number;
+    serviceCharge: number;
+    taxTotal: number;
+    total: number;
+    note: string | null;
+    createdByUserId: string;
+  }): void {
+    const now = new Date().toISOString();
+    this.database.run(
+      `INSERT INTO orders
+         (id, code, table_id, table_session_id, waiter_user_id, status, source,
+          subtotal, discount_total, service_charge, tax_total, total, note,
+          created_by_user_id, submitted_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'submitted', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        entry.id,
+        entry.code,
+        entry.tableId,
+        entry.sessionId,
+        entry.createdByUserId,
+        entry.source,
+        entry.subtotal,
+        entry.discountTotal,
+        entry.serviceCharge,
+        entry.taxTotal,
+        entry.total,
+        entry.note,
+        entry.createdByUserId,
+        now,
+        now,
+        now,
+      ],
+    );
+  }
+
+  insertOrderItem(entry: {
+    id: string;
+    orderId: string;
+    productId: string;
+    productNameFa: string;
+    unitPrice: number;
+    quantity: number;
+    total: number;
+    departmentId: string | null;
+    options: Array<{ id: string; nameFa: string; priceDelta: number }>;
+    extras: Array<{ id: string; nameFa: string; price: number }>;
+    note: string | null;
+  }): void {
+    this.database.run(
+      `INSERT INTO order_items
+         (id, order_id, product_id, product_name_snapshot, unit_price_snapshot, quantity,
+          options_json, extras_json, note, department_id, status, total)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      [
+        entry.id,
+        entry.orderId,
+        entry.productId,
+        entry.productNameFa,
+        entry.unitPrice,
+        entry.quantity,
+        entry.options.length > 0 ? JSON.stringify(entry.options) : null,
+        entry.extras.length > 0 ? JSON.stringify(entry.extras) : null,
+        entry.note,
+        entry.departmentId,
+        entry.total,
+      ],
+    );
+  }
+
+  insertPrepTask(entry: {
+    orderItemId: string;
+    orderId: string;
+    departmentId: string | null;
+    targetMinutes: number;
+  }): void {
+    this.database.run(
+      `INSERT INTO prep_tasks (id, order_item_id, order_id, department_id, status, priority, target_minutes)
+       VALUES (?, ?, ?, ?, 'queued', 0, ?)`,
+      [randomUUID(), entry.orderItemId, entry.orderId, entry.departmentId, entry.targetMinutes],
+    );
+  }
+
+  findOrderItem(
+    orderId: string,
+    itemId: string,
+  ): { id: string; quantity: number; unitPrice: number; status: string; productNameFa: string } | undefined {
+    const row = this.database.get<{
+      id: string;
+      quantity: number;
+      unit_price_snapshot: number;
+      status: string;
+      product_name_snapshot: string;
+    }>(
+      `SELECT id, quantity, unit_price_snapshot, status, product_name_snapshot
+         FROM order_items WHERE id = ? AND order_id = ?`,
+      [itemId, orderId],
+    );
+    if (!row) return undefined;
+    return {
+      id: row.id,
+      quantity: row.quantity,
+      unitPrice: row.unit_price_snapshot,
+      status: row.status,
+      productNameFa: row.product_name_snapshot,
+    };
+  }
+
+  setOrderItemQuantity(itemId: string, quantity: number, total: number): void {
+    this.database.run('UPDATE order_items SET quantity = ?, total = ? WHERE id = ?', [quantity, total, itemId]);
+  }
+
+  /** Cancelling a line also takes its preparation task out of the queue. */
+  cancelOrderItem(itemId: string): void {
+    this.database.run("UPDATE order_items SET status = 'cancelled' WHERE id = ?", [itemId]);
+    this.database.run(
+      "UPDATE prep_tasks SET status = 'cancelled' WHERE order_item_id = ? AND status != 'cancelled'",
+      [itemId],
+    );
+  }
+
+  sumActiveSubtotal(orderId: string): number {
+    const row = this.database.get<{ total: number }>(
+      "SELECT COALESCE(SUM(total), 0) AS total FROM order_items WHERE order_id = ? AND status != 'cancelled'",
+      [orderId],
+    );
+    return row?.total ?? 0;
+  }
+
+  findOrderTotals(orderId: string):
+    | { subtotal: number; discountTotal: number; serviceCharge: number; taxTotal: number; total: number }
+    | undefined {
+    const row = this.database.get<{
+      subtotal: number;
+      discount_total: number;
+      service_charge: number;
+      tax_total: number;
+      total: number;
+    }>('SELECT subtotal, discount_total, service_charge, tax_total, total FROM orders WHERE id = ?', [orderId]);
+    if (!row) return undefined;
+    return {
+      subtotal: row.subtotal,
+      discountTotal: row.discount_total,
+      serviceCharge: row.service_charge,
+      taxTotal: row.tax_total,
+      total: row.total,
+    };
+  }
+
+  updateOrderTotals(
+    orderId: string,
+    totals: { subtotal: number; serviceCharge: number; taxTotal: number; total: number },
+  ): void {
+    this.database.run(
+      `UPDATE orders
+          SET subtotal = ?, service_charge = ?, tax_total = ?, total = ?, updated_at = ?
+        WHERE id = ?`,
+      [totals.subtotal, totals.serviceCharge, totals.taxTotal, totals.total, new Date().toISOString(), orderId],
+    );
+    // An open bill must follow the order total, never the stale figure.
+    this.database.run(`UPDATE bills SET total = ? WHERE order_id = ? AND status = 'open'`, [totals.total, orderId]);
   }
 
   updateOrder(

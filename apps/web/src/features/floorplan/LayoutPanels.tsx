@@ -16,6 +16,7 @@ import {
 } from '@cafeflow/shared';
 import type { UpdateLayoutTableInput } from '@cafeflow/shared';
 import { EQUIPMENT_LIBRARY, TABLE_LIBRARY, ZONE_LIBRARY, type LibraryItem } from './catalog';
+import { objectGlyph, isDarkColor } from './artwork';
 import type { PlanModel } from './LayoutCanvas';
 
 const inputClass =
@@ -59,26 +60,36 @@ function LibraryGroup({
     <div className="space-y-1.5">
       <p className="text-[10px] font-semibold text-muted">{title}</p>
       <div className="grid grid-cols-2 gap-1.5">
-        {items.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            draggable
-            onDragStart={(event) => event.dataTransfer.setData('application/x-cafeflow-item', item.key)}
-            onClick={() => onAdd(item.key)}
-            className="flex h-16 cursor-grab flex-col items-center justify-center gap-1 rounded-xl border border-line bg-surface px-1 text-[10px] text-ink transition hover:border-brand-300 hover:bg-brand-50/50 active:cursor-grabbing"
-          >
-            <span
-              className={cn('border border-sec-300 bg-sec-100', item.type === 'table' ? 'size-5' : 'h-4 w-7')}
-              style={{
-                borderRadius: item.type === 'table' ? (item.shape === 'round' ? '9999px' : '4px') : '2px',
-                backgroundColor: item.color ?? '#f0e9dc',
-                borderColor: item.color ?? '#cdbda7',
-              }}
-            />
-            <span className="text-center leading-3">{item.label}</span>
-          </button>
-        ))}
+        {items.map((item) => {
+          const Glyph = objectGlyph(item.type, item.zoneKind);
+          const tint = item.color ?? '#e6dbc9';
+          const dark = isDarkColor(tint);
+          const isZone = item.type === 'zone';
+          return (
+            <button
+              key={item.key}
+              type="button"
+              draggable
+              title={item.label}
+              onDragStart={(event) => event.dataTransfer.setData('application/x-cafeflow-item', item.key)}
+              onClick={() => onAdd(item.key)}
+              className="flex h-16 cursor-grab flex-col items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-1 text-[10px] text-ink transition hover:border-brand-300 hover:bg-brand-50/50 active:cursor-grabbing"
+            >
+              <span
+                className={cn('flex h-7 items-center justify-center', item.shape === 'rectangle' ? 'w-8' : 'w-7')}
+                style={{
+                  borderRadius: item.shape === 'round' ? '9999px' : isZone ? '6px' : '5px',
+                  background: isZone ? `${tint}55` : `linear-gradient(160deg, ${tint} 0%, ${tint}cc 100%)`,
+                  border: isZone ? `1.5px dashed ${tint}` : '1px solid rgba(41,27,19,0.18)',
+                  boxShadow: isZone ? undefined : 'inset 0 1px 0 rgba(255,255,255,0.35)',
+                }}
+              >
+                <Glyph aria-hidden="true" size={14} strokeWidth={1.8} style={{ color: dark ? '#f7efe3' : '#291b13' }} />
+              </span>
+              <span className="text-center leading-3">{item.label}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

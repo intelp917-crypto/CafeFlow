@@ -1,4 +1,4 @@
-import { formatJalali, formatRial, groupDigits, toPersianDigits } from '@cafeflow/shared';
+import { formatJalali, formatRial, groupDigits, toLatinDigits, toPersianDigits } from '@cafeflow/shared';
 
 export { formatRial, toPersianDigits, groupDigits };
 
@@ -12,6 +12,34 @@ export function formatDateTimeFa(iso: string | null | undefined): string {
 export function formatDateFa(iso: string | null | undefined): string {
   if (!iso) return '—';
   return formatJalali(new Date(iso), { monthName: true });
+}
+
+/**
+ * Reads a manually typed amount: Persian/Arabic digits and grouping characters
+ * («۱۲٬۵۰۰» یا "12,500") are accepted, anything else is ignored. An empty or
+ * incomplete value is 0, so callers validate «required» separately.
+ */
+export function parseAmountFa(value: string): number {
+  const latin = toLatinDigits(String(value))
+    .replace(/[٬,\s\u200c]/g, '')
+    .replace(/[^\d-]/g, '');
+  if (latin === '' || latin === '-') return 0;
+  const parsed = Number(latin);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Reads a coordinate typed by an admin. Persian/Arabic digits, the Arabic
+ * decimal separator «٫» and a leading sign are accepted; a dot is required as
+ * the decimal mark. Returns NaN for anything that is not a number.
+ */
+export function parseCoordinateFa(value: string): number {
+  const latin = toLatinDigits(String(value))
+    .replace(/[٬,\s\u200c]/g, '')
+    .replace(/٫/g, '.');
+  if (latin === '') return NaN;
+  const parsed = Number(latin);
+  return Number.isFinite(parsed) ? parsed : NaN;
 }
 
 /** Grouped Persian integer, used for counters. */

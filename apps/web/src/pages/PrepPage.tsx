@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -100,7 +101,7 @@ export function PrepPage() {
       <PageHeader
         title="صف آماده‌سازی"
         description="هر آیتم سفارش یک وظیفه در دپارتمان خودش است. با شروع و آماده‌شدن آیتم‌ها، وضعیت سفارش به‌صورت خودکار و از مسیر مجاز ماشین وضعیت به‌روزرسانی می‌شود."
-        breadcrumb="کافه‌فلو / صف آماده‌سازی"
+        breadcrumb={<Breadcrumb page="صف آماده‌سازی" />}
         actions={
           <span className="text-xs text-muted">
             {loading ? <Spinner size="sm" /> : null} {formatCountFa(items.length)} آیتم در صف

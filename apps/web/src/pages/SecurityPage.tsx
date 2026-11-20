@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -128,7 +129,7 @@ export function SecurityPage() {
       <PageHeader
         title="امنیت حساب"
         description="تأیید دو مرحله‌ای با کد شش‌رقمی مبتنی بر زمان (TOTP). کلید فقط یک‌بار نمایش داده می‌شود و در سرور نگه‌داری می‌شود."
-        breadcrumb="کافه‌فلو / امنیت"
+        breadcrumb={<Breadcrumb page="امنیت" />}
         actions={
           status ? (
             status.enabled ? (

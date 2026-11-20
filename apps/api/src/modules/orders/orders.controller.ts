@@ -1,5 +1,12 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
-import { listOrdersQuerySchema, orderTransitionSchema, prepTransitionSchema } from '@cafeflow/shared';
+import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  addStaffOrderItemsSchema,
+  createStaffOrderSchema,
+  listOrdersQuerySchema,
+  orderTransitionSchema,
+  prepTransitionSchema,
+  updateOrderItemSchema,
+} from '@cafeflow/shared';
 import { badRequest } from '../../common/errors';
 import { parseWith } from '../../common/errors';
 import { CurrentAuth, Permissions } from '../../common/decorators';
@@ -18,10 +25,38 @@ export class OrdersController {
     return this.orders.list(parseWith(listOrdersQuerySchema, query));
   }
 
+  /** Waiter-entered order; the server prices every line from the live menu. */
+  @Post()
+  @Permissions('orders.write')
+  create(@Body() body: unknown, @CurrentAuth() auth: RequestAuth) {
+    return this.orders.createStaffOrder(parseWith(createStaffOrderSchema, body), auth);
+  }
+
   @Get(':id')
   @Permissions('orders.read')
   detail(@Param('id') id: string) {
     return this.orders.detail(id);
+  }
+
+  /** Extra round on an open order: keeps one bill and one prep stream. */
+  @Post(':id/items')
+  @HttpCode(200)
+  @Permissions('orders.write')
+  addItems(@Param('id') id: string, @Body() body: unknown, @CurrentAuth() auth: RequestAuth) {
+    return this.orders.addStaffItems(id, parseWith(addStaffOrderItemsSchema, body), auth);
+  }
+
+  /** Shrink or remove a line until the order is served. */
+  @Patch(':id/items/:itemId')
+  @HttpCode(200)
+  @Permissions('orders.write')
+  updateItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() body: unknown,
+    @CurrentAuth() auth: RequestAuth,
+  ) {
+    return this.orders.updateItem(id, itemId, parseWith(updateOrderItemSchema, body), auth);
   }
 
   @Post(':id/transition')

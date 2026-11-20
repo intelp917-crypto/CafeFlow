@@ -7,14 +7,20 @@
  * different moments. Old backups are rotated by count.
  *
  *   npm run backup
+ *   CAFEFLOW_DATA_DIR=/var/lib/cafeflow npm run backup
  *   DATABASE_PATH=... BACKUP_DIR=... BACKUP_KEEP=30 npm run backup
  */
 import Database from 'better-sqlite3';
 import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-const sourcePath = resolve(process.env.DATABASE_PATH ?? 'data/cafeflow.db');
-const outputDirectory = resolve(process.env.BACKUP_DIR ?? 'backups');
+// Same root the API uses: the database and its backups sit together, so one
+// mounted folder is enough to keep an installation intact across restarts.
+const dataDirectory = resolve(process.env.CAFEFLOW_DATA_DIR ?? 'data');
+const sourcePath = resolve(process.env.DATABASE_PATH ?? join(dataDirectory, 'cafeflow.db'));
+const outputDirectory = resolve(
+  process.env.BACKUP_DIR ?? process.env.CAFEFLOW_BACKUP_DIR ?? join(dataDirectory, 'backups'),
+);
 const keep = Math.max(Number(process.env.BACKUP_KEEP ?? 14), 1);
 
 if (!existsSync(sourcePath)) {

@@ -11,3 +11,4 @@ export * from './dto/operations';
 export * from './dto/management';
 export * from './dto/layout';
 export * from './dto/backoffice';
+export * from './dto/catalog';

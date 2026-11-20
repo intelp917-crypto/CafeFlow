@@ -63,10 +63,12 @@ print_jobs.status = printed | failed (+attempts, last_error)
 
 - `POST /orders/:id/receipt` متن رسید را می‌سازد و در `print_jobs` با `job_key = receipt:{orderId}:{paidTotal}`
   ذخیره می‌کند (کلید یکتا = ضد چاپ تکراری؛ پس از تغییر مبلغ، رسید جدید مجاز است).
-- `GET /print/jobs?status=queued` صف را با متن رسید برمی‌گرداند؛ `POST /print/jobs/:id/printed` و
-  `/failed` وضعیت، `attempts`، `printed_at` و `last_error` را ثبت می‌کنند.
-- `scripts/print-bridge.mjs` با یک حساب کارمند دارای `orders.read` وارد می‌شود، هر کار صف را در
-  `print-output/<code>-<id>.txt` می‌نویسد و نتیجه را برمی‌گرداند. خروجی متنی را می‌توان به هر درایور
+- `GET /print/jobs?status=queued` صف را با متن رسید برمی‌گرداند؛ `POST /print/jobs/:id/sent` کار را
+  **اتمی** از `queued` به `sent` می‌برد تا دو پل هم‌زمان یک کار را چاپ نکنند؛ `POST /print/jobs/:id/printed`
+  و `/failed` وضعیت، `attempts`، `printed_at` و `last_error` را ثبت می‌کنند.
+- `scripts/print-bridge.mjs` با یک حساب کارمند دارای `orders.read` وارد می‌شود، هر کار صف را نخست
+  claim می‌کند (کارهای برداشته‌شده را رد می‌کند)، در `print-output/<code>-<id>.txt` می‌نویسد و نتیجه را
+  برمی‌گرداند. خروجی متنی را می‌توان به هر درایور
   (CUPS/lpr، آداپتور سریال یا مبدل ESC/POS) داد؛ خود اسکریپت هیچ کد سخت‌افزاری ندارد.
 - صفحه `/admin/print` صف را نشان می‌دهد و اجازه تأیید دستی چاپ/شکست را می‌دهد (برای نصب بدون پل).
 - قالب رسید: نام مجموعه، «رسید فروش»، کد سفارش، میز، تاریخ جلالی، اقلام با گزینه/افزودنی/یادداشت،

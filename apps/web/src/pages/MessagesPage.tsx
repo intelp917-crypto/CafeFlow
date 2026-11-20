@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Breadcrumb } from '../lib/branding';
 import {
   Alert,
   Badge,
@@ -269,7 +270,7 @@ export function MessagesPage() {
       <PageHeader
         title="مرکز پیام"
         description="قالب‌های پیام و صف ارسال پیامک/اعلان. صف فقط ارسال را ثبت می‌کند؛ تأیید تحویل را پل ارسال ثبت می‌کند."
-        breadcrumb="کافه‌فلو / پیام‌ها"
+        breadcrumb={<Breadcrumb page="پیام‌ها" />}
         actions={
           <Button size="sm" onClick={() => setTemplateModal(true)}>
             قالب جدید

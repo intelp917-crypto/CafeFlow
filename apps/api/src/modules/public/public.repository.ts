@@ -60,6 +60,20 @@ export interface AvailabilityRow {
   end_time: string;
 }
 
+export interface CampaignRow {
+  id: string;
+  name_fa: string;
+  type: 'percent' | 'fixed';
+  value: number;
+  scope: 'all' | 'products' | 'categories';
+  starts_at: string | null;
+  ends_at: string | null;
+  max_uses: number | null;
+  max_uses_per_device: number | null;
+  used_count: number;
+  is_active: number;
+}
+
 export interface SettingsRow {
   restaurant_name_fa: string;
   currency: string;
@@ -69,6 +83,8 @@ export interface SettingsRow {
   logo_url: string;
   address_fa: string;
   phone: string;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface DeviceRow {
@@ -96,7 +112,7 @@ export class PublicRepository {
     return (
       this.database.get<SettingsRow>(
         `SELECT restaurant_name_fa, currency, digit_mode, service_charge_percent, tax_percent,
-                logo_url, address_fa, phone
+                logo_url, address_fa, phone, latitude, longitude
            FROM settings WHERE id = 'singleton'`,
       ) ?? {
         restaurant_name_fa: 'کافه‌فلو',
@@ -107,6 +123,8 @@ export class PublicRepository {
         logo_url: '',
         address_fa: '',
         phone: '',
+        latitude: null,
+        longitude: null,
       }
     );
   }
@@ -128,7 +146,7 @@ export class PublicRepository {
          JOIN categories c ON c.id = p.category_id AND c.is_active = 1 AND c.deleted_at IS NULL
          LEFT JOIN departments d ON d.id = p.department_id
         WHERE p.is_active = 1 AND p.is_archived = 0 AND p.deleted_at IS NULL
-        ORDER BY c.sort_order ASC, p.name_fa ASC`,
+        ORDER BY c.sort_order ASC, p.sort_order ASC, p.name_fa ASC`,
     );
   }
 
@@ -177,6 +195,50 @@ export class PublicRepository {
     );
   }
 
+  /* -------------------------------- campaigns ------------------------------- */
+
+  findCampaign(id: string): CampaignRow | undefined {
+    return this.database.get<CampaignRow>(
+      `SELECT id, name_fa, type, value, scope, starts_at, ends_at,
+              max_uses, max_uses_per_device, used_count, is_active
+         FROM campaigns WHERE id = ?`,
+      [id],
+    );
+  }
+
+  listCampaignTargets(campaignId: string): { target_type: 'product' | 'category'; target_id: string }[] {
+    return this.database.all<{ target_type: 'product' | 'category'; target_id: string }>(
+      'SELECT target_type, target_id FROM campaign_targets WHERE campaign_id = ?',
+      [campaignId],
+    );
+  }
+
+  countCampaignUses(campaignId: string, deviceId?: string): number {
+    return this.database.count(
+      deviceId
+        ? 'SELECT COUNT(*) AS n FROM campaign_redemptions WHERE campaign_id = ? AND device_id = ?'
+        : 'SELECT COUNT(*) AS n FROM campaign_redemptions WHERE campaign_id = ?',
+      deviceId ? [campaignId, deviceId] : [campaignId],
+    );
+  }
+
+  insertCampaignRedemption(entry: {
+    campaignId: string;
+    orderId: string;
+    deviceId: string;
+    amount: number;
+  }): void {
+    this.database.run(
+      `INSERT INTO campaign_redemptions (id, campaign_id, order_id, device_id, amount, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [randomId(), entry.campaignId, entry.orderId, entry.deviceId, entry.amount, new Date().toISOString()],
+    );
+  }
+
+  incrementCampaignUse(campaignId: string): void {
+    this.database.run('UPDATE campaigns SET used_count = used_count + 1 WHERE id = ?', [campaignId]);
+  }
+
   /* ---------------------------- customer devices ---------------------------- */
 
   findDeviceByTokenHash(tokenHash: string): DeviceRow | undefined {
@@ -195,6 +257,15 @@ export class PublicRepository {
 
   /* --------------------------------- orders -------------------------------- */
 
+  /** `undefined` means no such order; `null` means a legacy order without a token. */
+  findOrderStatusTokenHash(code: string): string | null | undefined {
+    const row = this.database.get<{ status_token_hash: string | null }>(
+      'SELECT status_token_hash FROM orders WHERE code = ?',
+      [code],
+    );
+    return row ? row.status_token_hash : undefined;
+  }
+
   findOrderByRequestId(deviceId: string, clientRequestId: string): { id: string; code: string } | undefined {
     return this.database.get<{ id: string; code: string }>(
       'SELECT id, code FROM orders WHERE guest_device_id = ? AND client_request_id = ?',
@@ -204,6 +275,56 @@ export class PublicRepository {
 
   codeExists(code: string): boolean {
     return Boolean(this.database.get('SELECT 1 AS x FROM orders WHERE code = ?', [code]));
+  }
+
+  findOrderForRound(code: string):
+    | {
+        id: string;
+        code: string;
+        status: string;
+        subtotal: number;
+        discount_total: number;
+        total: number;
+      }
+    | undefined {
+    return this.database.get(
+      `SELECT id, code, status, subtotal, discount_total, total FROM orders WHERE code = ?`,
+      [code],
+    );
+  }
+
+  findOrderItemRound(orderId: string, clientRequestId: string): { id: string } | undefined {
+    return this.database.get<{ id: string }>(
+      'SELECT id FROM order_item_rounds WHERE order_id = ? AND client_request_id = ?',
+      [orderId, clientRequestId],
+    );
+  }
+
+  insertOrderItemRound(entry: {
+    orderId: string;
+    clientRequestId: string;
+    itemCount: number;
+    subtotal: number;
+  }): void {
+    this.database.run(
+      `INSERT INTO order_item_rounds (id, order_id, client_request_id, item_count, subtotal, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [randomId(), entry.orderId, entry.clientRequestId, entry.itemCount, entry.subtotal, new Date().toISOString()],
+    );
+  }
+
+  updateOrderTotals(
+    orderId: string,
+    totals: { subtotal: number; serviceCharge: number; taxTotal: number; total: number },
+  ): void {
+    this.database.run(
+      `UPDATE orders
+          SET subtotal = ?, service_charge = ?, tax_total = ?, total = ?, updated_at = ?
+        WHERE id = ?`,
+      [totals.subtotal, totals.serviceCharge, totals.taxTotal, totals.total, new Date().toISOString(), orderId],
+    );
+    // An open bill follows the order; a settled one is history.
+    this.database.run("UPDATE bills SET total = ? WHERE order_id = ? AND status = 'open'", [totals.total, orderId]);
   }
 
   findOrderSummaryByCode(code: string) {

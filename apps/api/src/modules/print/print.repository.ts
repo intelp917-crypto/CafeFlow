@@ -106,14 +106,27 @@ export class PrintRepository {
     return rows.map(toJob);
   }
 
-  updateStatus(id: string, status: 'printed' | 'failed', error: string | null): PrintJob | undefined {
+  /**
+   * Atomic `queued → sent` claim. Two bridges polling at the same moment both
+   * see the job, but only one UPDATE matches, so a receipt cannot print twice.
+   */
+  claimForSending(id: string): boolean {
+    const result = this.database.run(
+      "UPDATE print_jobs SET status = 'sent', last_error = NULL WHERE id = ? AND status = 'queued'",
+      [id],
+    );
+    return result.changes === 1;
+  }
+
+  updateStatus(id: string, status: 'sent' | 'printed' | 'failed', error: string | null): PrintJob | undefined {
     const now = new Date().toISOString();
     this.database.run(
       `UPDATE print_jobs
-          SET status = ?, last_error = ?, attempts = attempts + 1,
+          SET status = ?, last_error = ?,
+              attempts = attempts + CASE WHEN ? = 'sent' THEN 0 ELSE 1 END,
               printed_at = CASE WHEN ? = 'printed' THEN ? ELSE printed_at END
         WHERE id = ?`,
-      [status, error, status, now, id],
+      [status, error, status, status, now, id],
     );
     return this.findById(id);
   }
