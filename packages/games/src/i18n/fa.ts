@@ -2,9 +2,9 @@
  * Persian copy for the rules engine.
  *
  * Upstream modules return stable machine keys (`g_not_your_turn`,
- * `uno_card_not_in_hand`, …). A guest must never see a key, so every key the six
- * shipped games can return is translated here; an unknown key falls back to a
- * neutral Persian sentence rather than leaking English.
+ * `uno_card_not_in_hand`, …). A guest must never see a key, so every key the
+ * games with a screen can return is translated here; an unknown key falls back
+ * to a neutral Persian sentence rather than leaking English.
  */
 const MESSAGES_FA: Record<string, string> = {
   g_game_over: 'این دست تمام شده است.',
@@ -44,6 +44,33 @@ const MESSAGES_FA: Record<string, string> = {
   ww_one_potion: 'در یک شب فقط یکی از دو معجون را می‌توانید استفاده کنید.',
   ww_no_potion: 'این معجون قبلاً استفاده شده است.',
   ww_no_self_save: 'نمی‌توانید خودتان را نجات دهید.',
+
+  gk_invalid_position: 'این خانه روی صفحه معتبر نیست.',
+  gk_out_of_bounds: 'این خانه بیرون صفحه است.',
+  gk_position_occupied: 'این خانه قبلاً مهره گرفته است.',
+
+  ch_invalid_move: 'این حرکت معتبر نیست.',
+  ch_illegal_move: 'این حرکت با قواعد شطرنج جور نیست.',
+
+  ck_out_of_bounds: 'این خانه بیرون صفحه است.',
+  ck_no_piece_there: 'روی این خانه مهره‌ای نیست.',
+  ck_not_your_piece: 'این مهرهٔ شما نیست.',
+  ck_illegal_move: 'این حرکت در چکرز مجاز نیست.',
+
+  su_invalid: 'این عدد پذیرفته نشد.',
+  su_eliminated: 'جان‌هایتان تمام شده است.',
+  su_illegal_cell: 'این خانه قابل تغییر نیست.',
+  su_no_hints: 'راهنمایی باقی نمانده است.',
+
+  ms_invalid_action: 'این کار روی زمین مجاز نیست.',
+  ms_invalid_action_type: 'این کار روی زمین مجاز نیست.',
+  ms_out_of_bounds: 'این خانه بیرون زمین است.',
+  ms_already_revealed: 'این خانه قبلاً باز شده است.',
+  ms_flagged: 'اول پرچم این خانه را بردارید.',
+  ms_you_are_out: 'شما از این زمین بیرون افتاده‌اید.',
+
+  nb_invalid_guess: 'عدد باید داخل بازهٔ اعلام‌شده باشد.',
+  nb_you_are_out: 'جان‌هایتان تمام شده است.',
 };
 
 const FALLBACK = 'این حرکت انجام نشد؛ دوباره تلاش کنید.';

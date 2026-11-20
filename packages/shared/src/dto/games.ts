@@ -75,6 +75,7 @@ export type GameClientMessage =
   | { type: 'ready'; ready: boolean }
   | { type: 'start' }
   | { type: 'restart' }
+  | { type: 'leave' }
   | { type: 'move'; move: Record<string, unknown> };
 
 export type GameServerMessage =

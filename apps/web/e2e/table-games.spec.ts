@@ -37,9 +37,10 @@ test('two phones at one table share a room and play a game', async ({ browser })
     // --- guest A picks a game from the sticker --------------------------------
     await guestA.goto(`/table/${qrToken}/games`);
     await guestA.getByLabel('نام شما روی میز').fill('سارا');
+    // Exact heading: other games mention «دوز» in their description.
     await guestA
       .locator('article')
-      .filter({ hasText: 'دوز' })
+      .filter({ has: guestA.getByRole('heading', { name: 'دوز', exact: true }) })
       .getByRole('button', { name: 'بازی با این میز' })
       .click();
     await expect(guestA.getByRole('heading', { name: 'دوز' })).toBeVisible();
@@ -50,7 +51,7 @@ test('two phones at one table share a room and play a game', async ({ browser })
     await guestB.getByLabel('نام شما روی میز').fill('رضا');
     await guestB
       .locator('article')
-      .filter({ hasText: 'دوز' })
+      .filter({ has: guestB.getByRole('heading', { name: 'دوز', exact: true }) })
       .getByRole('button', { name: 'بازی با این میز' })
       .click();
 

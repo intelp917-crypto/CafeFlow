@@ -157,7 +157,11 @@ export function TableGamesPage() {
             mySeat={mySeat}
             onReady={(ready) => send({ type: 'ready', ready })}
             onStart={() => send({ type: 'start' })}
-            onLeave={() => remember(null)}
+            onLeave={() => {
+              // Tell the table first so the chair is free for the next guest.
+              send({ type: 'leave' });
+              remember(null);
+            }}
           />
         ) : room && room.phase === 'playing' ? (
           <TheTable roomLabel={room.tableNameFa} gameNameFa={room.gameNameFa}>

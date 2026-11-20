@@ -64,10 +64,8 @@ export function useGameRoom(seatToken: string | null): GameRoomHandle {
       setConnection(attempt === 0 ? 'connecting' : 'closed');
       const socket = new WebSocket(gamesSocketUrl(seatToken));
       socketRef.current = socket;
-      let opened = false;
 
       socket.onopen = () => {
-        opened = true;
         attempt = 0;
         setConnection('open');
       };
@@ -84,14 +82,22 @@ export function useGameRoom(seatToken: string | null): GameRoomHandle {
         else if (message.type === 'error') setError(message.message);
       };
 
-      socket.onerror = () => {
-        if (!opened) setConnection('unauthorized');
-      };
+      // A dropped Wi-Fi looks like any other close; only the server's 4401 means
+      // the seat itself is gone, so a tunnel never costs the guest their cards.
+      socket.onerror = () => undefined;
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         socketRef.current = null;
-        if (closedByUs.current || disposed || !opened) {
-          setConnection((current) => (current === 'unauthorized' ? current : 'closed'));
+        if (closedByUs.current || disposed) {
+          setConnection('closed');
+          return;
+        }
+        if (event.code === 4401) {
+          setConnection('unauthorized');
+          return;
+        }
+        if (event.code === 4400) {
+          setConnection('closed');
           return;
         }
         attempt += 1;

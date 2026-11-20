@@ -218,6 +218,20 @@ export class RoomManager implements OnModuleDestroy {
       // renumbering would hand one player's cards to another.
       seat.removed = true;
       this.seatsByToken.delete(seat.tokenHash);
+      const active = room.seats.filter((candidate) => !candidate.removed);
+      if (active.length === 0) {
+        // A race with no seats left must not keep ticking in the background.
+        this.dropRoom(room);
+        return;
+      }
+      // The host may have been the one who left; without this nobody could
+      // hand out the next round.
+      if (room.hostSeat === seat.index) room.hostSeat = active[0]!.index;
+
+      // Turn games that expose `setCurrentActor` (uno, werewolf, …) hand the
+      // turn on. The others (chess, checkers, gomoku) keep the position itself:
+      // forcing `currentPlayer` would desync chess from its FEN, so their game
+      // stays paused and the surviving host gives a fresh hand.
       const game = loadGame(room.gameId);
       game.setCurrentActor?.(room.state as GameState, this.nextActiveSeat(room, seat.index));
       this.armTimer(room);
@@ -348,6 +362,10 @@ export class RoomManager implements OnModuleDestroy {
       const interval = Math.max(200, game.tickMs ?? 600);
       const timer = setTimeout(() => {
         if (room.phase !== 'playing' || !room.state) return;
+        // Racing games may declare a tick that changes nothing (sudoku and 2048
+        // leave bot timing to the engine), so only a real state change is worth
+        // a broadcast — otherwise every table streams identical frames.
+        const before = JSON.stringify(room.state);
         try {
           game.tick?.(room.state);
         } catch (error) {
@@ -360,6 +378,7 @@ export class RoomManager implements OnModuleDestroy {
           return;
         }
         this.armTimer(room);
+        if (JSON.stringify(room.state) === before) return;
         this.notify(room);
       }, interval);
       timer.unref?.();

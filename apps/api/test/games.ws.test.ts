@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createTestApp, server, type TestContext } from './helpers';
 import { attachGamesGateway } from '../src/modules/games/games.gateway';
+import { RoomManager } from '../src/modules/games/room-manager';
 import type { GameServerMessage } from '@cafeflow/shared';
 
 let context: TestContext;
@@ -66,14 +67,45 @@ afterAll(async () => {
 });
 
 describe('games websocket', () => {
-  it('refuses a socket without a live seat token', async () => {
+  it('closes a socket without a live seat token with the game code 4401', async () => {
     const socket = new WebSocket(`ws://127.0.0.1:${port}/ws/games?seat=not-a-seat`);
-    const status = await new Promise<number>((resolve) => {
-      socket.on('unexpected-response', (_request, response) => resolve(response.statusCode ?? 0));
+    const code = await new Promise<number>((resolve) => {
+      socket.on('close', (value) => resolve(value));
       socket.on('error', () => resolve(-1));
     });
     socket.terminate();
-    expect([401, -1]).toContain(status);
+    // A readable close code is the only way a browser can tell "seat gone" from
+    // "Wi-Fi dropped", so the handshake completes and then closes.
+    expect(code).toBe(4401);
+  });
+
+  it('keeps the seat online while a second tab still holds it', async () => {
+    // Its own game id keeps this room out of the tictactoe tests' two seats.
+    const joined = await joinAs(request.agent(server(context.app)), 'gomoku');
+    const first = await connect(joined.seatToken);
+    const second = await connect(joined.seatToken);
+    await waitFor(first.messages, (message) => message.type === 'room');
+
+    const manager = context.app.get(RoomManager);
+    first.socket.close();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const room = manager.roomById(joined.room.roomId);
+    expect(room?.seats[0]?.connected).toBe(true);
+    second.socket.close();
+  });
+
+  it('frees the chair as soon as a guest leaves on purpose', async () => {
+    const joined = await joinAs(request.agent(server(context.app)), 'checkers');
+    const socket = await connect(joined.seatToken);
+    await waitFor(socket.messages, (message) => message.type === 'room');
+
+    const closed = new Promise<number>((resolve) => socket.socket.on('close', (value) => resolve(value)));
+    socket.socket.send(JSON.stringify({ type: 'leave' }));
+
+    expect(await closed).toBe(4400);
+    const manager = context.app.get(RoomManager);
+    expect(manager.roomById(joined.room.roomId)).toBeUndefined();
   });
 
   it('shows both phones the same room and lets the host start', async () => {

@@ -72,8 +72,12 @@ export class GamesGateway implements OnModuleDestroy {
 
     const found = this.rooms.findSeatByToken(url.searchParams.get('seat') ?? '');
     if (!found) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-      socket.destroy();
+      // Complete the handshake and then close with a game code: a browser cannot
+      // read an HTTP status from a failed upgrade, so rejecting here would look
+      // exactly like a dead Wi-Fi and the seat would be dropped for no reason.
+      this.wss?.handleUpgrade(request, socket, head, (client) => {
+        client.close(4401, 'seat-gone');
+      });
       return;
     }
 
@@ -103,6 +107,9 @@ export class GamesGateway implements OnModuleDestroy {
     socket.on('error', () => undefined);
     socket.on('close', () => {
       this.sockets.delete(socket);
+      // The same phone may hold two tabs on one seat; only the last socket to go
+      // may mark the seat offline, or the grace timer would evict a live player.
+      if (this.hasOtherSocket(room, seat, socket)) return;
       this.rooms.markConnected(room, seat, false);
       this.rooms.scheduleRemoval(room, seat);
     });
@@ -141,6 +148,19 @@ export class GamesGateway implements OnModuleDestroy {
         case 'restart':
           this.rooms.restart(room, seat);
           break;
+        case 'leave': {
+          // Deliberate exit frees the seat now: waiting out the grace period
+          // would keep a friend from taking the empty chair. Every tab of the
+          // same seat closes, not just the one that asked.
+          this.rooms.markConnected(room, seat, false);
+          this.rooms.leave(room, seat);
+          for (const [candidate, entry] of this.sockets) {
+            if (entry.roomId !== room.id || entry.seatIndex !== seat.index) continue;
+            this.sockets.delete(candidate);
+            candidate.close(4400, 'left');
+          }
+          break;
+        }
         case 'move': {
           const refused = this.rooms.move(room, seat, message.move ?? {});
           if (refused) this.send(socket, { type: 'error', code: 'MOVE_REFUSED', message: refused });
@@ -157,6 +177,15 @@ export class GamesGateway implements OnModuleDestroy {
       this.logger.warn(`game socket error: ${(error as Error).message}`);
       this.send(socket, { type: 'error', code: 'GAME_ERROR', message: 'خطای غیرمنتظره در بازی.' });
     }
+  }
+
+  private hasOtherSocket(room: Room, seat: RoomSeat, except: WebSocket): boolean {
+    for (const socket of this.sockets.keys()) {
+      if (socket === except || socket.readyState !== WebSocket.OPEN) continue;
+      const entry = this.sockets.get(socket);
+      if (entry?.roomId === room.id && entry.seatIndex === seat.index) return true;
+    }
+    return false;
   }
 
   private broadcast(room: Room): void {

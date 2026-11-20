@@ -20,7 +20,10 @@ export interface WaitingRoomProps {
 export function WaitingRoom({ room, mySeat, onReady, onStart, onLeave }: WaitingRoomProps) {
   const me = room.seats.find((seat) => seat.index === mySeat);
   const isHost = me?.isHost ?? false;
-  const everyoneReady = room.seats.length > 0 && room.seats.every((seat) => seat.ready);
+  // A ready seat whose phone dropped is not a player yet: starting with a
+  // ghost would pause the first turn until the grace period frees it.
+  const everyoneReady = room.seats.length > 0 && room.seats.every((seat) => seat.ready && seat.connected);
+  const offline = room.seats.filter((seat) => !seat.connected).length;
   const enoughPlayers = room.seats.length >= room.minPlayers;
   const canStart = isHost && everyoneReady && enoughPlayers;
 
@@ -49,6 +52,10 @@ export function WaitingRoom({ room, mySeat, onReady, onStart, onLeave }: Waiting
       {!enoughPlayers ? (
         <Alert tone="info" title="منتظر بقیهٔ میز">
           تا رسیدن حداقل {formatCountFa(room.minPlayers)} بازیکن، بازی شروع نمی‌شود.
+        </Alert>
+      ) : offline > 0 ? (
+        <Alert tone="warning" title="در انتظار اتصال">
+          {formatCountFa(offline)} صندلی قطع است؛ با برگشتن اتصالش می‌توانید شروع کنید.
         </Alert>
       ) : null}
 

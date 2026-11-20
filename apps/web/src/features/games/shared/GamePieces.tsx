@@ -51,6 +51,7 @@ export function SeatList({
           <span className="max-w-[9rem] truncate">{seat.nameFa}</span>
           {seat.isHost ? <span className="text-[10px] text-brand-700">میزبان</span> : null}
           {seat.isYou ? <span className="text-[10px] text-muted">شما</span> : null}
+          {!seat.connected ? <span className="text-[10px] text-danger-600">قطع</span> : null}
         </li>
       ))}
     </ul>

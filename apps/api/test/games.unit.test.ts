@@ -285,6 +285,79 @@ describe('RoomManager', () => {
     expect((bomb.room.state as { low: number }).low).toBe(2);
   });
 
+  it('drops a playing room once its last seat is gone', () => {
+    const rooms = manager();
+    const solo = join(rooms, 'solo-0', 'sudoku' as never);
+    readyAll(rooms, solo.room);
+    rooms.start(solo.room, solo.seat);
+
+    rooms.markConnected(solo.room, solo.seat, false);
+    rooms.leave(solo.room, solo.seat);
+
+    // No seat left: the race must not keep ticking behind an empty table.
+    expect(rooms.roomById(solo.room.id)).toBeUndefined();
+  });
+
+  it('does not broadcast a race tick that changed nothing', () => {
+    vi.useFakeTimers();
+    try {
+      const rooms = manager();
+      const solo = join(rooms, 'quiet-0', 'sudoku' as never);
+      readyAll(rooms, solo.room);
+      rooms.start(solo.room, solo.seat);
+
+      let updates = 0;
+      rooms.onUpdate(() => {
+        updates += 1;
+      });
+
+      // Sudoku's tick is a no-op, so a quiet second must cost no frames.
+      vi.advanceTimersByTime(2_000);
+      expect(updates).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hands the host badge over when the host leaves mid-game', () => {
+    const rooms = manager();
+    const host = join(rooms, 'host-0', 'gomoku' as never);
+    const guest = join(rooms, 'host-1', 'gomoku' as never);
+    readyAll(rooms, host.room);
+    rooms.start(host.room, host.seat);
+    expect(host.room.hostSeat).toBe(host.seat.index);
+
+    rooms.markConnected(host.room, host.seat, false);
+    rooms.leave(host.room, host.seat);
+
+    expect(host.room.hostSeat).toBe(guest.seat.index);
+    expect(rooms.stateFor(host.room, guest.seat.index)).not.toBeNull();
+  });
+
+  it('never sends a seat the hidden state of the new games', () => {
+    const rooms = manager();
+
+    const sudoku = join(rooms, 'sudoku-hide', 'sudoku' as never);
+    readyAll(rooms, sudoku.room);
+    rooms.start(sudoku.room, sudoku.seat);
+    const sudokuView = rooms.stateFor(sudoku.room, sudoku.seat.index) as Record<string, unknown>;
+    expect(sudokuView.solution).toBeUndefined();
+    expect(sudokuView.puzzle).toBeUndefined();
+
+    const mines = join(rooms, 'mines-hide', 'minesweeper' as never);
+    readyAll(rooms, mines.room);
+    rooms.start(mines.room, mines.seat);
+    const minesView = rooms.stateFor(mines.room, mines.seat.index) as Record<string, unknown>;
+    expect(minesView.mines).toEqual([]);
+
+    const bomb = join(rooms, 'bomb-hide', 'numberbomb' as never);
+    join(rooms, 'bomb-hide-2', 'numberbomb' as never);
+    readyAll(rooms, bomb.room);
+    rooms.start(bomb.room, bomb.seat);
+    const bombView = rooms.stateFor(bomb.room, bomb.seat.index) as Record<string, unknown>;
+    expect(bombView.bomb).toBeNull();
+  });
+
   it('returns to the lobby only through the host after a hand', () => {
     const rooms = manager();
     const host = join(rooms, 'device-a');

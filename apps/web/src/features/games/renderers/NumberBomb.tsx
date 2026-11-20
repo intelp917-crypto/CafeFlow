@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { GameRendererProps } from '../shared/GamePieces';
 import { ResultOverlay, TurnBar } from '../shared/GamePieces';
 import { formatCountFa } from '../../../lib/format';
+import { toLatinDigits } from '@cafeflow/shared';
 
 /**
  * بمب عددی — یک عدد پنهان در بازهٔ اعلام‌شده.
@@ -49,7 +50,9 @@ export function NumberBomb({ state, seats, mySeat, phase, canRestart, onMove, on
         <div className="mt-4 flex items-center justify-center gap-2">
           <input
             value={guess}
-            onChange={(event) => setGuess(event.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+            onChange={(event) =>
+              // A Persian keyboard types ۵۰; the field itself stays Latin.
+              setGuess(toLatinDigits(event.target.value).replace(/[^0-9]/g, '').slice(0, 3))}
             onKeyDown={(event) => {
               if (event.key === 'Enter') submit();
             }}
