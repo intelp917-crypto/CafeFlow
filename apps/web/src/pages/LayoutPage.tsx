@@ -101,7 +101,7 @@ export function LayoutPage() {
   const [versionsLoading, setVersionsLoading] = useState(false);
 
   const [qrTableId, setQrTableId] = useState<string | null>(null);
-  const [qrMeta, setQrMeta] = useState<{ menuUrl: string } | null>(null);
+  const [qrMeta, setQrMeta] = useState<{ menuUrl: string; token: string } | null>(null);
   const [qrNotice, setQrNotice] = useState<string | null>(null);
 
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
@@ -641,7 +641,7 @@ export function LayoutPage() {
     setQrMeta(null);
     setQrNotice(null);
     try {
-      const meta = await api.get<{ menuUrl: string }>(`/layout/tables/${tableId}/qr?base=${qrBase}`);
+      const meta = await api.get<{ menuUrl: string; token: string }>(`/layout/tables/${tableId}/qr?base=${qrBase}`);
       setQrMeta(meta);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -652,7 +652,7 @@ export function LayoutPage() {
     if (!qrTableId) return;
     try {
       await api.post(`/layout/tables/${qrTableId}/qr`);
-      const meta = await api.get<{ menuUrl: string }>(`/layout/tables/${qrTableId}/qr?base=${qrBase}`);
+      const meta = await api.get<{ menuUrl: string; token: string }>(`/layout/tables/${qrTableId}/qr?base=${qrBase}`);
       setQrMeta(meta);
       setQrNotice('توکن تازه ساخته شد؛ برچسب‌های قبلی از کار افتادند.');
       await refreshMeta();
@@ -1081,6 +1081,7 @@ export function LayoutPage() {
           setQrNotice(null);
         }}
         table={tables.find((table) => table.id === qrTableId) ?? null}
+        qrToken={qrMeta?.token ?? null}
         menuUrl={qrMeta?.menuUrl ?? ''}
         imageSrc={qrSrc}
         canWrite={canWrite}

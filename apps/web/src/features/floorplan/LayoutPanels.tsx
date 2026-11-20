@@ -18,6 +18,7 @@ import type { UpdateLayoutTableInput } from '@cafeflow/shared';
 import { EQUIPMENT_LIBRARY, TABLE_LIBRARY, ZONE_LIBRARY, type LibraryItem } from './catalog';
 import { objectGlyph, isDarkColor } from './artwork';
 import type { PlanModel } from './LayoutCanvas';
+import { CustomerMenuPreview } from './CustomerMenuPreview';
 
 const inputClass =
   'h-9 w-full rounded-xl border border-line bg-surface px-2.5 text-xs text-ink placeholder:text-muted/70 focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-500/10';
@@ -648,6 +649,7 @@ export function QrModal({
   open,
   onClose,
   table,
+  qrToken,
   menuUrl,
   imageSrc,
   canWrite,
@@ -660,6 +662,7 @@ export function QrModal({
   open: boolean;
   onClose: () => void;
   table: LayoutTableDto | null;
+  qrToken: string | null;
   menuUrl: string;
   imageSrc: string;
   canWrite: boolean;
@@ -673,44 +676,49 @@ export function QrModal({
     <Modal
       open={open}
       onClose={onClose}
+      size="lg"
       title={table ? `QR میز ${table.nameFa}` : 'QR میز'}
-      description="این کد مشتری را مستقیم به منوی همان میز می‌برد؛ چاپ یا دانلود کنید."
+      description="این کد مشتری را مستقیم به منوی همان میز می‌برد؛ پیش‌نمایش کنار آن همان چیزی است که روی گوشی می‌بیند."
     >
-      <div className="space-y-3">
-        {imageSrc ? (
-          <div className="flex justify-center rounded-2xl border border-line bg-surface p-4">
-            <img src={imageSrc} alt="QR میز" className="size-56" />
-          </div>
-        ) : (
-          <p className="text-xs text-muted">در حال ساخت کد…</p>
-        )}
-        <p dir="ltr" className="select-all break-all rounded-lg bg-canvas px-2 py-1.5 text-center text-[10px] text-muted">
-          {menuUrl}
-        </p>
-        <div className="flex flex-wrap justify-center gap-1.5">
-          <button type="button" onClick={onDownloadPng} className="rounded-full border border-line px-3 py-1.5 text-[11px] hover:border-brand-300">
-            دانلود PNG
-          </button>
-          <button type="button" onClick={onDownloadSvg} className="rounded-full border border-line px-3 py-1.5 text-[11px] hover:border-brand-300">
-            دانلود SVG
-          </button>
-          <button type="button" onClick={onCopy} className="rounded-full border border-line px-3 py-1.5 text-[11px] hover:border-brand-300">
-            کپی لینک منو
-          </button>
-          {canWrite ? (
-            <button
-              type="button"
-              onClick={onRegenerate}
-              className="rounded-full border border-danger-200 bg-danger-50 px-3 py-1.5 text-[11px] text-danger-700"
-            >
-              ساخت توکن جدید
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_16rem]">
+        <div className="space-y-3">
+          {imageSrc ? (
+            <div className="flex justify-center rounded-2xl border border-line bg-surface p-4">
+              <img src={imageSrc} alt="QR میز" className="size-56" />
+            </div>
+          ) : (
+            <p className="text-xs text-muted">در حال ساخت کد…</p>
+          )}
+          <p dir="ltr" className="select-all break-all rounded-lg bg-canvas px-2 py-1.5 text-center text-[10px] text-muted">
+            {menuUrl}
+          </p>
+          <div className="flex flex-wrap justify-center gap-1.5">
+            <button type="button" onClick={onDownloadPng} className="rounded-full border border-line px-3 py-1.5 text-[11px] hover:border-brand-300">
+              دانلود PNG
             </button>
-          ) : null}
+            <button type="button" onClick={onDownloadSvg} className="rounded-full border border-line px-3 py-1.5 text-[11px] hover:border-brand-300">
+              دانلود SVG
+            </button>
+            <button type="button" onClick={onCopy} className="rounded-full border border-line px-3 py-1.5 text-[11px] hover:border-brand-300">
+              کپی لینک منو
+            </button>
+            {canWrite ? (
+              <button
+                type="button"
+                onClick={onRegenerate}
+                className="rounded-full border border-danger-200 bg-danger-50 px-3 py-1.5 text-[11px] text-danger-700"
+              >
+                ساخت توکن جدید
+              </button>
+            ) : null}
+          </div>
+          {notice ? <p className="text-center text-[11px] text-success-600">{notice}</p> : null}
+          <p className="text-[10px] leading-5 text-muted">
+            ساخت توکن جدید، کدهای چاپ‌شده قبلی این میز را از کار می‌اندازد. اگر برچسب QR قدیمی روی میز است، باید با کد تازه جایگزین شود.
+          </p>
         </div>
-        {notice ? <p className="text-center text-[11px] text-success-600">{notice}</p> : null}
-        <p className="text-[10px] leading-5 text-muted">
-          ساخت توکن جدید، کدهای چاپ‌شده قبلی این میز را از کار می‌اندازد. اگر برچسب QR قدیمی روی میز است، باید با کد تازه جایگزین شود.
-        </p>
+
+        <CustomerMenuPreview qrToken={qrToken} menuUrl={menuUrl} />
       </div>
     </Modal>
   );
