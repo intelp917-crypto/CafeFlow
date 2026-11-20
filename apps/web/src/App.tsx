@@ -28,6 +28,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { RequestsPage } from './pages/RequestsPage';
 import { ReservationsPage } from './pages/ReservationsPage';
 import { TablesPage } from './pages/TablesPage';
+import { TableGamesPage } from './pages/TableGamesPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { PasswordPage } from './pages/PasswordPage';
 import { SecurityPage } from './pages/SecurityPage';
@@ -86,6 +87,7 @@ export function App() {
       />
       <Route path="/menu" element={<MenuPage />} />
       <Route path="/menu/:qrToken" element={<MenuPage />} />
+      <Route path="/table/:qrToken/games" element={<TableGamesPage />} />
       <Route path="/order/:code" element={<OrderStatusPage />} />
       <Route path="/staff/login" element={loading ? <FullPageLoader /> : user ? <Navigate to="/admin" replace /> : <LoginPage />} />
       <Route

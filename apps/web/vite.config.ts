@@ -39,6 +39,13 @@ export default defineConfig({
         target: process.env.CAFEFLOW_API_TARGET ?? 'http://127.0.0.1:3000',
         changeOrigin: false,
       },
+      // Table-game sockets live on the API server in production; the dev proxy
+      // keeps the same origin here so a phone on the LAN needs only one port.
+      '/ws': {
+        target: process.env.CAFEFLOW_API_TARGET ?? 'http://127.0.0.1:3000',
+        ws: true,
+        changeOrigin: false,
+      },
     },
   },
   build: {
