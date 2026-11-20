@@ -102,10 +102,14 @@ const lanAddresses = Object.values(os.networkInterfaces())
   .filter((entry) => entry && entry.family === 'IPv4' && !entry.internal)
   .map((entry) => entry.address);
 
+// `CAFEFLOW_DEV_HTTPS=1` serves the same app over TLS (self-signed), which a
+// phone needs for secure-context APIs such as the iOS share sheet.
+const scheme = process.env.CAFEFLOW_DEV_HTTPS === '1' ? 'https' : 'http';
+
 console.log(`${label.api}  http://127.0.0.1:3000/api/v1`);
-console.log(`${label.web}  http://localhost:5173`);
+console.log(`${label.web}  ${scheme}://localhost:5173`);
 for (const address of lanAddresses) {
-  console.log(`${label.web}  http://${address}:5173  ← از موبایل/شبکه محلی`);
+  console.log(`${label.web}  ${scheme}://${address}:5173  ← از موبایل/شبکه محلی`);
 }
 console.log('');
 

@@ -14,7 +14,6 @@ const FILMS = [
   '/videos/hero-3.mp4',
   '/videos/hero-4.mp4',
   '/videos/hero-5.mp4',
-  '/videos/hero-6.mp4',
 ];
 
 const LAST_FILM_KEY = 'cafeflow:intro-film';
@@ -104,10 +103,48 @@ export function IntroPage() {
   const [entering, setEntering] = useState(false);
   const film = !still && !failed;
 
-  // Autoplay can be refused even when muted (battery saver); the poster is a full still.
+  /**
+   * iOS only grants autoplay to a video it already considers muted and inline at
+   * load time, so those are written directly on the element instead of relying
+   * on React applying the props in a lucky order.
+   */
+  const attachVideo = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (!node) return;
+    node.muted = true;
+    node.defaultMuted = true;
+    node.playsInline = true;
+    node.setAttribute('muted', '');
+    node.setAttribute('playsinline', 'true');
+    node.setAttribute('webkit-playsinline', 'true');
+  }, []);
+
+  // Autoplay can be refused even when muted (iOS Low Power Mode, data saver);
+  // the poster underneath is already a complete still. One real gesture unlocks
+  // playback, so the film starts then instead of staying stuck on the still.
   useEffect(() => {
     if (!film) return;
-    videoRef.current?.play().catch(() => setFailed(true));
+    const video = videoRef.current;
+    if (!video) return;
+
+    const tryPlay = () => {
+      video.muted = true;
+      const attempt = video.play();
+      if (attempt) attempt.catch(() => undefined);
+    };
+
+    tryPlay();
+
+    const unlock = () => tryPlay();
+    document.addEventListener('pointerdown', unlock, { passive: true });
+    document.addEventListener('touchstart', unlock, { passive: true });
+    document.addEventListener('keydown', unlock);
+
+    return () => {
+      document.removeEventListener('pointerdown', unlock);
+      document.removeEventListener('touchstart', unlock);
+      document.removeEventListener('keydown', unlock);
+    };
   }, [film]);
 
   useEffect(() => () => window.clearTimeout(leaveTimer.current), []);
@@ -189,8 +226,9 @@ export function IntroPage() {
             />
             {film ? (
               <video
-                ref={videoRef}
+                ref={attachVideo}
                 src={source}
+                poster={POSTER}
                 autoPlay
                 loop
                 muted

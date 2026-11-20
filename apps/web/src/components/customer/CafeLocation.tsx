@@ -1,4 +1,4 @@
-import { useId, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useId, useState, type MouseEvent, type ReactNode } from 'react';
 import { cn } from '@cafeflow/ui';
 import { MapPin, Navigation, Phone } from 'lucide-react';
 import { directionsUrl, openDirections } from '../../lib/navigation';
@@ -65,29 +65,64 @@ function NavigateLink({
   className?: string;
   children?: ReactNode;
 }) {
-  const go = (event: MouseEvent<HTMLAnchorElement>) => {
+  const destination = { latitude, longitude, label: nameFa };
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  const go = async (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
-    openDirections({ latitude, longitude, label: nameFa });
+    // iOS: the OS share sheet lets the guest continue in any app they have. It
+    // is a secure-context API, so on a plain-HTTP origin it simply is not there.
+    const { outcome, reason } = await openDirections(destination);
+    if (outcome === 'copied' && reason === 'insecure') {
+      setNotice(
+        'پنجرهٔ اشتراک‌گذاری iOS فقط وقتی باز می‌شود که صفحه با https باز شده باشد. لینک مسیر کپی شد؛ فعلاً می‌توانید آن را بچسبانید.',
+      );
+    } else if (outcome === 'copied' && reason === 'blocked') {
+      setNotice('iOS پنجرهٔ اشتراک‌گذاری را باز نکرد؛ لینک مسیر کپی شد و می‌توانید بچسبانید.');
+    } else if (outcome === 'copied') {
+      setNotice('این مرورگر اشتراک‌گذاری سیستمی ندارد؛ لینک مسیر کپی شد.');
+    } else if (outcome === 'failed') {
+      setNotice(`مسیر: ${latitude}, ${longitude}`);
+    } else {
+      setNotice(null);
+    }
   };
 
   return (
-    <a
-      href={directionsUrl({ latitude, longitude, label: nameFa })}
-      onClick={go}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={cn(
-        'inline-flex h-11 items-center justify-center gap-2 rounded-full px-6 text-sm font-medium',
-        'focus-visible:outline-2 focus-visible:outline-offset-2',
-        tone === 'dark'
-          ? 'bg-brand-500 text-cream hover:bg-brand-600 focus-visible:outline-brand-300'
-          : 'bg-brand-500 text-cream shadow-[0_14px_30px_-18px_rgba(78,36,19,0.85)] hover:bg-brand-600 focus-visible:outline-brand-500',
-        className,
-      )}
-    >
-      <Navigation aria-hidden="true" className="size-4" />
-      {children ?? 'ناوبری'}
-    </a>
+    <>
+      {notice ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed inset-x-3 bottom-4 z-[60] mx-auto max-w-sm rounded-2xl border border-line bg-surface px-4 py-3 text-center text-[11px] leading-5 text-ink shadow-[0_20px_50px_-24px_rgba(36,22,17,0.6)]"
+        >
+          {notice}
+        </div>
+      ) : null}
+      <a
+        href={directionsUrl(destination)}
+        onClick={go}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cn(
+          'inline-flex h-11 items-center justify-center gap-2 rounded-full px-6 text-sm font-medium',
+          'focus-visible:outline-2 focus-visible:outline-offset-2',
+          tone === 'dark'
+            ? 'bg-brand-500 text-cream hover:bg-brand-600 focus-visible:outline-brand-300'
+            : 'bg-brand-500 text-cream shadow-[0_14px_30px_-18px_rgba(78,36,19,0.85)] hover:bg-brand-600 focus-visible:outline-brand-500',
+          className,
+        )}
+      >
+        <Navigation aria-hidden="true" className="size-4" />
+        {children ?? 'ناوبری'}
+      </a>
+    </>
   );
 }
 
@@ -226,7 +261,7 @@ export function CafeLocation({
               className="w-full sm:w-auto"
             />
             <p className={cn('mt-2 text-[10px]', dark ? 'text-cream/45' : 'text-muted')}>
-              مسیر با برنامهٔ نقشهٔ گوشی باز می‌شود؛ اندروید فهرست برنامه‌های نصب‌شده را نشان می‌دهد.
+              مسیر با برنامهٔ نقشهٔ گوشی باز می‌شود؛ اندروید فهرست برنامه‌ها را نشان می‌دهد و در آیفون شیت اشتراک‌گذاری خود iOS باز می‌شود تا با هر اپی که دارید ادامه دهید.
             </p>
           </div>
         </div>

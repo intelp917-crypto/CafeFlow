@@ -14,6 +14,7 @@ import type {
 import { api, API_BASE, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatCountFa } from '../lib/format';
+import { randomId } from '../lib/id';
 import type { StaffTablesResponse } from '../lib/types';
 import { findLibraryItem } from '../features/floorplan/catalog';
 import {
@@ -34,11 +35,6 @@ import {
 interface ConfirmRequest {
   message: string;
   run: () => void;
-}
-
-function uid(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  return `o-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function ToggleButton({
@@ -352,7 +348,7 @@ export function LayoutPage() {
       }
 
       const object: LayoutObject = {
-        id: uid(),
+        id: randomId(),
         type: item.type,
         tableId: null,
         x: Math.round(center.x - item.width / 2),
@@ -427,10 +423,10 @@ export function LayoutPage() {
     }
     const groupMap = new Map<string, string>();
     const copies = duplicable.map((object) => {
-      if (object.groupId && !groupMap.has(object.groupId)) groupMap.set(object.groupId, uid());
+      if (object.groupId && !groupMap.has(object.groupId)) groupMap.set(object.groupId, randomId());
       return {
         ...object,
-        id: uid(),
+        id: randomId(),
         x: object.x + 24,
         y: object.y + 24,
         groupId: object.groupId ? (groupMap.get(object.groupId) as string) : null,
@@ -444,7 +440,7 @@ export function LayoutPage() {
 
   const groupSelection = useCallback(() => {
     if (selectedIds.length < 2) return;
-    const groupId = uid();
+    const groupId = randomId();
     applyPlan((current) => ({
       ...current,
       objects: current.objects.map((object) => (selectedIds.includes(object.id) ? { ...object, groupId } : object)),
@@ -758,7 +754,7 @@ export function LayoutPage() {
         if (!model || clipboardRef.current.length === 0) return;
         const copies = clipboardRef.current
           .filter((object) => object.type !== 'table')
-          .map((object) => ({ ...object, id: uid(), x: object.x + 24, y: object.y + 24, groupId: null, props: { ...object.props } }));
+          .map((object) => ({ ...object, id: randomId(), x: object.x + 24, y: object.y + 24, groupId: null, props: { ...object.props } }));
         if (copies.length === 0) return;
         applyPlan((current) => ({ ...current, objects: [...current.objects, ...copies] }));
         setSelectedIds(copies.map((object) => object.id));
@@ -833,7 +829,7 @@ export function LayoutPage() {
           gridSize: Math.min(100, Math.max(4, Math.round(parsed.gridSize ?? 20))),
           objects: parsed.objects.map((object) => ({
             ...object,
-            id: object.id || uid(),
+            id: object.id || randomId(),
             props: object.props ?? {},
           })),
         };

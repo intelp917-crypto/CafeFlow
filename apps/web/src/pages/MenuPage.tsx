@@ -10,6 +10,7 @@ import { Alert, Badge, Button, EmptyState, ErrorState, Spinner } from '@cafeflow
 import { errorMessage } from '../lib/api';
 import { customerApi, orderTokenFor, rememberOrderToken } from '../lib/customer';
 import { formatCountFa } from '../lib/format';
+import { randomId } from '../lib/id';
 import { CartPanel, type CartLine, type CartTotals } from '../components/customer/CartPanel';
 import { ProductDialog, type CartLineDraft } from '../components/customer/ProductDialog';
 import { CategoryRail } from '../components/customer/CategoryRail';
@@ -140,7 +141,7 @@ export function MenuPage() {
   // The idempotency key stays stable until the server confirms an order, so a
   // retry after a network failure returns the original order instead of
   // creating a duplicate.
-  const pendingRequestId = useRef<string>(crypto.randomUUID());
+  const pendingRequestId = useRef<string>(randomId());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -282,7 +283,7 @@ export function MenuPage() {
         rememberOrderToken(response.code, orderTokenFor(roundCode));
         setCart([]);
         setOrderNote('');
-        pendingRequestId.current = crypto.randomUUID();
+        pendingRequestId.current = randomId();
         setCartOpen(false);
         navigate(`/order/${response.code}?qr=${encodeURIComponent(qrToken)}`);
         return;
@@ -302,7 +303,7 @@ export function MenuPage() {
       // Server confirmed: the cart can be cleared and the key rotated.
       setCart([]);
       setOrderNote('');
-      pendingRequestId.current = crypto.randomUUID();
+      pendingRequestId.current = randomId();
       setCartOpen(false);
       navigate(`/order/${response.code}?qr=${encodeURIComponent(qrToken)}`);
     } catch (caught) {
@@ -341,7 +342,7 @@ export function MenuPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-canvas pb-28 lg:pb-10 lg:pl-[6.75rem]">
+    <div className="min-h-dvh bg-canvas pb-28 lg:pb-10">
       <CategoryRail
         categories={menu.categories}
         activeCategory={activeCategory}
@@ -387,39 +388,6 @@ export function MenuPage() {
             </Button>
           </div>
         </div>
-
-        {menu.categories.length > 0 ? (
-          <nav aria-label="دسته‌های منو" className="mx-auto max-w-6xl lg:hidden">
-            <ul className="scroll-thin flex gap-2 overflow-x-auto px-4 pb-3 pt-2.5 sm:px-8">
-              {menu.categories.map((category) => {
-                const active = activeCategory === category.id;
-                return (
-                  <li key={category.id} className="shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => scrollToCategory(category.id)}
-                      aria-current={active ? 'true' : undefined}
-                      className={`flex items-center gap-2 whitespace-nowrap rounded-full border px-3.5 py-2 text-[11px] transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-brand-400 ${
-                        active
-                          ? 'border-espresso bg-espresso text-cream'
-                          : 'border-line bg-surface text-ink hover:border-brand-300 hover:text-brand-700'
-                      }`}
-                    >
-                      {category.nameFa}
-                      <span
-                        className={`num rounded-full px-1.5 text-[9px] ${
-                          active ? 'bg-cream/15 text-cream/80' : 'bg-cream text-muted'
-                        }`}
-                      >
-                        {formatCountFa(category.products.length)}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-        ) : null}
       </header>
 
       <main className="mx-auto max-w-6xl px-4 sm:px-8">

@@ -1,10 +1,20 @@
 import { fileURLToPath, URL } from 'node:url';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
+/**
+ * Opt-in HTTPS for the dev server (`CAFEFLOW_DEV_HTTPS=1 npm start`).
+ *
+ * A phone on the LAN needs it for anything that only exists in a secure context
+ * — the iOS share sheet (`navigator.share`), the clipboard, `crypto.randomUUID`.
+ * The certificate is self-signed, so Safari asks once before trusting it.
+ */
+const devHttps = process.env.CAFEFLOW_DEV_HTTPS === '1';
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), ...(devHttps ? [basicSsl()] : [])],
   resolve: {
     alias: {
       // The web app consumes the workspace packages as TypeScript source, so a

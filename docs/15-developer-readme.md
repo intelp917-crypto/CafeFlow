@@ -27,6 +27,17 @@ npm run dev:web            # http://localhost:5173
 شبکهٔ خصوصی بدهید. برای استک کانتینری همین کار با `http://<ip-دستگاه>:8080`
 انجام می‌شود و `SESSION_COOKIE_SECURE` باید `false` باشد (HTTP ساده).
 
+### HTTPS در حالت توسعه (لازم برای قابلیت‌های secure context)
+
+`navigator.share` (شیت اشتراک‌گذاری iOS)، `navigator.clipboard` و
+`crypto.randomUUID` فقط روی secure context کار می‌کنند؛ یعنی `https` یا `localhost`.
+برای آزمایش روی آیفون با آدرس شبکه:
+
+```bash
+CAFEFLOW_DEV_HTTPS=1 npm start
+# سپس https://<ip-دستگاه>:5173 — سافاری یک بار هشدار گواهی خودامضا می‌دهد و ادامه دهید
+```
+
 ## ساختار مخزن
 
 ```
