@@ -10,6 +10,7 @@ use crate::dashboard;
 use crate::error::{AppError, not_found};
 use crate::health;
 use crate::middleware::{api_headers, request_id, static_headers};
+use crate::payments;
 use crate::prep;
 use crate::printing;
 use crate::public;
@@ -50,6 +51,22 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/orders/{id}/receipt", post(printing::queue_receipt))
         .route("/orders/{id}/tickets", post(printing::queue_tickets))
+        .route(
+            "/orders/{id}/payments",
+            get(payments::summary).post(payments::record),
+        )
+        .route(
+            "/orders/{id}/splits",
+            post(payments::split)
+                .put(payments::split_custom)
+                .delete(payments::clear_splits),
+        )
+        .route("/orders/{id}/discount", post(payments::discount))
+        .route("/orders/{id}/refunds", post(payments::refund))
+        .route(
+            "/terminal-requests/{id}/complete",
+            post(payments::complete_terminal),
+        )
         .route("/orders/{id}/transition", post(staff_orders::transition))
         .route("/tables", get(staff_ordering::tables))
         .route("/prep/queue", get(prep::queue))

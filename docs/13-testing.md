@@ -14,7 +14,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-## وضعیت مهاجرت Rust (موج ۱، ۳، ۴، ۵ و ۶)
+## وضعیت مهاجرت Rust (موج ۱، ۳، ۴، ۵، ۶ و ۷)
 
 - `cafeflow-domain`: پول ریالی، جلالی، وضعیت سفارش و ماژول‌ها با آزمون برابری.
 - `cafeflow-db`: مهاجرت‌های SQLite/PostgreSQL، `schema_migrations` سازگار با نصب فعلی،
@@ -36,6 +36,12 @@ cargo test --workspace
   سفارش را از کوتاه‌ترین مسیر مجاز پیش می‌برد (`confirmed → preparing → partially_ready → ready`)،
   رویداد `order.status_auto` و اعلان `order.ready` می‌سازد و پایان کار را در صف مخفی می‌کند؛
   آزمون `prep_queue_advances_the_order_along_legal_paths`.
+- موج ۷: `GET /orders/:id/payments`، `POST /orders/:id/payments`، تقسیم مساوی و
+  دلبخواه با `POST/PUT/DELETE /orders/:id/splits`، تخفیف، بازپرداخت و تکمیل درخواست
+  کارت‌خوان. صورتحساب در اولین پرداخت ساخته می‌شود، `paid` فقط از جمع پرداخت‌های تأییدشده
+  مشتق می‌شود، اضافه‌پرداخت رد می‌شود و سهم‌ها ترتیب پایدار `sort_order` دارند؛ آزمون‌های
+  `cashier_records_partial_and_full_payments_then_refunds` و
+  `cashier_splits_bills_and_applies_a_discount`.
 - seed دمو اکنون کاتالوگ قابل استفاده می‌سازد: ۲ دسته، ۵ محصول، ۳ میز با QR و گزینه/افزودنی؛
   آزمون `demo_menu_seed_creates_a_ready_to_order_catalog`.
 - `cafeflow-games`: فقط registry اتاق در این موج؛ موتورهای ۳۸ بازی هنوز منتقل نشده‌اند.
@@ -43,7 +49,9 @@ cargo test --workspace
   از snapshot موجود، ورود مدیر و `/auth/me` روی هر دو، SPA و deep link روی باینری؛ در موج ۴
   فهرست/جزئیات/انتقال سفارش روی PostgreSQL و مرورگر واقعی هم تأیید شد. در موج ۶ صف
   آماده‌سازی روی PostgreSQL تازه و در مرورگر واقعی (شروع/آماده‌شدن دو دپارتمان) تأیید شد.
-- **هنوز منتقل نشده:** پرداخت/صندوق، کاتالوگ مدیریت، گزارش، درخواست گارسون
+  در موج ۷ پرداخت جزئی/کامل، تقسیم سه‌نفره، پرداخت سهم، بازپرداخت، تخفیف و تکمیل کارت‌خوان
+  روی PostgreSQL و صندوق در مرورگر واقعی تأیید شدند.
+- **هنوز منتقل نشده:** کاتالوگ مدیریت، گزارش، درخواست گارسون
   و کارت‌خوان، صف چاپ و بازی‌ها. تا سبز شدن آزمون برابری، cutover انجام نمی‌شود.
 
 ## وضعیت فعلی (پایان فاز ۱۰)

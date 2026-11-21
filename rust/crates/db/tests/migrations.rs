@@ -17,7 +17,7 @@ async fn fresh_sqlite_migrations_and_seed_are_idempotent() {
     let database = Database::connect(&config(directory.path())).await.unwrap();
 
     let applied = database.migrate().await.unwrap();
-    assert_eq!(applied.len(), 15);
+    assert_eq!(applied.len(), 16);
     assert!(database.migrate().await.unwrap().is_empty());
     assert_eq!(database.table_count().await.unwrap(), 74);
 

@@ -5,6 +5,7 @@ pub mod dashboard;
 pub mod error;
 pub mod health;
 pub mod middleware;
+pub mod payments;
 pub mod prep;
 pub mod printing;
 pub mod public;
