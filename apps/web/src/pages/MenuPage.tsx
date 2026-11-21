@@ -426,7 +426,7 @@ export function MenuPage() {
                     دیدن منو
                   </Button>
                 ) : null}
-                {qrToken ? (
+                {qrToken && menu.gamesEnabled ? (
                   <Link
                     to={`/table/${qrToken}/games`}
                     className="rounded-full border border-cream/25 px-5 py-2.5 text-xs text-cream transition-colors duration-200 hover:border-cream/60 focus-visible:ring-2 focus-visible:ring-cream/60"

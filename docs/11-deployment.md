@@ -41,9 +41,24 @@ docker compose --profile tls up -d   # https://localhost:8443 (گواهی داخ
 | `backup` | همان تصویر API (اسکریپت `scripts/backup.mjs`) | نسخهٔ `VACUUM INTO` روزانه + چرخش |
 | `proxy` | `caddy:2.8-alpine` با `profiles: ["tls"]` | پایانهٔ HTTPS/ACME |
 
-- داده در volume `cafeflow_data` روی `/var/lib/cafeflow` نگه‌داری می‌شود؛ پشتیبان‌ها در
-  `cafeflow_backups` روی `/var/lib/cafeflow/backups`.
+- داده در volume‌ای به نام `data` (قابل تغییر با `DATA_VOLUME_NAME`) روی `/app/data` نگه‌داری
+  می‌شود — همان مسیری که API به‌صورت پیش‌فرض از `/app/apps/api` رزولو می‌کند، پس حتی اگر
+  `CAFEFLOW_DATA_DIR` فراموش شود، نوشتن بیرون از volume نمی‌افتد. پشتیبان‌ها در
+  `cafeflow_backups` روی `/app/data/backups`.
 - وب با nginx سرو می‌شود؛ `nginx.conf` مسیرهای SPA، کش دارایی و پروکسی API را مدیریت می‌کند.
+- **ریست پایگاه داده بدون پاک‌کردن عکس‌ها:** فقط `cafeflow.db` و فایل‌های `-wal`/`-shm` را از
+  volume حذف کنید و کانتینر را دوباره بالا بیاورید؛ `migrate` و `seed` دوباره اجرا می‌شوند و
+  `uploads/` دست‌نخورده می‌ماند. اگر بعد از اولین بوت `SEED_ADMIN_PASSWORD` را عوض کرده‌اید،
+  تا وقتی جدول `users` خالی نشود همان رمز قبلی معتبر می‌ماند.
+- **تصاویر محصول:** عکس‌های نمونه در `apps/web/public/images/products` داخل تصویر وب هستند و
+  nginx برای `/images/` با `try_files $uri =404` سرو می‌کند؛ نبودِ فایل دیگر با `index.html` و
+  کد ۲۰۰ جواب نمی‌گیرد. service worker هم فقط پاسخ‌های `image/*` را کش می‌کند و با هر نسخهٔ تازه
+  کش قبلی را پاک می‌کند. عکس‌هایی که مدیر آپلود می‌کند زیر
+  `$CAFEFLOW_DATA_DIR/uploads/products` روی همان volume می‌مانند.
+- **volume قدیمی:** اگر پایگاه داده پیش از اضافه‌شدن عکس‌های نمونه ساخته شده باشد، اجرای بعدی
+  `seed` فقط عکس‌های خالی همان محصولات نمونه را با نام دقیق پر می‌کند
+  (`backfillDemoProductImages`) و عکس انتخابی مدیر را تغییر نمی‌دهد. برای خاموش‌کردن این
+  تکمیل خودکار `SEED_DEMO_MENU=false` بگذارید.
 - **متغیرها:** `SEED_ADMIN_PASSWORD` اجباری است (`:?` در compose). `SESSION_COOKIE_SECURE` پیش‌فرض
   `true` است؛ فقط برای آزمون سادهٔ HTTP باید صریحاً `false` شود. `WEB_PORT` (پیش‌فرض ۸۰۸۰)،
   `HTTPS_PORT` (۸۴۴۳)، `HTTP_PORT` (۸۰)، `BACKUP_KEEP` (۱۴)، `SEED_DEMO_STAFF` (`false`).
@@ -67,16 +82,19 @@ docker compose --profile tls up -d   # https://localhost:8443 (گواهی داخ
 | مسیر | محتوا | اگر پایدار نباشد چه از دست می‌رود |
 |---|---|---|
 | `$CAFEFLOW_DATA_DIR/cafeflow.db` (+ `-wal`/`-shm`) | پایگاه داده | سفارش‌ها، پرداخت‌ها، منو، کاربران، تنظیمات و همهٔ رویدادها |
+| `$CAFEFLOW_DATA_DIR/uploads/products/` | عکس‌های آپلودی محصولات | عکس‌هایی که مدیر از پنل آپلود کرده است |
 | `$CAFEFLOW_DATA_DIR/backups/` | نسخه‌های `VACUUM INTO` | تاریخچهٔ پشتیبان |
 | `$CAFEFLOW_DATA_DIR/print-output/` | فایل رسیدهای پل چاپ | رسیدهای چاپ‌شدهٔ روی دیسک |
 
 **Docker:**
-- `cafeflow_data` → `/var/lib/cafeflow` و `cafeflow_backups` → `/var/lib/cafeflow/backups`.
+- volume `data` (یا `DATA_VOLUME_NAME`) → `/app/data` و `cafeflow_backups` → `/app/data/backups`.
+  درون ایمیج `Dockerfile.api` پوشهٔ `/app/data` ساخته و مالکش `node` می‌شود تا volume تازه هم
+  قابل‌نوشتن باشد.
 - `docker compose down` و `up` داده را پاک نمی‌کند؛ **هرگز `docker compose down -v` نزنید** (volume را حذف می‌کند).
-- اگر می‌خواهید داده در مسیر مشخصی از هاست باشد، volume را با bind mount عوض کنید:
+- اگر می‌خواهید داده در مسیر مشخصی از هاست باشد، mount را با bind mount عوض کنید:
   ```yaml
   volumes:
-    - /srv/cafeflow:/var/lib/cafeflow
+    - /srv/cafeflow:/app/data
   ```
 
 **بدون Docker (systemd):**

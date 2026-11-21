@@ -47,9 +47,8 @@ describe('GET /public/games/catalog', () => {
     expect(ids.slice(0, 6)).toEqual(['tictactoe', 'connect4', 'reversi', 'uno', '2048', 'werewolf']);
     expect(ids).toContain('chess');
     expect(response.body.games[0].nameFa).toBe('دوز');
-    // A game whose screen is not written yet is listed but not startable.
-    const twentyfour = response.body.games.find((game: { id: string }) => game.id === 'twentyfour');
-    expect(twentyfour.playable).toBe(false);
+    // Every game in the catalogue has a Persian screen now.
+    expect(response.body.games.every((game: { playable: boolean }) => game.playable)).toBe(true);
   });
 });
 
@@ -92,16 +91,6 @@ describe('POST /public/games/join', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('GAME_UNKNOWN');
-  });
-
-  it('refuses a listed game that has no screen yet', async () => {
-    const response = await request(server(context.app))
-      .post('/api/v1/public/games/join')
-      .set('Cookie', deviceCookie())
-      .send({ qrToken: tableToken, gameId: 'doudizhu' });
-
-    expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe('GAME_NOT_READY');
   });
 
   it('puts two phones that scan the same table QR in one room', async () => {

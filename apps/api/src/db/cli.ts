@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { loadConfig, loadEnvFile } from '../config/env';
 import { ensureDatabaseDirectory, runMigrations } from './migrate';
-import { isSeeded, seedDatabase } from './seed';
+import { backfillDemoProductImages, isSeeded, seedDatabase } from './seed';
 
 /**
  * Database CLI.
@@ -37,6 +37,12 @@ async function main(): Promise<void> {
         console.log(applied.length > 0 ? `✅ ${applied.length} مهاجرت اعمال شد.` : '✅ مهاجرت‌ها از قبل اعمال شده‌اند.');
 
         if (isSeeded(db) && command === 'seed') {
+          // The demo photos shipped after the first seeds; a volume created by an
+          // older image would never get them because the seed is skipped.
+          if ((process.env.SEED_DEMO_MENU ?? 'true') === 'true') {
+            const filled = backfillDemoProductImages(db);
+            if (filled > 0) console.log(`✅ تصویر ${filled} محصول نمونه تکمیل شد.`);
+          }
           console.log('ℹ️ داده‌های اولیه از قبل وجود دارند؛ برای جلوگیری از بازنویسی، seed انجام نشد.');
           break;
         }

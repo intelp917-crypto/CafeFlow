@@ -7,6 +7,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { isGameId, type GameId } from './manifest';
+import { applyPatch } from './patches';
 
 /** Opaque game state: owned and mutated by the rules module, never by the UI. */
 export type GameState = Record<string, any>;
@@ -62,7 +63,8 @@ export function loadGame(id: string): GameModule {
   // Trimmed upstream modules are CommonJS; the path is built from our own
   // registry id, never from client input.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const module = require(join(upstreamDirectory(), 'games', `${id}.js`)) as GameModule;
+  const raw = require(join(upstreamDirectory(), 'games', `${id}.js`)) as GameModule;
+  const module = applyPatch(id, raw);
   cache.set(id, module);
   return module;
 }

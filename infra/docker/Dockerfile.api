@@ -40,14 +40,15 @@ COPY --from=build /app/apps/api/migrations apps/api/migrations
 # already present and no package is installed at runtime.
 COPY scripts/backup.mjs scripts/backup.mjs
 
-# Runtime state (database + WAL, backups, print receipts) lives on one volume
-# so a container rebuild or host restart never touches it. A fresh named volume
-# inherits this folder's ownership from the image.
-RUN mkdir -p /var/lib/cafeflow/backups /var/lib/cafeflow/print-output \
-    && chown -R node:node /var/lib/cafeflow /app
+# Runtime state (database + WAL, uploads, backups, print receipts) lives on
+# one volume at /app/data — the same root the API resolves by default from
+# /app/apps/api. A fresh named volume inherits this folder's ownership from the
+# image, so the unprivileged `node` user can write to it.
+RUN mkdir -p /app/data/backups /app/data/print-output \
+    && chown -R node:node /app/data /app
 USER node
-ENV CAFEFLOW_DATA_DIR=/var/lib/cafeflow
-ENV CAFEFLOW_BACKUP_DIR=/var/lib/cafeflow/backups
+ENV CAFEFLOW_DATA_DIR=/app/data
+ENV CAFEFLOW_BACKUP_DIR=/app/data/backups
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

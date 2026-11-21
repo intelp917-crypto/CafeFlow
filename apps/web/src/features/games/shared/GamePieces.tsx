@@ -114,6 +114,7 @@ export function ResultOverlay({
   phase,
   canRestart,
   onRestart,
+  headline,
   children,
 }: {
   seats: GameSeatView[];
@@ -121,6 +122,8 @@ export function ResultOverlay({
   phase: GameRoomPhase;
   canRestart: boolean;
   onRestart: () => void;
+  /** Overrides the one-line verdict (games that end without a single winner). */
+  headline?: ReactNode;
   children?: ReactNode;
 }) {
   if (phase !== 'over') return null;
@@ -129,7 +132,7 @@ export function ResultOverlay({
     <div className="rounded-[1.75rem] border border-brand-200 bg-surface p-5 text-center shadow-[0_30px_70px_-58px_rgba(41,27,19,0.65)]">
       <p className="text-[10px] text-brand-700">پایان دست</p>
       <p className="mt-1 font-display text-xl font-bold text-ink">
-        {draw ? 'بدون برندهٔ مشخص' : `${seatName(seats, winner)} برنده شد`}
+        {headline ?? (draw ? 'بدون برندهٔ مشخص' : `${seatName(seats, winner)} برنده شد`)}
       </p>
       {children}
       {canRestart ? (

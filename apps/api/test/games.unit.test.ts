@@ -285,6 +285,51 @@ describe('RoomManager', () => {
     expect((bomb.room.state as { low: number }).low).toBe(2);
   });
 
+  it('runs a three-seat card table and ends the room on a landlord win', () => {
+    const rooms = manager();
+    const host = join(rooms, 'cards-0', 'doudizhu' as never);
+    join(rooms, 'cards-1', 'doudizhu' as never);
+    join(rooms, 'cards-2', 'doudizhu' as never);
+    readyAll(rooms, host.room);
+    rooms.start(host.room, host.seat);
+
+    const state = host.room.state as {
+      hands: Array<Array<{ id: string }>>;
+      phase: string;
+      currentBidder: number;
+      currentPlayer: number;
+      landlord: number | null;
+      winner: number | null;
+    };
+    expect(state.hands.map((hand) => hand.length)).toEqual([17, 17, 17]);
+    expect(state.phase).toBe('bidding');
+
+    // One seat sees its own hand; the other two are null-filled at the same length.
+    const view = rooms.stateFor(host.room, host.seat.index) as { hands: Array<Array<unknown> | null> };
+    expect(view.hands[host.seat.index]!.length).toBe(17);
+    expect(view.hands[1]!).toHaveLength(17);
+    expect(view.hands[1]!.every((card) => card === null)).toBe(true);
+
+    // Force a decisive position: the landlord is down to one card and plays it.
+    Object.assign(host.room.state as Record<string, unknown>, {
+      phase: 'playing',
+      landlord: 0,
+      currentPlayer: 0,
+      lastPlay: null,
+      passStreak: 0,
+      winner: null,
+      totalRounds: 1,
+      gameMultiplier: 1,
+      cumulativeScore: [0, 0, 0],
+      roundHistory: [],
+      hands: [[{ rank: '3', suit: 's', id: '3s' }], [{ rank: '4', suit: 's', id: '4s' }], []],
+    });
+
+    expect(rooms.move(host.room, host.seat, { cards: ['3s'] })).toBeNull();
+    expect(host.room.phase).toBe('over');
+    expect((host.room.state as { winner: number }).winner).toBe(-2);
+  });
+
   it('drops a playing room once its last seat is gone', () => {
     const rooms = manager();
     const solo = join(rooms, 'solo-0', 'sudoku' as never);

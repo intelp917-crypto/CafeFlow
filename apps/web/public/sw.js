@@ -8,7 +8,9 @@
  *    browser's error.
  *  - Hashed build assets are cache-first; they are immutable by filename.
  */
-const VERSION = 'cafeflow-v1';
+// Bump this whenever a cached response shape changes: activation deletes every
+// cache that does not start with the new version.
+const VERSION = 'cafeflow-v2';
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const OFFLINE_URL = '/offline.html';
@@ -65,6 +67,29 @@ self.addEventListener('fetch', (event) => {
             return response;
           }),
       ),
+    );
+    return;
+  }
+
+  // Photos are the one thing a phone in a café hits over and over. Cache them
+  // only when the server really sent an image: a 200 that is actually the SPA
+  // fallback must never be stored, or the picture stays broken until the cache
+  // is cleared by hand.
+  if (request.destination === 'image' || /^\/(images|scenes|videos)\//.test(url.pathname)) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request)
+          .then((response) => {
+            const type = response.headers.get('content-type') || '';
+            if (response.ok && type.startsWith('image/')) {
+              const copy = response.clone();
+              void caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy));
+            }
+            return response;
+          })
+          .catch(() => Response.error());
+      }),
     );
     return;
   }

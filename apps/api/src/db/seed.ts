@@ -77,6 +77,33 @@ function insertUser(
   return id;
 }
 
+interface DemoProduct {
+  nameFa: string;
+  category: string;
+  price: number;
+  department: 'barista' | 'kitchen' | 'bar';
+  descriptionFa: string;
+  prep: number;
+  imageUrl: string;
+}
+
+/** The demo menu, also used to backfill photos on older volumes. */
+const DEMO_PRODUCTS: DemoProduct[] = [
+  { nameFa: 'اسپرسو', category: 'hot-drinks', price: 850000, department: 'barista', descriptionFa: 'تک شات اسپرسو با دانه ۱۰۰٪ عربیکا', prep: 3, imageUrl: '/images/products/espresso.jpg' },
+  { nameFa: 'آمریکانو', category: 'hot-drinks', price: 950000, department: 'barista', descriptionFa: 'اسپرسو با آب گرم', prep: 4, imageUrl: '/images/products/americano.jpg' },
+  { nameFa: 'لاته', category: 'hot-drinks', price: 1250000, department: 'barista', descriptionFa: 'اسپرسو با شیر بخارپز و لاته‌آرت', prep: 5, imageUrl: '/images/products/latte.jpg' },
+  { nameFa: 'کاپوچینو', category: 'hot-drinks', price: 1180000, department: 'barista', descriptionFa: 'اسپرسو، شیر و فوم مخملی', prep: 5, imageUrl: '/images/products/cappuccino.jpg' },
+  { nameFa: 'چای سیاه', category: 'hot-drinks', price: 550000, department: 'bar', descriptionFa: 'چای سیاه با نبات', prep: 4, imageUrl: '/images/products/black-tea.jpg' },
+  { nameFa: 'آیس لاته', category: 'cold-drinks', price: 1380000, department: 'barista', descriptionFa: 'اسپرسو، شیر سرد و یخ', prep: 5, imageUrl: '/images/products/iced-latte.jpg' },
+  { nameFa: 'لیموناد', category: 'cold-drinks', price: 980000, department: 'bar', descriptionFa: 'لیموی تازه، نعناع و سودا', prep: 4, imageUrl: '/images/products/lemonade.jpg' },
+  { nameFa: 'موهیتو', category: 'cold-drinks', price: 1050000, department: 'bar', descriptionFa: 'نعناع، لیمو و سودا', prep: 4, imageUrl: '/images/products/mojito.jpg' },
+  { nameFa: 'پاستا آلفردو', category: 'food', price: 2600000, department: 'kitchen', descriptionFa: 'پاستا با سس سفید و مرغ گریل', prep: 18, imageUrl: '/images/products/alfredo-pasta.jpg' },
+  { nameFa: 'ساندویچ مرغ', category: 'food', price: 1950000, department: 'kitchen', descriptionFa: 'نان تست، مرغ گریل و سس مخصوص', prep: 12, imageUrl: '/images/products/chicken-sandwich.jpg' },
+  { nameFa: 'سالاد سزار', category: 'food', price: 1750000, department: 'kitchen', descriptionFa: 'کاهو، مرغ، نان تست و سس سزار', prep: 10, imageUrl: '/images/products/caesar-salad.jpg' },
+  { nameFa: 'چیزکیک', category: 'desserts', price: 1150000, department: 'kitchen', descriptionFa: 'چیزکیک نیویورکی با سس توت', prep: 3, imageUrl: '/images/products/cheesecake.jpg' },
+  { nameFa: 'براونی', category: 'desserts', price: 980000, department: 'kitchen', descriptionFa: 'براونی شکلاتی گرم', prep: 4, imageUrl: '/images/products/brownie.jpg' },
+];
+
 /**
  * Seeds the minimum an installation needs: permissions, roles, an admin user,
  * module flags and the settings row. Menu/layout demo rows are optional.
@@ -243,29 +270,7 @@ export function seedDatabase(db: Database, options: SeedOptions): SeedResult {
         categoryIds.set(category.slug, id);
       }
 
-      const products: Array<{
-        nameFa: string;
-        category: string;
-        price: number;
-        department: 'barista' | 'kitchen' | 'bar';
-        descriptionFa: string;
-        prep: number;
-        imageUrl: string;
-      }> = [
-        { nameFa: 'اسپرسو', category: 'hot-drinks', price: 850000, department: 'barista', descriptionFa: 'تک شات اسپرسو با دانه ۱۰۰٪ عربیکا', prep: 3, imageUrl: '/images/products/espresso.jpg' },
-        { nameFa: 'آمریکانو', category: 'hot-drinks', price: 950000, department: 'barista', descriptionFa: 'اسپرسو با آب گرم', prep: 4, imageUrl: '/images/products/americano.jpg' },
-        { nameFa: 'لاته', category: 'hot-drinks', price: 1250000, department: 'barista', descriptionFa: 'اسپرسو با شیر بخارپز و لاته‌آرت', prep: 5, imageUrl: '/images/products/latte.jpg' },
-        { nameFa: 'کاپوچینو', category: 'hot-drinks', price: 1180000, department: 'barista', descriptionFa: 'اسپرسو، شیر و فوم مخملی', prep: 5, imageUrl: '/images/products/cappuccino.jpg' },
-        { nameFa: 'چای سیاه', category: 'hot-drinks', price: 550000, department: 'bar', descriptionFa: 'چای سیاه با نبات', prep: 4, imageUrl: '/images/products/black-tea.jpg' },
-        { nameFa: 'آیس لاته', category: 'cold-drinks', price: 1380000, department: 'barista', descriptionFa: 'اسپرسو، شیر سرد و یخ', prep: 5, imageUrl: '/images/products/iced-latte.jpg' },
-        { nameFa: 'لیموناد', category: 'cold-drinks', price: 980000, department: 'bar', descriptionFa: 'لیموی تازه، نعناع و سودا', prep: 4, imageUrl: '/images/products/lemonade.jpg' },
-        { nameFa: 'موهیتو', category: 'cold-drinks', price: 1050000, department: 'bar', descriptionFa: 'نعناع، لیمو و سودا', prep: 4, imageUrl: '/images/products/mojito.jpg' },
-        { nameFa: 'پاستا آلفردو', category: 'food', price: 2600000, department: 'kitchen', descriptionFa: 'پاستا با سس سفید و مرغ گریل', prep: 18, imageUrl: '/images/products/alfredo-pasta.jpg' },
-        { nameFa: 'ساندویچ مرغ', category: 'food', price: 1950000, department: 'kitchen', descriptionFa: 'نان تست، مرغ گریل و سس مخصوص', prep: 12, imageUrl: '/images/products/chicken-sandwich.jpg' },
-        { nameFa: 'سالاد سزار', category: 'food', price: 1750000, department: 'kitchen', descriptionFa: 'کاهو، مرغ، نان تست و سس سزار', prep: 10, imageUrl: '/images/products/caesar-salad.jpg' },
-        { nameFa: 'چیزکیک', category: 'desserts', price: 1150000, department: 'kitchen', descriptionFa: 'چیزکیک نیویورکی با سس توت', prep: 3, imageUrl: '/images/products/cheesecake.jpg' },
-        { nameFa: 'براونی', category: 'desserts', price: 980000, department: 'kitchen', descriptionFa: 'براونی شکلاتی گرم', prep: 4, imageUrl: '/images/products/brownie.jpg' },
-      ];
+      const products = DEMO_PRODUCTS;
 
       const productIds = new Map<string, string>();
       for (const product of products) {
@@ -329,6 +334,33 @@ export function seedDatabase(db: Database, options: SeedOptions): SeedResult {
   );
 
   return seeded;
+}
+
+/**
+ * Fills the photo column of demo products on volumes seeded before the demo
+ * images existed.
+ *
+ * `seedDatabase` is never re-run once an administrator exists, so an older
+ * Docker volume would otherwise keep empty photos forever. Only a NULL/empty
+ * `image_url` is touched and only for the exact demo names, so an admin's own
+ * photo is never overwritten.
+ */
+export function backfillDemoProductImages(db: Database): number {
+  const update = db.prepare(
+    `UPDATE products
+        SET image_url = ?, updated_at = ?
+      WHERE name_fa = ?
+        AND (image_url IS NULL OR image_url = '')
+        AND deleted_at IS NULL`,
+  );
+
+  let changed = 0;
+  db.transaction(() => {
+    for (const product of DEMO_PRODUCTS) {
+      changed += update.run(product.imageUrl, now(), product.nameFa).changes;
+    }
+  })();
+  return changed;
 }
 
 /** True when the installation already has an administrator account. */

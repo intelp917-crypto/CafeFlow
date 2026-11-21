@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Inject, Post, Req, Res } from '@nestjs
 import type { Request, Response } from 'express';
 import { GAMES } from '@cafeflow/games';
 import { gamesJoinSchema, type GameCatalogResponse } from '@cafeflow/shared';
-import { Public } from '../../common/decorators';
+import { Public, RequireModule } from '../../common/decorators';
 import { AppError, parseWith } from '../../common/errors';
 import { parseCookies } from '../../common/cookies';
 import { SlidingWindowLimiter } from '../../common/rate-limit';
@@ -22,6 +22,7 @@ const DEVICE_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
  * hands back a seat token — the seat is claimed on the socket, not here.
  */
 @Controller('public/games')
+@RequireModule('games')
 export class GamesController {
   private readonly config = loadConfig();
   private readonly deviceLimiter = new SlidingWindowLimiter(60_000, 30);

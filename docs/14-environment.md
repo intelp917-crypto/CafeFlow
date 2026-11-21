@@ -14,7 +14,7 @@
 | `PORT` | `3000` | پورت API؛ مقدار نامعتبر (۰ یا خارج از بازه) به ۳۰۰۰ برمی‌گردد |
 | `HOST` | `0.0.0.0` | رابط شنود API؛ `0.0.0.0` یعنی از شبکهٔ محلی هم در دسترس است، `127.0.0.1` یعنی فقط همین دستگاه |
 | `API_PREFIX` | `/api/v1` | پیشوند مسیرها |
-| `CAFEFLOW_DATA_DIR` | `../../data` | **ریشهٔ پایدار داده‌ها**؛ در تولید مسیر مطلق روی دیسک پایدار (مثلاً `/var/lib/cafeflow`) |
+| `CAFEFLOW_DATA_DIR` | `../../data` | **ریشهٔ پایدار داده‌ها**؛ در Docker روی volume با مسیر `/app/data`، در استقرار بدون Docker مسیر مطلق روی دیسک پایدار |
 | `DATABASE_PATH` | `$CAFEFLOW_DATA_DIR/cafeflow.db` | بازنویسی اختیاری فایل پایگاه داده |
 | `CAFEFLOW_BACKUP_DIR` | `$CAFEFLOW_DATA_DIR/backups` | محل پشتیبان‌ها |
 | `PRINT_OUTPUT_DIR` | `$CAFEFLOW_DATA_DIR/print-output` | خروجی پل چاپ (فقط اسکریپت پل) |
@@ -51,8 +51,8 @@ $CAFEFLOW_DATA_DIR/
   print-output/          فایل‌های رسید پل چاپ
 ```
 
-در تولید این ریشه باید یک مسیر مطلق بیرون از پوشهٔ پروژه و روی دیسک پایدار باشد (`/var/lib/cafeflow`
-در Compose). جزئیات و چک‌لیست ریستارت در `docs/11-deployment.md`.
+در تولید این ریشه باید یک مسیر مطلق بیرون از پوشهٔ پروژه و روی دیسک پایدار باشد (`/app/data`
+در Compose، از volume‌ای به نام `data`). جزئیات و چک‌لیست ریستارت در `docs/11-deployment.md`.
 
 ## پیش از استقرار
 

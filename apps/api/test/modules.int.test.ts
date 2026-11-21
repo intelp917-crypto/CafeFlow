@@ -71,6 +71,36 @@ describe('optional module gate', () => {
     expect(auditRows.n).toBeGreaterThanOrEqual(2);
   });
 
+  it('ships the table-games module on and closes its public API when switched off', async () => {
+    const { agent } = await login(context.app, ADMIN_USERNAME, ADMIN_PASSWORD);
+
+    const modules = await agent.get('/api/v1/modules');
+    const games = modules.body.items.find((item: { key: string }) => item.key === 'games');
+    expect(games).toMatchObject({ enabled: true, configurable: true });
+
+    const catalog = await agent.get('/api/v1/public/games/catalog');
+    expect(catalog.status).toBe(200);
+    expect(catalog.body.games.length).toBeGreaterThan(30);
+
+    const off = await agent.patch('/api/v1/modules/games').send({ enabled: false });
+    expect(off.status).toBe(200);
+
+    const blocked = await agent.get('/api/v1/public/games/catalog');
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error.code).toBe('MODULE_DISABLED');
+
+    // The customer menu learns the switch too, so the button disappears instead
+    // of leading to a refused join.
+    const menu = await agent.get('/api/v1/public/menu');
+    expect(menu.status).toBe(200);
+    expect(menu.body.gamesEnabled).toBe(false);
+
+    const on = await agent.patch('/api/v1/modules/games').send({ enabled: true });
+    expect(on.status).toBe(200);
+    const menuAgain = await agent.get('/api/v1/public/menu');
+    expect(menuAgain.body.gamesEnabled).toBe(true);
+  });
+
   it('refuses to disable a core module', async () => {
     const { agent } = await login(context.app, ADMIN_USERNAME, ADMIN_PASSWORD);
     const response = await agent.patch('/api/v1/modules/tables').send({ enabled: false });

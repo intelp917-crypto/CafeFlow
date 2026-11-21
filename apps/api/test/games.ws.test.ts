@@ -162,6 +162,28 @@ describe('games websocket', () => {
     expect(refused.message).toBe('الان نوبت شما نیست.');
   });
 
+  it('refuses a socket while the games module is switched off', async () => {
+    context.db
+      .prepare(
+        `INSERT INTO module_settings (key, is_enabled, updated_at) VALUES ('games', 0, ?)
+         ON CONFLICT (key) DO UPDATE SET is_enabled = 0, updated_at = excluded.updated_at`,
+      )
+      .run(new Date().toISOString());
+
+    try {
+      // A token minted before the switch must not keep a room alive.
+      const refused = await new Promise<boolean>((resolve) => {
+        const socket = new WebSocket(`ws://127.0.0.1:${port}/ws/games?seat=stale-seat`);
+        socket.once('open', () => resolve(false));
+        socket.once('error', () => resolve(true));
+        socket.once('unexpected-response', () => resolve(true));
+      });
+      expect(refused).toBe(true);
+    } finally {
+      context.db.prepare("DELETE FROM module_settings WHERE key = 'games'").run();
+    }
+  });
+
   it('sends each seat its own hand and nobody else\'s', async () => {
     const first = await joinAs(request.agent(server(context.app)), 'uno');
     const second = await joinAs(request.agent(server(context.app)), 'uno');

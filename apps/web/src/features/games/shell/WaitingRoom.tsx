@@ -29,24 +29,29 @@ export function WaitingRoom({ room, mySeat, onReady, onStart, onLeave }: Waiting
 
   return (
     <div className="space-y-4">
-      <section className="rounded-[1.75rem] border border-line/70 bg-surface p-5">
-        <p className="text-[10px] text-brand-700">{room.tableNameFa}</p>
-        <h1 className="mt-1 font-display text-2xl font-bold text-ink">{room.gameNameFa}</h1>
-        <p className="mt-2 text-[11px] leading-6 text-muted">
-          بقیهٔ هم‌میزها همین کد QR میز را اسکن کنند و «{room.gameNameFa}» را انتخاب کنند تا در همین
-          اتاق کنار شما بنشینند.
-        </p>
-
-        <div className="mt-4 flex items-center justify-between gap-2 text-[11px] text-muted">
-          <span>
-            {formatCountFa(room.seats.length)} از {formatCountFa(room.maxPlayers)} صندلی
-          </span>
-          <span>
-            حداقل برای شروع: {formatCountFa(room.minPlayers)}
-          </span>
+      <section className="relative overflow-hidden rounded-[1.9rem] border border-[#e0a15f]/20 bg-[#1a1210] shadow-[0_40px_100px_-50px_rgba(0,0,0,0.95)]">
+        <div className="relative h-32 overflow-hidden sm:h-40">
+          <img src={`/games/${room.gameId}.jpg`} alt="" className="size-full object-cover" />
+          <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-[#1a1210] via-[#1a1210]/35 to-black/25" />
+          <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-4">
+            <div>
+              <p className="text-[9px] text-[#e0a15f]">{room.tableNameFa} · در انتظار هم‌میزها</p>
+              <h1 className="mt-0.5 text-2xl font-black text-white drop-shadow">{room.gameNameFa}</h1>
+            </div>
+            <span className="num rounded-full border border-white/15 bg-black/40 px-2.5 py-1 text-[10px] text-[#f3e3cf] backdrop-blur">
+              {formatCountFa(room.seats.length)} / {formatCountFa(room.maxPlayers)}
+            </span>
+          </div>
         </div>
 
-        <SeatList className="mt-2" seats={room.seats} />
+        <div className="space-y-4 p-4 sm:p-5">
+          <p className="text-[11px] leading-6 text-[#c9b6a2]">
+            بقیهٔ هم‌میزها همین کد QR میز را اسکن کنند و «{room.gameNameFa}» را انتخاب کنند تا در همین
+            اتاق کنار شما بنشینند. حداقل {formatCountFa(room.minPlayers)} نفر برای شروع لازم است.
+          </p>
+
+          <SeatList seats={room.seats} />
+        </div>
       </section>
 
       {!enoughPlayers ? (
@@ -64,8 +69,8 @@ export function WaitingRoom({ room, mySeat, onReady, onStart, onLeave }: Waiting
           type="button"
           onClick={() => onReady(!(me?.ready ?? false))}
           aria-pressed={me?.ready ?? false}
-          className={`min-h-11 flex-1 rounded-full px-5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
-            me?.ready ? 'border border-brand-300 bg-brand-50 text-brand-800' : 'bg-espresso text-cream hover:bg-brand-800'
+          className={`min-h-12 flex-1 rounded-full px-5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e0a15f]/70 ${
+            me?.ready ? 'border border-[#e0a15f]/50 bg-[#e0a15f]/15 text-[#f0c18c]' : 'bg-[#e0a15f] text-[#241511] hover:bg-[#efb577]'
           }`}
         >
           {me?.ready ? 'آماده‌ام ✓' : 'آماده‌ام'}
@@ -76,12 +81,12 @@ export function WaitingRoom({ room, mySeat, onReady, onStart, onLeave }: Waiting
             type="button"
             onClick={onStart}
             disabled={!canStart}
-            className="min-h-11 flex-1 rounded-full bg-brand-600 px-5 text-xs font-bold text-white transition-colors enabled:hover:bg-brand-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+            className="min-h-12 flex-1 rounded-full bg-[#f8f1e5] px-5 text-xs font-black text-[#241511] transition-colors enabled:hover:bg-white disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e0a15f]/70"
           >
             شروع بازی
           </button>
         ) : (
-          <span className="flex min-h-11 flex-1 items-center justify-center rounded-full border border-line/70 text-[11px] text-muted">
+          <span className="flex min-h-12 flex-1 items-center justify-center rounded-full border border-white/10 text-[11px] text-[#a99786]">
             میزبان شروع می‌کند
           </span>
         )}
@@ -90,7 +95,7 @@ export function WaitingRoom({ room, mySeat, onReady, onStart, onLeave }: Waiting
       <button
         type="button"
         onClick={onLeave}
-        className="min-h-11 w-full text-[11px] text-muted underline-offset-4 hover:underline"
+        className="min-h-11 w-full text-[11px] text-[#8c7663] underline-offset-4 hover:text-[#c9b6a2] hover:underline"
       >
         ترک این بازی
       </button>

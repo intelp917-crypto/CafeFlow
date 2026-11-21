@@ -23,6 +23,7 @@ export const MODULE_KEYS = [
   'employees',
   'finance',
   'crm',
+  'games',
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -176,6 +177,16 @@ export const MODULES: ModuleDefinition[] = [
     configurable: true,
     dependsOn: ['ordering'],
     phase: 6,
+  },
+  {
+    key: 'games',
+    nameFa: 'بازی میزی مهمان‌ها',
+    descriptionFa:
+      'اتاق بازی هر میز با کد QR؛ مهمان‌ها با گوشی خودشان کنار هم بازی می‌کنند. با خاموش‌کردن آن، دکمهٔ بازی از منوی مشتری و مسیرهای بازی بسته می‌شود.',
+    defaultEnabled: true,
+    configurable: true,
+    dependsOn: ['tables'],
+    phase: 7,
   },
 ];
 

@@ -118,6 +118,15 @@
 
 /* Thin, unobtrusive scrollbars that respect the RTL gutter. */
 @layer utilities {
+  /* Games route: a dark tabletop lounge around the cream play surface. */
+  .game-lounge {
+    background-color: #120c0a;
+    background-image:
+      radial-gradient(circle at 85% -10%, rgba(163, 76, 37, 0.35), transparent 45%),
+      radial-gradient(circle at 0% 55%, rgba(109, 139, 120, 0.18), transparent 40%),
+      linear-gradient(180deg, #17100d 0%, #120c0a 55%, #0e0907 100%);
+  }
+
   .scroll-thin {
     scrollbar-width: thin;
     scrollbar-color: var(--color-line) transparent;

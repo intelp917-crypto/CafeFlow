@@ -4,6 +4,7 @@ import {
   MODULE_MAP,
   isModuleKey,
   type AppSettingsDto,
+  type ModuleKey,
   type ModuleStatusDto,
   type UpdateSettingsInput,
 } from '@cafeflow/shared';
@@ -136,6 +137,15 @@ export class SettingsService {
     });
 
     return after;
+  }
+
+  /** The guard's question in one place: is this module on right now? */
+  isModuleEnabled(key: ModuleKey): boolean {
+    const row = this.database.get<{ is_enabled: number }>(
+      'SELECT is_enabled FROM module_settings WHERE key = ?',
+      [key],
+    );
+    return row ? row.is_enabled === 1 : MODULE_MAP[key].defaultEnabled;
   }
 
   listModules(): ModuleStatusDto[] {

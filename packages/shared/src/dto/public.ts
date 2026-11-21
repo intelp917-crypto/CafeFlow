@@ -139,6 +139,8 @@ export interface PublicMenuResponse {
   };
   qr: { kind: 'table' | 'promo'; label: string | null } | null;
   table: { id: string; nameFa: string; code: string; floorNameFa: string | null } | null;
+  /** Whether the table-games module is on, so the menu can hide a dead button. */
+  gamesEnabled: boolean;
   categories: PublicMenuCategory[];
   serverTime: string;
 }

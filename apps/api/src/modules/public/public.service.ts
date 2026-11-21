@@ -2,6 +2,7 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   CUSTOMER_REQUEST_LABELS_FA,
+  MODULE_MAP,
   ORDER_STATUS_LABELS_FA,
   percentOf,
   type OrderStatus,
@@ -162,6 +163,15 @@ export class PublicService {
     };
   }
 
+  /** Public menu needs one module flag; the admin guard stays the authority. */
+  private moduleEnabled(key: 'games'): boolean {
+    const row = this.database.get<{ is_enabled: number }>(
+      'SELECT is_enabled FROM module_settings WHERE key = ?',
+      [key],
+    );
+    return row ? row.is_enabled === 1 : MODULE_MAP[key].defaultEnabled;
+  }
+
   getMenu(qrToken: string | undefined): PublicMenuResponse {
     const settings = this.repository.getSettings();
     let qr: PublicMenuResponse['qr'] = null;
@@ -202,6 +212,7 @@ export class PublicService {
       },
       qr,
       table,
+      gamesEnabled: this.moduleEnabled('games'),
       categories,
       serverTime: new Date().toISOString(),
     };

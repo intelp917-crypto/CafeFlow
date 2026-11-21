@@ -4,6 +4,11 @@
 # daily backup (integrity_check=ok), HTTPS via the optional Caddy profile, and
 # data persistence across `down`/`up`. Copy .env.example to .env first —
 # SEED_ADMIN_PASSWORD has no default.
+#
+# Runtime state lives in one volume mounted at /app/data, which is also the
+# API's default data root inside the image. The volume is named `data` by
+# default so an existing volume with that name is reused; override it with
+# DATA_VOLUME_NAME when another name is preferred.
 
 services:
   api:
@@ -19,9 +24,10 @@ services:
       # API by service name; the container is never published directly.
       HOST: "0.0.0.0"
       # Everything that must survive a restart/rebuild lives under this one
-      # path, mounted from the cafeflow_data volume below.
-      CAFEFLOW_DATA_DIR: /var/lib/cafeflow
-      CAFEFLOW_BACKUP_DIR: /var/lib/cafeflow/backups
+      # path. It matches the image's default, so a container started without
+      # this variable still writes to the mounted volume.
+      CAFEFLOW_DATA_DIR: /app/data
+      CAFEFLOW_BACKUP_DIR: /app/data/backups
       SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-cafe_session}
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-168}
       # Secure by default. A plain-HTTP trial (no TLS in front) must set this to
@@ -43,7 +49,7 @@ services:
     # `seed` is skipped once users exist, so restarts keep the live data.
     command: ["sh", "-c", "node dist/db/cli.js migrate && node dist/db/cli.js seed && node dist/main.js"]
     volumes:
-      - cafeflow_data:/var/lib/cafeflow
+      - cafeflow_data:/app/data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -83,11 +89,11 @@ services:
     volumes:
       # Not :ro — SQLite needs its WAL sidecar files writable to read a live
       # database. The script itself only writes the copy under backups/.
-      - cafeflow_data:/var/lib/cafeflow
-      - cafeflow_backups:/var/lib/cafeflow/backups
+      - cafeflow_data:/app/data
+      - cafeflow_backups:/app/data/backups
     environment:
-      CAFEFLOW_DATA_DIR: /var/lib/cafeflow
-      CAFEFLOW_BACKUP_DIR: /var/lib/cafeflow/backups
+      CAFEFLOW_DATA_DIR: /app/data
+      CAFEFLOW_BACKUP_DIR: /app/data/backups
       BACKUP_KEEP: ${BACKUP_KEEP:-14}
     command: >
       sh -c "until node /app/scripts/backup.mjs; do
@@ -117,7 +123,11 @@ services:
       - caddy_config:/config
 
 volumes:
+  # The existing `data` volume is adopted by name, so switching from an older
+  # stack keeps the database and uploads in one place. Set DATA_VOLUME_NAME in
+  # .env to use a different volume.
   cafeflow_data:
+    name: ${DATA_VOLUME_NAME:-data}
   cafeflow_backups:
   caddy_data:
   caddy_config:

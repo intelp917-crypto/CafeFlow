@@ -220,8 +220,8 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 1,
     maxPlayers: 8,
     mode: 'realtime',
-    // The rules end a round but never a match, so the table would stall.
-    playable: false,
+    // The adapter adds the missing "next round" step; see applyPatch('twentyfour').
+    playable: true,
   },
   {
     id: 'numberbomb',
@@ -245,7 +245,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 4,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'doudizhu',
@@ -257,7 +257,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 3,
     maxPlayers: 3,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'bigtwo',
@@ -269,7 +269,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 3,
     maxPlayers: 4,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'paodekuai',
@@ -281,7 +281,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 3,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'hearts',
@@ -293,7 +293,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 4,
     maxPlayers: 4,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'oldmaid',
@@ -305,7 +305,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 6,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'exploding-kittens',
@@ -317,7 +317,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 6,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'liarsbar',
@@ -329,7 +329,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 6,
     mode: 'phase',
-    playable: false,
+    playable: true,
   },
   {
     id: 'rummikub',
@@ -341,7 +341,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 4,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'mahjong-sichuan',
@@ -353,7 +353,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 4,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'mahjong-cantonese',
@@ -365,7 +365,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 4,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'chinesechess',
@@ -377,7 +377,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 2,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'go9',
@@ -389,7 +389,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 2,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'battleship',
@@ -401,7 +401,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 2,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'flightchess',
@@ -413,7 +413,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 4,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'monopoly',
@@ -425,7 +425,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 6,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'texas',
@@ -437,7 +437,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 8,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'sanguo',
@@ -449,7 +449,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 4,
     maxPlayers: 8,
     mode: 'turn',
-    playable: false,
+    playable: true,
   },
   {
     id: 'sheeptile',
@@ -461,7 +461,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 1,
     maxPlayers: 6,
     mode: 'realtime',
-    playable: false,
+    playable: true,
   },
   {
     id: 'snakebattle',
@@ -473,7 +473,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 1,
     maxPlayers: 6,
     mode: 'realtime',
-    playable: false,
+    playable: true,
   },
   {
     id: 'suikabattle',
@@ -485,7 +485,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 1,
     maxPlayers: 4,
     mode: 'realtime',
-    playable: false,
+    playable: true,
   },
   {
     id: 'quizrace',
@@ -497,7 +497,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 1,
     maxPlayers: 8,
     mode: 'realtime',
-    playable: false,
+    playable: true,
   },
   {
     id: 'drawguess',
@@ -509,7 +509,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 1,
     maxPlayers: 8,
     mode: 'phase',
-    playable: false,
+    playable: true,
   },
   {
     id: 'truthdare',
@@ -521,7 +521,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 2,
     maxPlayers: 10,
     mode: 'phase',
-    playable: false,
+    playable: true,
   },
   {
     id: 'undercover',
@@ -533,7 +533,7 @@ export const GAMES: readonly GameManifest[] = [
     minPlayers: 4,
     maxPlayers: 10,
     mode: 'phase',
-    playable: false,
+    playable: true,
   },
 ];
 

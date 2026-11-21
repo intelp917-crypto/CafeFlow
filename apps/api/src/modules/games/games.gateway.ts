@@ -4,6 +4,7 @@ import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import type { GameClientMessage, GameServerMessage } from '@cafeflow/shared';
 import { AppError } from '../../common/errors';
+import { SettingsService } from '../settings/settings.service';
 import { RoomManager, type Room, type RoomSeat } from './room-manager';
 
 /** One socket, one seat: the token in the query string is the whole identity. */
@@ -30,7 +31,10 @@ export class GamesGateway implements OnModuleDestroy {
   private wss: WebSocketServer | null = null;
   private heartbeat: NodeJS.Timeout | null = null;
 
-  constructor(@Inject(RoomManager) private readonly rooms: RoomManager) {
+  constructor(
+    @Inject(RoomManager) private readonly rooms: RoomManager,
+    @Inject(SettingsService) private readonly settings: SettingsService,
+  ) {
     // The manager owns the rules; the gateway only translates rooms to frames.
     this.rooms.onUpdate((room) => this.broadcast(room));
   }
@@ -66,6 +70,14 @@ export class GamesGateway implements OnModuleDestroy {
       // No other websocket endpoint exists on this server; a clear refusal beats
       // a half-open connection that a proxy would eventually time out.
       socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    // A seat token minted before an admin switched the module off must not keep
+    // a room alive: the socket is the second door into the same feature.
+    if (!this.settings.isModuleEnabled('games')) {
+      socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n');
       socket.destroy();
       return;
     }
