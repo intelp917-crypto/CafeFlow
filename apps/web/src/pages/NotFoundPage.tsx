@@ -3,7 +3,7 @@ import { Card } from '@cafeflow/ui';
 
 export function NotFoundPage() {
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-canvas px-4">
+    <main className="flex min-h-dvh items-center justify-center bg-canvas px-4">
       <Card className="w-full max-w-md p-8 text-center">
         <p className="num text-4xl font-bold text-brand-500">۴۰۴</p>
         <h1 className="mt-2 text-base font-bold text-ink">صفحه پیدا نشد</h1>
@@ -17,6 +17,6 @@ export function NotFoundPage() {
           بازگشت به خانه
         </Link>
       </Card>
-    </div>
+    </main>
   );
 }

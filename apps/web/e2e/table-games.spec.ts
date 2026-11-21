@@ -41,7 +41,7 @@ test('two phones at one table share a room and play a game', async ({ browser })
     await guestA
       .locator('article')
       .filter({ has: guestA.getByRole('heading', { name: 'دوز', exact: true }) })
-      .getByRole('button', { name: 'بازی با این میز' })
+      .getByRole('button', { name: 'بیا بازی' })
       .click();
     await expect(guestA.getByRole('heading', { name: 'دوز' })).toBeVisible();
     await expect(guestA.getByText('شما', { exact: true })).toBeVisible();
@@ -52,7 +52,7 @@ test('two phones at one table share a room and play a game', async ({ browser })
     await guestB
       .locator('article')
       .filter({ has: guestB.getByRole('heading', { name: 'دوز', exact: true }) })
-      .getByRole('button', { name: 'بازی با این میز' })
+      .getByRole('button', { name: 'بیا بازی' })
       .click();
 
     await expect(guestB.getByText('سارا')).toBeVisible();

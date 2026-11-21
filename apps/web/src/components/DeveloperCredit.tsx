@@ -1,15 +1,17 @@
 import { useEffect, useRef } from 'react';
-import { Camera, PhoneCall } from 'lucide-react';
+import { Globe, PhoneCall } from 'lucide-react';
 import { animate, stagger } from 'animejs';
 
-const INSTAGRAM_URL = 'https://www.instagram.com/siyaablack/';
+const WEBSITE_URL = 'https://rahvandev.ir/';
+const TEAM_NAME = 'تیم برنامه‌نویسی رهوان';
+const WEBSITE_DISPLAY = 'rahvandev.ir';
 const PHONE_DISPLAY = '09023363676';
 const PHONE_HREF = 'tel:+989023363676';
 
 /**
  * A small, self-contained signature credit. The business app never depends on
- * it; it is only a quiet credit with a direct Instagram link and a tap-to-call
- * number. The entrance is animated with anime.js and is skipped when the
+ * it; it is only a quiet credit with a link to the development team's website
+ * and a tap-to-call number. The entrance is animated with anime.js and is skipped when the
  * visitor asks for reduced motion.
  */
 export function DeveloperCredit({
@@ -108,18 +110,20 @@ export function DeveloperCredit({
       >
         <span>طراحی و توسعه</span>
         <a
-          href={INSTAGRAM_URL}
+          href={WEBSITE_URL}
           target="_blank"
           rel="noopener noreferrer"
           onMouseEnter={lift}
           onMouseLeave={settle}
-          aria-label="صفحهٔ اینستاگرام @siyaablack"
-          title="صفحهٔ اینستاگرام"
-          className={`inline-flex items-center gap-1 font-semibold ${strong}`}
-          dir="ltr"
+          aria-label={`وب‌سایت ${TEAM_NAME} — ${WEBSITE_DISPLAY}`}
+          title={WEBSITE_DISPLAY}
+          className={`inline-flex flex-wrap items-center justify-center gap-x-1.5 font-semibold ${strong}`}
         >
-          <Camera className="h-3.5 w-3.5" aria-hidden="true" />
-          @siyaablack
+          <Globe className="h-3.5 w-3.5" aria-hidden="true" />
+          {TEAM_NAME}
+          <span className={`text-[9px] font-normal ${muted}`} dir="ltr">
+            {WEBSITE_DISPLAY}
+          </span>
         </a>
         <span className={dark ? 'text-cream/30' : 'text-line'} aria-hidden="true">·</span>
         <a

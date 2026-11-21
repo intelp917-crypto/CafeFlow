@@ -87,7 +87,7 @@ describe('SheepTile', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'کاشی ۱' }));
+    await userEvent.click(screen.getByRole('button', { name: /^کاشی ۶، طرح ۱$/ }));
     expect(onMove).toHaveBeenCalledWith({ type: 'pick', tileId: 5 });
   });
 });

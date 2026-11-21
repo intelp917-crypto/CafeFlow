@@ -125,8 +125,8 @@ export function DashboardPage() {
             />
           </section>
 
-          <div className="grid gap-4 xl:grid-cols-3">
-            <Card className="xl:col-span-2">
+          <div className="grid min-w-0 gap-4 xl:grid-cols-3">
+            <Card className="min-w-0 xl:col-span-2">
               <CardHeader title="آخرین سفارش‌ها" description="۸ سفارش اخیر ثبت‌شده در سیستم" />
               <DataTable
                 columns={orderColumns}
@@ -141,7 +141,7 @@ export function DashboardPage() {
               />
             </Card>
 
-            <div className="space-y-4">
+            <div className="min-w-0 space-y-4">
               <Card>
                 <CardHeader title="روش‌های پرداخت امروز" />
                 <CardBody className="space-y-2">

@@ -39,7 +39,7 @@ export function LoginPage() {
 
   return (
     <div className="min-h-dvh bg-canvas lg:grid lg:grid-cols-[1fr_1.05fr]">
-      <div className="flex min-h-dvh flex-col justify-center px-5 py-10 sm:px-10 lg:px-14">
+      <main className="flex min-h-dvh flex-col justify-center px-5 py-10 sm:px-10 lg:px-14">
         <div className="mx-auto w-full max-w-sm space-y-5">
         <div className="flex items-center gap-3">
           <span className="flex size-12 items-center justify-center rounded-full border border-brand-300/50 bg-brand-500/10 text-brand-600">
@@ -123,7 +123,7 @@ export function LoginPage() {
           <DeveloperCredit />
         </div>
         </div>
-      </div>
+      </main>
 
       <aside className="relative hidden lg:block">
         <img

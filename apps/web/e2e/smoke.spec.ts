@@ -63,7 +63,7 @@ test('PWA shell and hardened API headers are served', async ({ request }) => {
 
   const worker = await request.get('/sw.js');
   expect(worker.status()).toBe(200);
-  expect(await worker.text()).toContain('cafeflow-v1');
+  expect(await worker.text()).toMatch(/cafeflow-v\d+/);
 
   const offline = await request.get('/offline.html');
   expect(offline.status()).toBe(200);

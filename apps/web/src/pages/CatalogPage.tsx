@@ -985,8 +985,8 @@ export function CatalogPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[20rem_1fr]">
-        <Card className="self-start">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[20rem_1fr]">
+        <Card className="min-w-0 self-start">
           <CardHeader title="دسته‌ها" description="ترتیب نمایش در منوی مشتری" />
           <CardBody className="space-y-3">
             {data.categories.length === 0 ? (
@@ -1047,7 +1047,7 @@ export function CatalogPage() {
           </CardBody>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader
             title="محصولات"
             description="قیمت‌ها به ریال و فقط از این صفحه تغییر می‌کنند؛ با ↑/↓ ترتیب نمایش هر محصول در دستهٔ خودش را تعیین کنید."

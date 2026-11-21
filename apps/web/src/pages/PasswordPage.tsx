@@ -51,7 +51,7 @@ export function PasswordPage() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-canvas px-4 py-10">
+    <main className="flex min-h-dvh flex-col items-center justify-center bg-canvas px-4 py-10">
       <div className="w-full max-w-md space-y-4">
         <Card className="p-6">
           <div className="mb-5 space-y-1">
@@ -123,6 +123,6 @@ export function PasswordPage() {
           </Button>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

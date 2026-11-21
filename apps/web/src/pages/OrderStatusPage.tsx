@@ -115,15 +115,15 @@ export function OrderStatusPage() {
 
   if (loading && !order) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-canvas text-brand-600">
+      <main className="flex min-h-dvh items-center justify-center bg-canvas text-brand-600">
         <Spinner size="lg" label="در حال دریافت وضعیت سفارش…" />
-      </div>
+      </main>
     );
   }
 
   if (!order) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-canvas px-4">
+      <main className="flex min-h-dvh items-center justify-center bg-canvas px-4">
         <Card className="w-full max-w-md p-6 text-center">
           <p className="text-sm font-semibold text-danger-700">سفارش پیدا نشد</p>
           <p className="mt-2 text-xs text-muted">{error ?? 'کد سفارش نامعتبر است.'}</p>
@@ -131,7 +131,7 @@ export function OrderStatusPage() {
             بازگشت به منو
           </Link>
         </Card>
-      </div>
+      </main>
     );
   }
 
