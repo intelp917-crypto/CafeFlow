@@ -38,14 +38,14 @@ pub struct CreateOrderInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct LineInput {
-    product_id: String,
-    quantity: i64,
+pub(crate) struct LineInput {
+    pub(crate) product_id: String,
+    pub(crate) quantity: i64,
     #[serde(default)]
-    option_ids: Vec<String>,
+    pub(crate) option_ids: Vec<String>,
     #[serde(default)]
-    extra_ids: Vec<String>,
-    note: Option<String>,
+    pub(crate) extra_ids: Vec<String>,
+    pub(crate) note: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,13 +54,13 @@ pub struct StatusQuery {
 }
 
 #[derive(Debug, Clone)]
-struct ProductRow {
-    id: String,
-    name_fa: String,
-    base_price: i64,
-    department_id: Option<String>,
-    prep_minutes: i64,
-    is_available: i64,
+pub(crate) struct ProductRow {
+    pub(crate) id: String,
+    pub(crate) name_fa: String,
+    pub(crate) base_price: i64,
+    pub(crate) department_id: Option<String>,
+    pub(crate) prep_minutes: i64,
+    pub(crate) is_available: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -96,38 +96,38 @@ struct AvailabilityRow {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct PricedOption {
-    id: String,
-    name_fa: String,
-    price_delta: i64,
+pub(crate) struct PricedOption {
+    pub(crate) id: String,
+    pub(crate) name_fa: String,
+    pub(crate) price_delta: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct PricedExtra {
-    id: String,
-    name_fa: String,
-    price: i64,
+pub(crate) struct PricedExtra {
+    pub(crate) id: String,
+    pub(crate) name_fa: String,
+    pub(crate) price: i64,
 }
 
 #[derive(Debug, Clone)]
-struct PricedItem {
-    product: ProductRow,
-    quantity: i64,
-    options: Vec<PricedOption>,
-    extras: Vec<PricedExtra>,
-    unit_price: i64,
-    total: i64,
-    note: Option<String>,
+pub(crate) struct PricedItem {
+    pub(crate) product: ProductRow,
+    pub(crate) quantity: i64,
+    pub(crate) options: Vec<PricedOption>,
+    pub(crate) extras: Vec<PricedExtra>,
+    pub(crate) unit_price: i64,
+    pub(crate) total: i64,
+    pub(crate) note: Option<String>,
 }
 
 #[derive(Debug)]
-struct PricedOrder {
-    items: Vec<PricedItem>,
-    subtotal: i64,
-    service_charge: i64,
-    tax_total: i64,
-    total: i64,
+pub(crate) struct PricedOrder {
+    pub(crate) items: Vec<PricedItem>,
+    pub(crate) subtotal: i64,
+    pub(crate) service_charge: i64,
+    pub(crate) tax_total: i64,
+    pub(crate) total: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -292,75 +292,7 @@ pub async fn create_order(
         ));
     }
 
-    for item in &priced.items {
-        let item_id = Uuid::new_v4().to_string();
-        let options_json = if item.options.is_empty() {
-            None
-        } else {
-            Some(
-                serde_json::to_string(&item.options)
-                    .map_err(|error| AppError::internal(format!("سریال‌سازی گزینه‌ها: {error}")))?,
-            )
-        };
-        let extras_json = if item.extras.is_empty() {
-            None
-        } else {
-            Some(
-                serde_json::to_string(&item.extras)
-                    .map_err(|error| AppError::internal(format!("سریال‌سازی افزودنی‌ها: {error}")))?,
-            )
-        };
-        sqlx::query(
-            "INSERT INTO order_items
-               (id, order_id, product_id, product_name_snapshot, unit_price_snapshot,
-                quantity, options_json, extras_json, note, department_id, status, total)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11)",
-        )
-        .bind(&item_id)
-        .bind(&order_id)
-        .bind(&item.product.id)
-        .bind(&item.product.name_fa)
-        .bind(item.unit_price)
-        .bind(item.quantity)
-        .bind(options_json)
-        .bind(extras_json)
-        .bind(item.note.as_deref())
-        .bind(&item.product.department_id)
-        .bind(item.total)
-        .execute(&mut *tx)
-        .await
-        .map_err(db_error)?;
-
-        for option in &item.options {
-            sqlx::query(
-                "INSERT INTO order_item_options
-                   (id, order_item_id, option_id, name_snapshot, price_snapshot)
-                 VALUES ($1, $2, $3, $4, $5)",
-            )
-            .bind(Uuid::new_v4().to_string())
-            .bind(&item_id)
-            .bind(&option.id)
-            .bind(&option.name_fa)
-            .bind(option.price_delta)
-            .execute(&mut *tx)
-            .await
-            .map_err(db_error)?;
-        }
-
-        sqlx::query(
-            "INSERT INTO prep_tasks
-               (id, order_item_id, order_id, department_id, status, priority, target_minutes)
-             VALUES ($1, $2, $3, $4, 'queued', 0, $5)",
-        )
-        .bind(Uuid::new_v4().to_string())
-        .bind(&item_id)
-        .bind(&order_id)
-        .bind(&item.product.department_id)
-        .bind(item.product.prep_minutes)
-        .execute(&mut *tx)
-        .await
-        .map_err(db_error)?;
-    }
+    insert_priced_items(&mut tx, &order_id, &priced).await?;
 
     sqlx::query(
         "INSERT INTO order_events
@@ -481,6 +413,91 @@ pub async fn order_status(
         updated_at: summary.updated_at,
         items,
     }))
+}
+
+pub(crate) async fn price_lines(
+    state: &AppState,
+    lines: &[LineInput],
+) -> Result<PricedOrder, AppError> {
+    let settings = settings(state).await?;
+    price_order(state, lines, &settings).await
+}
+
+pub(crate) async fn insert_priced_items(
+    tx: &mut sqlx::Transaction<'_, sqlx::Any>,
+    order_id: &str,
+    priced: &PricedOrder,
+) -> Result<(), AppError> {
+    for item in &priced.items {
+        let item_id = Uuid::new_v4().to_string();
+        let options_json = if item.options.is_empty() {
+            None
+        } else {
+            Some(
+                serde_json::to_string(&item.options)
+                    .map_err(|error| AppError::internal(format!("سریال‌سازی گزینه‌ها: {error}")))?,
+            )
+        };
+        let extras_json = if item.extras.is_empty() {
+            None
+        } else {
+            Some(
+                serde_json::to_string(&item.extras)
+                    .map_err(|error| AppError::internal(format!("سریال‌سازی افزودنی‌ها: {error}")))?,
+            )
+        };
+        sqlx::query(
+            "INSERT INTO order_items
+               (id, order_id, product_id, product_name_snapshot, unit_price_snapshot,
+                quantity, options_json, extras_json, note, department_id, status, total)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11)",
+        )
+        .bind(&item_id)
+        .bind(order_id)
+        .bind(&item.product.id)
+        .bind(&item.product.name_fa)
+        .bind(item.unit_price)
+        .bind(item.quantity)
+        .bind(options_json)
+        .bind(extras_json)
+        .bind(item.note.as_deref())
+        .bind(&item.product.department_id)
+        .bind(item.total)
+        .execute(&mut **tx)
+        .await
+        .map_err(db_error)?;
+
+        for option in &item.options {
+            sqlx::query(
+                "INSERT INTO order_item_options
+                   (id, order_item_id, option_id, name_snapshot, price_snapshot)
+                 VALUES ($1, $2, $3, $4, $5)",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(&item_id)
+            .bind(&option.id)
+            .bind(&option.name_fa)
+            .bind(option.price_delta)
+            .execute(&mut **tx)
+            .await
+            .map_err(db_error)?;
+        }
+
+        sqlx::query(
+            "INSERT INTO prep_tasks
+               (id, order_item_id, order_id, department_id, status, priority, target_minutes)
+             VALUES ($1, $2, $3, $4, 'queued', 0, $5)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&item_id)
+        .bind(order_id)
+        .bind(&item.product.department_id)
+        .bind(item.product.prep_minutes)
+        .execute(&mut **tx)
+        .await
+        .map_err(db_error)?;
+    }
+    Ok(())
 }
 
 async fn price_order(
@@ -777,7 +794,7 @@ async fn check_availability(state: &AppState, product: &ProductRow) -> Result<()
     }
 }
 
-async fn open_table_session(
+pub(crate) async fn open_table_session(
     state: &AppState,
     table_id: &str,
     now: &str,
@@ -899,7 +916,7 @@ async fn item_count(state: &AppState, order_id: &str) -> Result<i64, AppError> {
     Ok(row.get("n"))
 }
 
-async fn next_code(state: &AppState) -> Result<String, AppError> {
+pub(crate) async fn next_code(state: &AppState) -> Result<String, AppError> {
     for _ in 0..8 {
         let suffix: String = {
             let mut rng = rand::thread_rng();

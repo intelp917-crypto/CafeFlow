@@ -399,7 +399,7 @@ pub async fn transition(
     Ok(Json(build_detail(&state, &id).await?))
 }
 
-async fn build_detail(state: &AppState, id: &str) -> Result<Value, AppError> {
+pub(crate) async fn build_detail(state: &AppState, id: &str) -> Result<Value, AppError> {
     let row = sqlx::query(
         "SELECT o.id, o.code, o.status, o.source, o.total, o.paid_total, o.note,
                 o.created_at, o.updated_at, o.subtotal, o.discount_total, o.service_charge,

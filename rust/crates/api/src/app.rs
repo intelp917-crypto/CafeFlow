@@ -1,7 +1,7 @@
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use tower_http::compression::CompressionLayer;
 use tower_http::trace::TraceLayer;
 
@@ -10,9 +10,11 @@ use crate::dashboard;
 use crate::error::{AppError, not_found};
 use crate::health;
 use crate::middleware::{api_headers, request_id, static_headers};
+use crate::printing;
 use crate::public;
 use crate::public_menu;
 use crate::public_orders;
+use crate::staff_ordering;
 use crate::staff_orders;
 use crate::state::AppState;
 use crate::static_files::static_router;
@@ -35,9 +37,20 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/sessions/{id}", delete(auth::revoke_session))
         .route("/auth/password", post(auth::change_password))
         .route("/dashboard/overview", get(dashboard::overview))
-        .route("/orders", get(staff_orders::list))
+        .route(
+            "/orders",
+            get(staff_orders::list).post(staff_ordering::create),
+        )
         .route("/orders/{id}", get(staff_orders::detail))
+        .route("/orders/{id}/items", post(staff_ordering::add_items))
+        .route(
+            "/orders/{id}/items/{item_id}",
+            patch(staff_ordering::update_item),
+        )
+        .route("/orders/{id}/receipt", post(printing::queue_receipt))
+        .route("/orders/{id}/tickets", post(printing::queue_tickets))
         .route("/orders/{id}/transition", post(staff_orders::transition))
+        .route("/tables", get(staff_ordering::tables))
         .route("/public/branding", get(public::branding))
         .route("/public/branding/manifest", get(public::branding_manifest))
         .route("/public/branding/icon/{size}", get(public::branding_icon))

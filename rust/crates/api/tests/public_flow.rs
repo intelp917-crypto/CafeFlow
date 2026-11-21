@@ -453,3 +453,195 @@ async fn staff_can_list_inspect_and_transition_orders() {
     assert_eq!(cancelled["cancelReason"], "درخواست مشتری");
     assert_eq!(cancelled["items"][0]["itemStatus"], "cancelled");
 }
+
+#[tokio::test]
+async fn staff_can_create_edit_and_print_an_order() {
+    let (app, _directory) = app_with_catalog().await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"username":"admin","password":"CafeFlow@1404"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, cookie, _) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let session_cookie = cookie.split(';').next().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/orders")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(
+                    r#"{"tableId":"table-1","note":"سفارش حضوری","items":[{"productId":"product-1","quantity":2}]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let created: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(created["status"], "confirmed");
+    assert_eq!(created["source"], "waiter");
+    assert_eq!(created["tableNameFa"], "میز یک");
+    assert_eq!(created["subtotal"], 240000);
+    assert_eq!(created["total"], 240000);
+    assert_eq!(created["events"][0]["type"], "order.created");
+    let order_id = created["id"].as_str().unwrap().to_string();
+    let item_id = created["items"][0]["id"].as_str().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/tables")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let tables: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(tables["items"][0]["status"], "occupied");
+    assert_eq!(tables["items"][0]["activeOrders"], 1);
+    assert_eq!(tables["summary"]["occupied"], 1);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/v1/orders/{order_id}/items/{item_id}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(r#"{"quantity":1}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let updated: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(updated["items"][0]["quantity"], 1);
+    assert_eq!(updated["subtotal"], 120000);
+    assert_eq!(updated["total"], 120000);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/orders/{order_id}/tickets"))
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let tickets: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(tickets["created"], 1);
+    assert!(
+        tickets["jobs"][0]["receipt"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|line| line.as_str().unwrap_or_default().contains("بلیت"))
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/orders/{order_id}/tickets"))
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let tickets_again: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(tickets_again["created"], 0);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/orders/{order_id}/receipt"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(r#"{"proforma":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let proforma: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(proforma["existed"], false);
+    assert!(
+        proforma["job"]["receipt"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|line| line.as_str().unwrap_or_default() == "پیش‌فاکتور")
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/orders/{order_id}/receipt"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(r#"{"proforma":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let proforma_again: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(proforma_again["existed"], true);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/v1/orders/{order_id}/items/{item_id}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(r#"{"quantity":0}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let removed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(removed["items"][0]["itemStatus"], "cancelled");
+    assert_eq!(removed["subtotal"], 0);
+    assert_eq!(removed["total"], 0);
+}
