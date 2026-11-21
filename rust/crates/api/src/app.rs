@@ -10,6 +10,7 @@ use crate::dashboard;
 use crate::error::{AppError, not_found};
 use crate::health;
 use crate::middleware::{api_headers, request_id, static_headers};
+use crate::prep;
 use crate::printing;
 use crate::public;
 use crate::public_menu;
@@ -51,6 +52,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/orders/{id}/tickets", post(printing::queue_tickets))
         .route("/orders/{id}/transition", post(staff_orders::transition))
         .route("/tables", get(staff_ordering::tables))
+        .route("/prep/queue", get(prep::queue))
+        .route("/prep/{id}/transition", post(prep::transition))
         .route("/public/branding", get(public::branding))
         .route("/public/branding/manifest", get(public::branding_manifest))
         .route("/public/branding/icon/{size}", get(public::branding_icon))

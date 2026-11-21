@@ -645,3 +645,186 @@ async fn staff_can_create_edit_and_print_an_order() {
     assert_eq!(removed["subtotal"], 0);
     assert_eq!(removed["total"], 0);
 }
+
+#[tokio::test]
+async fn prep_queue_advances_the_order_along_legal_paths() {
+    let (app, _directory) = app_with_catalog().await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/orders")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"qrToken":"table-token-123","clientRequestId":"prep-flow-123","items":[{"productId":"product-1","quantity":1},{"productId":"product-2","quantity":1,"optionIds":["option-1"]}]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let _created: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"username":"admin","password":"CafeFlow@1404"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, cookie, _) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let session_cookie = cookie.split(';').next().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/prep/queue")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let queue: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(queue["items"].as_array().unwrap().len(), 2);
+    let first = queue["items"][0]["id"].as_str().unwrap().to_string();
+    let second = queue["items"][1]["id"].as_str().unwrap().to_string();
+    assert_eq!(queue["items"][0]["status"], "queued");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/prep/{first}/transition"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(r#"{"to":"in_progress"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let started: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(started["status"], "preparing");
+    assert!(
+        started["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| { item["prepId"] == first && item["prepStatus"] == "in_progress" })
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/prep/{first}/transition"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(r#"{"to":"ready"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let partial: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(partial["status"], "partially_ready");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/prep/{second}/transition"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(r#"{"to":"ready"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let ready: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(ready["status"], "ready");
+    assert!(
+        ready["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["prepStatus"] == "ready")
+    );
+    assert!(
+        ready["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"] == "order.status_auto")
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/prep/queue")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let empty: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(empty["items"].as_array().unwrap().len(), 0);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/prep/queue?includeFinished=true")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let finished: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(finished["items"].as_array().unwrap().len(), 2);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/prep/{first}/transition"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(r#"{"to":"in_progress"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("PREP_TRANSITION_INVALID"));
+}

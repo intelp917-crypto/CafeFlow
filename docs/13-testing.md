@@ -14,7 +14,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-## وضعیت مهاجرت Rust (موج ۱، ۳، ۴ و ۵)
+## وضعیت مهاجرت Rust (موج ۱، ۳، ۴، ۵ و ۶)
 
 - `cafeflow-domain`: پول ریالی، جلالی، وضعیت سفارش و ماژول‌ها با آزمون برابری.
 - `cafeflow-db`: مهاجرت‌های SQLite/PostgreSQL، `schema_migrations` سازگار با نصب فعلی،
@@ -31,13 +31,19 @@ cargo test --workspace
   `POST /orders/:id/items`، `PATCH /orders/:id/items/:itemId` با بازمحاسبهٔ کل، و
   `POST /orders/:id/{tickets,receipt}` با jobKey یکتا؛ آزمون
   `staff_can_create_edit_and_print_an_order`.
+- موج ۶: `GET /prep/queue` با فیلتر دپارتمان و آیتم‌های پایان‌یافته، و
+  `POST /prep/:id/transition` با همان ماشین وضعیت آماده‌سازی. تغییر هر آیتم، وضعیت قلم و
+  سفارش را از کوتاه‌ترین مسیر مجاز پیش می‌برد (`confirmed → preparing → partially_ready → ready`)،
+  رویداد `order.status_auto` و اعلان `order.ready` می‌سازد و پایان کار را در صف مخفی می‌کند؛
+  آزمون `prep_queue_advances_the_order_along_legal_paths`.
 - seed دمو اکنون کاتالوگ قابل استفاده می‌سازد: ۲ دسته، ۵ محصول، ۳ میز با QR و گزینه/افزودنی؛
   آزمون `demo_menu_seed_creates_a_ready_to_order_catalog`.
 - `cafeflow-games`: فقط registry اتاق در این موج؛ موتورهای ۳۸ بازی هنوز منتقل نشده‌اند.
 - آزمون دستی انجام‌شده: SQLite تازه، PostgreSQL تازه (`postgres:17-alpine`)، کپی ۵۲۶ ردیف
   از snapshot موجود، ورود مدیر و `/auth/me` روی هر دو، SPA و deep link روی باینری؛ در موج ۴
-  فهرست/جزئیات/انتقال سفارش روی PostgreSQL و مرورگر واقعی هم تأیید شد.
-- **هنوز منتقل نشده:** صف آماده‌سازی، پرداخت/صندوق، کاتالوگ مدیریت، گزارش، درخواست گارسون
+  فهرست/جزئیات/انتقال سفارش روی PostgreSQL و مرورگر واقعی هم تأیید شد. در موج ۶ صف
+  آماده‌سازی روی PostgreSQL تازه و در مرورگر واقعی (شروع/آماده‌شدن دو دپارتمان) تأیید شد.
+- **هنوز منتقل نشده:** پرداخت/صندوق، کاتالوگ مدیریت، گزارش، درخواست گارسون
   و کارت‌خوان، صف چاپ و بازی‌ها. تا سبز شدن آزمون برابری، cutover انجام نمی‌شود.
 
 ## وضعیت فعلی (پایان فاز ۱۰)
