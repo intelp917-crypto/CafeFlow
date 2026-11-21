@@ -10,6 +10,8 @@ use crate::error::{AppError, not_found};
 use crate::health;
 use crate::middleware::{api_headers, request_id, static_headers};
 use crate::public;
+use crate::public_menu;
+use crate::public_orders;
 use crate::state::AppState;
 use crate::static_files::static_router;
 
@@ -33,6 +35,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/public/branding", get(public::branding))
         .route("/public/branding/manifest", get(public::branding_manifest))
         .route("/public/branding/icon/{size}", get(public::branding_icon))
+        .route("/public/menu", get(public_menu::menu))
+        .route("/public/orders", post(public_orders::create_order))
+        .route("/public/orders/{code}", get(public_orders::order_status))
         .fallback(api_not_found)
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
         .layer(middleware::from_fn_with_state(state.clone(), api_headers));

@@ -6,8 +6,17 @@
 #
 # Node is used only in the web build stage. The final image contains no Node,
 # no nginx and no package manager installation step at runtime.
+#
+# The default bases are Chainguard's minimal Wolfi images. They are a drop-in
+# replacement for Docker Hub when registry access is blocked; override any of
+# the three image arguments for another trusted mirror:
+#   docker build --build-arg RUST_IMAGE=rust:1.99-bookworm ...
+ARG NODE_IMAGE=cgr.dev/chainguard/node:latest
+ARG RUST_IMAGE=cgr.dev/chainguard/rust:latest
+ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest
 
-FROM node:24-slim AS web-build
+FROM ${NODE_IMAGE} AS web-build
+USER root
 WORKDIR /app
 
 COPY package.json package-lock.json tsconfig.base.json ./
@@ -23,19 +32,19 @@ COPY packages/ui packages/ui
 COPY apps/web apps/web
 RUN npm run build:shared && npm run build -w @cafeflow/web
 
-FROM rust:1.99-bookworm AS rust-build
+FROM ${RUST_IMAGE} AS rust-build
+USER root
 WORKDIR /app/rust
 
 COPY rust ./
 RUN cargo build --release --locked --bin cafeflow
 
-FROM debian:bookworm-slim AS runtime
+FROM ${RUNTIME_IMAGE} AS runtime
+USER root
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 1000 cafeflow \
-    && useradd --uid 1000 --gid cafeflow --create-home --home-dir /home/cafeflow cafeflow
+RUN apk add --no-cache ca-certificates curl \
+    && addgroup -g 1000 cafeflow \
+    && adduser -u 1000 -G cafeflow -h /home/cafeflow -D cafeflow
 
 WORKDIR /app
 COPY --from=rust-build /app/rust/target/release/cafeflow /usr/local/bin/cafeflow
