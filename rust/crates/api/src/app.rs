@@ -6,6 +6,7 @@ use tower_http::compression::CompressionLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::auth;
+use crate::dashboard;
 use crate::error::{AppError, not_found};
 use crate::health;
 use crate::middleware::{api_headers, request_id, static_headers};
@@ -32,6 +33,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/sessions", get(auth::sessions))
         .route("/auth/sessions/{id}", delete(auth::revoke_session))
         .route("/auth/password", post(auth::change_password))
+        .route("/dashboard/overview", get(dashboard::overview))
         .route("/public/branding", get(public::branding))
         .route("/public/branding/manifest", get(public::branding_manifest))
         .route("/public/branding/icon/{size}", get(public::branding_icon))

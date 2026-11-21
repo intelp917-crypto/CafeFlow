@@ -22,7 +22,8 @@ cargo test --workspace
 - `cafeflow-api`: health، login/logout/me، نشست‌ها، تغییر گذرواژه، MFA، هدرهای امنیتی،
   request-id، SPA fallback و ۴۰۴ واقعی برای media؛ آزمون‌های `auth_flow` و `totp`.
 - موج ۳: `GET /public/menu`، `POST /public/orders` با محاسبهٔ قیمت سمت سرور و idempotency،
-  و `GET /public/orders/:code` با توکن وضعیت؛ آزمون `public_flow` شامل replay و رد گزینهٔ نامعتبر.
+  `GET /public/orders/:code` با توکن وضعیت، و `GET /dashboard/overview` برای داشبورد کارکنان؛
+  آزمون `public_flow` شامل replay، رد گزینهٔ نامعتبر و دسترسی محافظت‌شدهٔ داشبورد.
 - `cafeflow-games`: فقط registry اتاق در این موج؛ موتورهای ۳۸ بازی هنوز منتقل نشده‌اند.
 - آزمون دستی انجام‌شده: SQLite تازه، PostgreSQL تازه (`postgres:17-alpine`)، کپی ۵۲۶ ردیف
   از snapshot موجود، ورود مدیر و `/auth/me` روی هر دو، SPA و deep link روی باینری.

@@ -111,7 +111,7 @@ npm run dev:web                      # http://localhost:5173  ← اینجا و�
 
 | لایه | فناوری |
 |---|---|
-| API | NestJS 11، TypeScript، Zod، pino-style logging؛ بک‌اند Rust/Axum در حال مهاجرت (auth/health/SPA و منو/سفارش/پیگیری QR آماده) |
+| API | NestJS 11، TypeScript، Zod، pino-style logging؛ بک‌اند Rust/Axum در حال مهاجرت (auth/health/SPA، منو/سفارش/پیگیری QR و داشبورد آماده) |
 | پایگاه داده | SQLite (WAL) با انتخاب `DB_DRIVER=sqlite/postgres` در بک‌اند Rust |
 | وب | React 19، Vite 7، Tailwind CSS 4، React Router |
 | دامنه مشترک | TypeScript خالص (`packages/shared`) — ماشین وضعیت سفارش، ریال، جلالی، نرمال‌سازی فارسی |

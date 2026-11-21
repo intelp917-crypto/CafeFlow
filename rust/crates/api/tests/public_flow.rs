@@ -226,6 +226,60 @@ async fn server_prices_options_and_rejects_unknown_options() {
 }
 
 #[tokio::test]
+async fn dashboard_requires_login_and_returns_live_counters() {
+    let (app, _directory) = app_with_catalog().await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/dashboard/overview")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"username":"admin","password":"CafeFlow@1404"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, cookie, _) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let session_cookie = cookie.split(';').next().unwrap().to_string();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/dashboard/overview")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let dashboard: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(dashboard["today"]["jalaliLabel"].is_string());
+    assert!(dashboard["orders"]["active"].is_number());
+    assert_eq!(dashboard["catalog"]["products"], 2);
+    assert_eq!(dashboard["tables"]["total"], 1);
+    assert!(dashboard["recentActivity"].is_array());
+}
+
+#[tokio::test]
 async fn invalid_qr_is_a_real_404() {
     let (app, _directory) = app_with_catalog().await;
     let response = app

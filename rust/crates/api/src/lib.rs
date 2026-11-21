@@ -1,6 +1,7 @@
 pub mod app;
 pub mod auth;
 pub mod config;
+pub mod dashboard;
 pub mod error;
 pub mod health;
 pub mod middleware;
