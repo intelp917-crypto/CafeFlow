@@ -295,3 +295,161 @@ async fn invalid_qr_is_a_real_404() {
     let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
     assert!(String::from_utf8_lossy(&bytes).contains("QR_NOT_FOUND"));
 }
+
+#[tokio::test]
+async fn staff_can_list_inspect_and_transition_orders() {
+    let (app, _directory) = app_with_catalog().await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/orders")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"qrToken":"table-token-123","clientRequestId":"staff-flow-123","items":[{"productId":"product-1","quantity":2}]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let created: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let order_id = created["id"].as_str().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"username":"admin","password":"CafeFlow@1404"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, cookie, _) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let session_cookie = cookie.split(';').next().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/orders?scope=all&pageSize=10")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let list: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(list["total"], 1);
+    assert_eq!(list["items"][0]["id"], order_id);
+    assert_eq!(list["items"][0]["status"], "submitted");
+    assert_eq!(list["items"][0]["prep"]["total"], 1);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/orders/{order_id}"))
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let detail: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(detail["items"][0]["quantity"], 2);
+    assert_eq!(detail["items"][0]["prepStatus"], "queued");
+    assert_eq!(detail["events"][0]["type"], "order.submitted");
+    assert!(
+        detail["allowedTransitions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|transition| transition["status"] == "confirmed")
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/orders/{order_id}/transition"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(r#"{"to":"confirmed"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let updated: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(updated["status"], "confirmed");
+    assert_eq!(updated["events"][1]["fromStatus"], "submitted");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/orders/{order_id}/transition"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(r#"{"to":"served"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("ORDER_TRANSITION_INVALID"));
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/orders/{order_id}/transition"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(r#"{"to":"cancelled"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.contains("CANCEL_REASON_REQUIRED"));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/orders/{order_id}/transition"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(r#"{"to":"cancelled","reason":"درخواست مشتری"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let cancelled: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(cancelled["status"], "cancelled");
+    assert_eq!(cancelled["cancelReason"], "درخواست مشتری");
+    assert_eq!(cancelled["items"][0]["itemStatus"], "cancelled");
+}

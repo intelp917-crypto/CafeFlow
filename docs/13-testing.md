@@ -14,7 +14,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-## وضعیت مهاجرت Rust (موج ۱ و ۳)
+## وضعیت مهاجرت Rust (موج ۱، ۳ و ۴)
 
 - `cafeflow-domain`: پول ریالی، جلالی، وضعیت سفارش و ماژول‌ها با آزمون برابری.
 - `cafeflow-db`: مهاجرت‌های SQLite/PostgreSQL، `schema_migrations` سازگار با نصب فعلی،
@@ -24,11 +24,17 @@ cargo test --workspace
 - موج ۳: `GET /public/menu`، `POST /public/orders` با محاسبهٔ قیمت سمت سرور و idempotency،
   `GET /public/orders/:code` با توکن وضعیت، و `GET /dashboard/overview` برای داشبورد کارکنان؛
   آزمون `public_flow` شامل replay، رد گزینهٔ نامعتبر و دسترسی محافظت‌شدهٔ داشبورد.
+- موج ۴: `GET /orders` با فیلتر/صفحه‌بندی، `GET /orders/:id` با اقلام/گزینه‌ها/تاریخچه/صورت‌حساب،
+  و `POST /orders/:id/transition` با همان ماشین وضعیت، مجوز `orders.cancel`، دلیل لغو، لغو صف
+  آماده‌سازی، آزادسازی میز و audit؛ آزمون `staff_can_list_inspect_and_transition_orders`.
+- seed دمو اکنون کاتالوگ قابل استفاده می‌سازد: ۲ دسته، ۵ محصول، ۳ میز با QR و گزینه/افزودنی؛
+  آزمون `demo_menu_seed_creates_a_ready_to_order_catalog`.
 - `cafeflow-games`: فقط registry اتاق در این موج؛ موتورهای ۳۸ بازی هنوز منتقل نشده‌اند.
 - آزمون دستی انجام‌شده: SQLite تازه، PostgreSQL تازه (`postgres:17-alpine`)، کپی ۵۲۶ ردیف
-  از snapshot موجود، ورود مدیر و `/auth/me` روی هر دو، SPA و deep link روی باینری.
+  از snapshot موجود، ورود مدیر و `/auth/me` روی هر دو، SPA و deep link روی باینری؛ در موج ۴
+  فهرست/جزئیات/انتقال سفارش روی PostgreSQL و مرورگر واقعی هم تأیید شد.
 - **هنوز منتقل نشده:** پرداخت، کاتالوگ/مدیریت، گزارش، درخواست گارسون و کارت‌خوان،
-  دورهای بعدی سفارش و بازی‌ها. تا سبز شدن آزمون برابری، cutover انجام نمی‌شود.
+  ویرایش اقلام/بلیت/رسید سفارش دستی و بازی‌ها. تا سبز شدن آزمون برابری، cutover انجام نمی‌شود.
 
 ## وضعیت فعلی (پایان فاز ۱۰)
 

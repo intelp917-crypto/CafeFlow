@@ -51,3 +51,46 @@ async fn fresh_sqlite_migrations_and_seed_are_idempotent() {
         vec!["super_admin"]
     );
 }
+
+#[tokio::test]
+async fn demo_menu_seed_creates_a_ready_to_order_catalog() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = Database::connect(&config(directory.path())).await.unwrap();
+    database.migrate().await.unwrap();
+
+    let options = SeedOptions {
+        admin_username: "admin".to_string(),
+        admin_password: "CafeFlow@1404".to_string(),
+        demo_staff: false,
+        demo_menu: true,
+    };
+    assert!(
+        cafeflow_db::seed_database(&database, &options)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !cafeflow_db::seed_database(&database, &options)
+            .await
+            .unwrap()
+    );
+
+    let row = sqlx::query(
+        "SELECT (SELECT COUNT(*) FROM categories) AS categories,
+                (SELECT COUNT(*) FROM products) AS products,
+                (SELECT COUNT(*) FROM dining_tables) AS tables,
+                (SELECT COUNT(*) FROM qr_codes) AS qr_codes,
+                (SELECT COUNT(*) FROM option_groups) AS groups,
+                (SELECT COUNT(*) FROM product_options) AS options",
+    )
+    .fetch_one(&database.pool)
+    .await
+    .unwrap();
+    use sqlx::Row;
+    assert_eq!(row.get::<i64, _>("categories"), 2);
+    assert_eq!(row.get::<i64, _>("products"), 5);
+    assert_eq!(row.get::<i64, _>("tables"), 3);
+    assert_eq!(row.get::<i64, _>("qr_codes"), 3);
+    assert_eq!(row.get::<i64, _>("groups"), 1);
+    assert_eq!(row.get::<i64, _>("options"), 2);
+}

@@ -13,6 +13,7 @@ use crate::middleware::{api_headers, request_id, static_headers};
 use crate::public;
 use crate::public_menu;
 use crate::public_orders;
+use crate::staff_orders;
 use crate::state::AppState;
 use crate::static_files::static_router;
 
@@ -34,6 +35,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/sessions/{id}", delete(auth::revoke_session))
         .route("/auth/password", post(auth::change_password))
         .route("/dashboard/overview", get(dashboard::overview))
+        .route("/orders", get(staff_orders::list))
+        .route("/orders/{id}", get(staff_orders::detail))
+        .route("/orders/{id}/transition", post(staff_orders::transition))
         .route("/public/branding", get(public::branding))
         .route("/public/branding/manifest", get(public::branding_manifest))
         .route("/public/branding/icon/{size}", get(public::branding_icon))

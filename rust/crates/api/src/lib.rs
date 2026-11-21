@@ -8,6 +8,7 @@ pub mod middleware;
 pub mod public;
 pub mod public_menu;
 pub mod public_orders;
+pub mod staff_orders;
 pub mod state;
 pub mod static_files;
 pub mod totp;
