@@ -115,15 +115,15 @@ export function DeveloperCredit({
           rel="noopener noreferrer"
           onMouseEnter={lift}
           onMouseLeave={settle}
-          aria-label={`وب‌سایت ${TEAM_NAME} — ${WEBSITE_DISPLAY}`}
+          aria-label={`وب‌سایت ${TEAM_NAME}`}
           title={WEBSITE_DISPLAY}
           className={`inline-flex flex-wrap items-center justify-center gap-x-1.5 font-semibold ${strong}`}
         >
           <Globe className="h-3.5 w-3.5" aria-hidden="true" />
           {TEAM_NAME}
-          <span className={`text-[9px] font-normal ${muted}`} dir="ltr">
-            {WEBSITE_DISPLAY}
-          </span>
+          
+            
+          
         </a>
         <span className={dark ? 'text-cream/30' : 'text-line'} aria-hidden="true">·</span>
         <a

@@ -102,16 +102,20 @@ npm run dev:web                      # http://localhost:5173  ← اینجا و�
 | `npm run db:migrate -w @cafeflow/api` | اعمال مهاجرت‌های جدید |
 | `npm start` | ساخت shared و اجرای هم‌زمان API و وب با لاگ پیشونددار |
 | `npm run dev:api` / `npm run dev:web` | اجرای توسعه |
+| `cd rust && cargo test --workspace` | آزمون دامنه، DB و احراز هویت بک‌اند Rust |
+| `cd rust && CAFEFLOW_DATA_DIR=../data cargo run -p cafeflow-api -- db setup` | مهاجرت + seed نسخهٔ Rust |
+| `cd rust && CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -p cafeflow-api -- serve` | API + SPA روی یک پورت (Rust) |
+| `docker compose -f infra/docker/compose.rust.yml up -d --build` | ایمیج تک‌سرویسی Rust |
 
 ## پشته فناوری
 
 | لایه | فناوری |
 |---|---|
-| API | NestJS 11، TypeScript، Zod، pino-style logging |
-| پایگاه داده | SQLite (WAL) با اسکیمای قابل‌انتقال به PostgreSQL |
+| API | NestJS 11، TypeScript، Zod، pino-style logging؛ بک‌اند Rust/Axum در حال مهاجرت (auth/health/SPA آماده) |
+| پایگاه داده | SQLite (WAL) با انتخاب `DB_DRIVER=sqlite/postgres` در بک‌اند Rust |
 | وب | React 19، Vite 7، Tailwind CSS 4، React Router |
 | دامنه مشترک | TypeScript خالص (`packages/shared`) — ماشین وضعیت سفارش، ریال، جلالی، نرمال‌سازی فارسی |
-| زیرساخت | Docker/Compose (نوشته‌شده، اجرا نشده — Docker در محیط توسعه نیست) |
+| زیرساخت | Docker/Compose؛ ایمیج Rust به‌دلیل 403 رجیستری Docker Hub در این محیط بیلد نشد |
 
 ## ساختار
 
@@ -120,7 +124,8 @@ apps/api        NestJS API + migrations + tests
 apps/web        React SPA (مشتری، کارکنان، مدیریت)
 packages/shared منطق دامنه مشترک و آزمون‌شده
 packages/ui     components RTL-first
-infra/docker    Dockerfile.*، compose.yml، nginx.conf
+infra/docker    Dockerfile.api/web و Dockerfile.rust + compose.rust.yml
+rust/           Cargo workspace: domain / db / games / api
 docs/           ۱۶ سند فنی + PROGRESS.md
 ```
 

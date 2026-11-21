@@ -1,0 +1,57 @@
+# CafeFlow — single-service Rust stack.
+#
+# One image (API + SPA + media + WebSocket) on one port. SQLite is the default
+# so a fresh installation is genuinely one container. PostgreSQL is supported
+# by setting DB_DRIVER=postgres and DATABASE_URL, but PostgreSQL itself must be
+# a separate service/database (it cannot live inside this image).
+#
+#   cp .env.example .env       # set SEED_ADMIN_PASSWORD
+#   docker compose -f infra/docker/compose.rust.yml up -d --build
+#
+# TLS should be terminated by a reverse proxy on the host (or Caddy). The
+# session cookie defaults to Secure; set SESSION_COOKIE_SECURE=false only for a
+# plain-HTTP LAN trial.
+
+services:
+  cafeflow:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.rust
+    image: quay.io/intelp917/cafeflow:0.2.0
+    restart: unless-stopped
+    command: ["sh", "-c", "cafeflow db setup && exec cafeflow serve"]
+    environment:
+      APP_ENV: production
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      WEB_ROOT: /app/public
+      CAFEFLOW_DATA_DIR: /app/data
+      CAFEFLOW_BACKUP_DIR: /app/data/backups
+      DB_DRIVER: ${DB_DRIVER:-sqlite}
+      DATABASE_PATH: ${DATABASE_PATH:-/app/data/cafeflow.db}
+      DATABASE_URL: ${DATABASE_URL:-}
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+      DB_AUTO_MIGRATE: "true"
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-cafe_session}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-168}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-5}
+      LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-15}
+      SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-admin}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?set SEED_ADMIN_PASSWORD in .env}
+      SEED_DEMO_STAFF: ${SEED_DEMO_STAFF:-false}
+      SEED_DEMO_MENU: ${SEED_DEMO_MENU:-true}
+    ports:
+      - "0.0.0.0:${CAFEFLOW_PORT:-8080}:3000"
+    volumes:
+      - cafeflow_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  cafeflow_data:
+    name: ${DATA_VOLUME_NAME:-data}

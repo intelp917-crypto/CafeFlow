@@ -1,0 +1,64 @@
+# CafeFlow single-image runtime: one Rust binary serves API, WebSocket
+# endpoints, uploaded media and the built SPA on one port.
+#
+# Build:  docker build -f infra/docker/Dockerfile.rust -t cafeflow:0.2.0 .
+# Run:    docker compose -f infra/docker/compose.rust.yml up -d
+#
+# Node is used only in the web build stage. The final image contains no Node,
+# no nginx and no package manager installation step at runtime.
+
+FROM node:24-slim AS web-build
+WORKDIR /app
+
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/ui/package.json packages/ui/
+COPY packages/games/package.json packages/games/
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+RUN npm ci --workspace @cafeflow/shared --workspace @cafeflow/web --include-workspace-root
+
+COPY packages/shared packages/shared
+COPY packages/ui packages/ui
+COPY apps/web apps/web
+RUN npm run build:shared && npm run build -w @cafeflow/web
+
+FROM rust:1.99-bookworm AS rust-build
+WORKDIR /app/rust
+
+COPY rust ./
+RUN cargo build --release --locked --bin cafeflow
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 1000 cafeflow \
+    && useradd --uid 1000 --gid cafeflow --create-home --home-dir /home/cafeflow cafeflow
+
+WORKDIR /app
+COPY --from=rust-build /app/rust/target/release/cafeflow /usr/local/bin/cafeflow
+COPY --from=web-build /app/apps/web/dist /app/public
+
+# The old Node image used uid 1000 for its `node` user, so an existing named
+# volume mounted at /app/data keeps the same ownership when it is upgraded.
+RUN mkdir -p /app/data/backups /app/data/print-output \
+    && chown -R 1000:1000 /app
+
+USER 1000
+ENV APP_ENV=production \
+    PORT=3000 \
+    HOST=0.0.0.0 \
+    WEB_ROOT=/app/public \
+    CAFEFLOW_DATA_DIR=/app/data \
+    CAFEFLOW_BACKUP_DIR=/app/data/backups \
+    DB_DRIVER=sqlite \
+    DB_AUTO_MIGRATE=true
+
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -fsS "http://127.0.0.1:3000/api/v1/health" >/dev/null || exit 1
+
+ENTRYPOINT ["cafeflow"]
+CMD ["serve"]

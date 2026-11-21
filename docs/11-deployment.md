@@ -177,3 +177,38 @@ curl -s http://localhost:3000/api/v1/health
 - **یک نسخه API** بنویسید؛ SQLite یک نویسنده در هر لحظه دارد و برای یک رستوران کافی است، اما چند نمونه API روی یک فایل توصیه نمی‌شود.
 - مسیر مهاجرت PostgreSQL (فاز ۷) برای چند شعبه/بار بالا آماده است.
 - فایل‌های `.env` هرگز commit نمی‌شوند (`.gitignore`).
+
+## د) بک‌اند Rust و ایمیج تک‌سرویسی (پایهٔ مهاجرت)
+
+> **وضعیت صادقانه:** این موج زیرساخت و احراز هویت را به Rust منتقل کرده است: health، login/logout،
+> نشست‌ها، تغییر گذرواژه، MFA، SPA/۴۰۴ مسیرهای واقعی media و انتخاب SQLite/PostgreSQL.
+> مسیرهای دامنه (منو، سفارش، پرداخت، گزارش، بازی و…) هنوز در NestJS هستند؛ تا عبور آزمون‌های
+> برابری، استک دو تصویری فعلی مسیر deployable باقی می‌ماند.
+
+```bash
+# ساخت و اجرای محلی باینری
+cd rust
+DB_DRIVER=sqlite CAFEFLOW_DATA_DIR=../data cargo run -p cafeflow-api -- db setup
+DB_DRIVER=sqlite CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -p cafeflow-api -- serve
+# http://127.0.0.1:3000  (API و SPA روی یک پورت)
+```
+
+- ایمیج واحد: `infra/docker/Dockerfile.rust` (مرحلهٔ Node فقط برای build وب؛ runtime نهایی
+  `debian:bookworm-slim` بدون Node/nginx).
+- Compose تک‌سرویسی: `infra/docker/compose.rust.yml`؛ SQLite پیش‌فرض است. برای PostgreSQL
+  `DB_DRIVER=postgres` و `DATABASE_URL` را تنظیم کنید؛ سرور PostgreSQL سرویس جداگانه است.
+  `SESSION_COOKIE_SECURE` پیش‌فرض `true` است؛ فقط برای آزمون سادهٔ HTTP روی شبکهٔ محلی آن را
+  صریحاً `false` کنید.
+- کپی داده از SQLite موجود به PostgreSQL تازه (بدون تغییر فایل مبدأ):
+
+```bash
+DB_DRIVER=postgres DATABASE_URL=postgres://user:pass@host/cafeflow cargo run -p cafeflow-api -- db migrate
+DB_DRIVER=sqlite DATABASE_PATH=/path/to/cafeflow.db POSTGRES_URL=postgres://user:pass@host/cafeflow \
+  cargo run -p cafeflow-api -- db migrate-to-postgres --dry-run
+# پس از بررسی پیش‌نمایش (مقصد باید تازه باشد):
+DB_DRIVER=sqlite DATABASE_PATH=/path/to/cafeflow.db POSTGRES_URL=postgres://user:pass@host/cafeflow \
+  cargo run -p cafeflow-api -- db migrate-to-postgres
+```
+
+- فرمان کپی، مقصد غیرخالی را رد می‌کند. `--force` فقط وقتی مقصد را می‌خواهید بازنویسی کنید.
+- پشتیبان SQLite با همان باینری: `cafeflow backup` (خروجی در `CAFEFLOW_BACKUP_DIR`).
