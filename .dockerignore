@@ -3,6 +3,8 @@
 node_modules
 **/node_modules
 **/dist
+rust/target
+**/target
 .git
 .github
 .agents
@@ -10,10 +12,14 @@ node_modules
 .cloud-attachments
 data
 backups
+test-artifacts
 test-results
 playwright-report
 print-output
 *.log
+*.db
+*.db-wal
+*.db-shm
 preview-*.jpg
 review-*.png
 testrun.txt

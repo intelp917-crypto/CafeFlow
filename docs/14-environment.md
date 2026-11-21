@@ -11,6 +11,12 @@
 | نام | پیش‌فرض | توضیح |
 |---|---|---|
 | `NODE_ENV` | `development` | `development` / `test` / `production` |
+| `APP_ENV` | از `NODE_ENV` | در بک‌اند Rust برای تشخیص production و پیش‌فرض کوکی امن |
+| `DB_DRIVER` | `sqlite` | `sqlite` یا `postgres` |
+| `DATABASE_URL` | خالی | اجباری برای `DB_DRIVER=postgres` |
+| `DB_POOL_MAX` | `1` برای SQLite، `10` برای PostgreSQL | حداکثر اتصال استخر |
+| `DB_AUTO_MIGRATE` | `true` | اجرای خودکار مهاجرت‌ها در بوت |
+| `WEB_ROOT` | `apps/web/dist` (یا `/app/public` در ایمیج) | ریشهٔ فایل‌های SPA |
 | `PORT` | `3000` | پورت API؛ مقدار نامعتبر (۰ یا خارج از بازه) به ۳۰۰۰ برمی‌گردد |
 | `HOST` | `0.0.0.0` | رابط شنود API؛ `0.0.0.0` یعنی از شبکهٔ محلی هم در دسترس است، `127.0.0.1` یعنی فقط همین دستگاه |
 | `API_PREFIX` | `/api/v1` | پیشوند مسیرها |

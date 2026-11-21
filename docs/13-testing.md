@@ -6,7 +6,26 @@
 npm test                       # shared + api
 npm run test -w @cafeflow/shared
 npm run test -w @cafeflow/api
+
+# بک‌اند Rust
+cd rust
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 ```
+
+## وضعیت مهاجرت Rust (موج ۱)
+
+- `cafeflow-domain`: پول ریالی، جلالی، وضعیت سفارش و ماژول‌ها با آزمون برابری.
+- `cafeflow-db`: مهاجرت‌های SQLite/PostgreSQL، `schema_migrations` سازگار با نصب فعلی،
+  scrypt سازگار با هش‌های Node، seed نقش/مجوز/مدیر، TOTP و کدهای پشتیبان.
+- `cafeflow-api`: health، login/logout/me، نشست‌ها، تغییر گذرواژه، MFA، هدرهای امنیتی،
+  request-id، SPA fallback و ۴۰۴ واقعی برای media؛ آزمون‌های `auth_flow` و `totp`.
+- `cafeflow-games`: فقط registry اتاق در این موج؛ موتورهای ۳۸ بازی هنوز منتقل نشده‌اند.
+- آزمون دستی انجام‌شده: SQLite تازه، PostgreSQL تازه (`postgres:17-alpine`)، کپی ۵۲۶ ردیف
+  از snapshot موجود، ورود مدیر و `/auth/me` روی هر دو، SPA و deep link روی باینری.
+- **هنوز منتقل نشده:** مسیرهای عمومی/سفارش/پرداخت/کاتالوگ/گزارش/بازی. تا سبز شدن آزمون
+  برابری، cutover انجام نمی‌شود.
 
 ## وضعیت فعلی (پایان فاز ۱۰)
 
