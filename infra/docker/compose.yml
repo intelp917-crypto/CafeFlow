@@ -15,7 +15,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.api
-    image: quay.io/intelp917/cafeflow-api:0.1.0
+    image: quay.io/intelp917/cafeflow:api-0.1.0
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -61,7 +61,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.web
-    image: quay.io/intelp917/cafeflow-web:0.1.0
+    image: quay.io/intelp917/cafeflow:web-0.1.0
     restart: unless-stopped
     depends_on:
       api:
@@ -75,7 +75,7 @@ services:
   # integrity check). It reuses the API image, so nothing is downloaded on a
   # café's network at runtime and the copy is taken by SQLite itself.
   backup:
-    image: quay.io/intelp917/cafeflow-api:0.1.0
+    image: quay.io/intelp917/cafeflow:api-0.1.0
     restart: unless-stopped
     # The fresh backup volume is root-owned, so this one-shot job runs as root
     # (overriding the image's USER node); the API itself stays unprivileged.

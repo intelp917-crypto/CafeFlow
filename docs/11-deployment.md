@@ -41,6 +41,10 @@ docker compose --profile tls up -d   # https://localhost:8443 (گواهی داخ
 | `backup` | همان تصویر API (اسکریپت `scripts/backup.mjs`) | نسخهٔ `VACUUM INTO` روزانه + چرخش |
 | `proxy` | `caddy:2.8-alpine` با `profiles: ["tls"]` | پایانهٔ HTTPS/ACME |
 
+- **Quay:** هر دو ایمیج در یک مخزن منتشر می‌شوند: `quay.io/intelp917/cafeflow:api-0.1.0` و
+  `quay.io/intelp917/cafeflow:web-0.1.0`. تگ‌های کوتاه `api` و `web` برای دیپلوی پایدار (بدون نسخهٔ پین‌شده)
+  هم موجودند. مخزن خصوصی است؛ هاست باید credential پول Quay داشته باشد.
+
 - داده در volume‌ای به نام `data` (قابل تغییر با `DATA_VOLUME_NAME`) روی `/app/data` نگه‌داری
   می‌شود — همان مسیری که API به‌صورت پیش‌فرض از `/app/apps/api` رزولو می‌کند، پس حتی اگر
   `CAFEFLOW_DATA_DIR` فراموش شود، نوشتن بیرون از volume نمی‌افتد. پشتیبان‌ها در

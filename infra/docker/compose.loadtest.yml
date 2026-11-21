@@ -13,7 +13,7 @@ name: cafeflow-loadtest
 
 services:
   api:
-    image: quay.io/intelp917/cafeflow-api:0.1.0
+    image: quay.io/intelp917/cafeflow:api-0.1.0
     restart: "no"
     environment:
       NODE_ENV: production
@@ -40,7 +40,7 @@ services:
       - ../../scripts/loadtest/server-event-loop.mjs:/app/loadtest/server-event-loop.mjs:ro
 
   web:
-    image: quay.io/intelp917/cafeflow-web:0.1.0
+    image: quay.io/intelp917/cafeflow:web-0.1.0
     restart: "no"
     depends_on:
       api:
