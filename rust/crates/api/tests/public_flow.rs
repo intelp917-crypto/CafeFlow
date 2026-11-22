@@ -1591,3 +1591,449 @@ async fn a_table_closes_only_when_its_orders_are_settled() {
     assert_eq!(tables["items"][0]["status"], "available");
     assert!(tables["items"][0]["sessionId"].is_null());
 }
+
+#[tokio::test]
+async fn catalog_manages_categories_products_options_extras_and_images() {
+    let (app, _directory) = app_with_catalog().await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"username":"admin","password":"CafeFlow@1404"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, cookie, _) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let session = cookie.split(';').next().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/catalog")
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let catalog: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(catalog["categories"][0]["productCount"], 2);
+    let cappuccino = catalog["products"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "product-2")
+        .unwrap();
+    assert_eq!(
+        cappuccino["optionGroups"][0]["options"][0]["nameFa"],
+        "شیر بادام"
+    );
+    assert_eq!(cappuccino["extras"][0]["nameFa"], "شات اضافه");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/catalog/categories")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(r#"{"nameFa":"نوشیدنی سرد","isActive":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let category: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let category_id = category["id"].as_str().unwrap().to_string();
+    assert_eq!(category["productCount"], 0);
+    assert!(category["slug"].as_str().unwrap().contains('-'));
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/catalog/categories")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(r#"{"nameFa":"نوشيدني سرد"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("CATEGORY_EXISTS"));
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/catalog/categories/order")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(format!(
+                    r#"{{"ids":["{category_id}","cat-1"]}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let reordered: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(reordered[0]["id"], category_id.as_str());
+    assert_eq!(reordered[0]["sortOrder"], 1);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/catalog/products")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(format!(
+                    r#"{{"categoryId":"{category_id}","nameFa":"لیموناد","basePrice":120000,"descriptionFa":"لیمو و نعنا","prepMinutes":4}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let product: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let product_id = product["id"].as_str().unwrap().to_string();
+    assert_eq!(product["categoryNameFa"], "نوشیدنی سرد");
+    assert_eq!(product["basePrice"], 120000);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/catalog/products")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(format!(
+                    r#"{{"categoryId":"{category_id}","nameFa":"ليموناد","basePrice":90000}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("PRODUCT_EXISTS"));
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/v1/catalog/products/{product_id}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(r#"{"basePrice":130000,"isAvailable":false}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let updated: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(updated["basePrice"], 130000);
+    assert_eq!(updated["isAvailable"], false);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/v1/catalog/products/{product_id}/options"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(
+                    r#"{"groups":[{"nameFa":"اندازه","minSelect":1,"maxSelect":1,"isRequired":true,"options":[{"nameFa":"بزرگ","priceDelta":20000},{"nameFa":"کوچک","priceDelta":-10000,"isActive":false}]}]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let with_options: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(with_options["optionGroups"][0]["nameFa"], "اندازه");
+    assert_eq!(
+        with_options["optionGroups"][0]["options"][0]["priceDelta"],
+        20000
+    );
+    assert_eq!(
+        with_options["optionGroups"][0]["options"][1]["isActive"],
+        false
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/v1/catalog/products/{product_id}/extras"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(
+                    r#"{"extras":[{"nameFa":"نعنا","price":5000},{"nameFa":"یخ","price":1000,"isActive":false}]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let with_extras: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(with_extras["extras"][0]["nameFa"], "نعنا");
+    assert_eq!(with_extras["extras"][1]["nameFa"], "یخ");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/v1/catalog/products/{product_id}/availability"
+                ))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(
+                    r#"{"windows":[{"weekday":null,"startTime":"08:00","endTime":"12:30"},{"weekday":6,"startTime":"18:00","endTime":"23:00"}]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let with_windows: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(with_windows["availabilityWindows"][0]["startTime"], "08:00");
+    assert_eq!(with_windows["availabilityWindows"][1]["weekday"], 6);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/catalog/products/order")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(
+                    r#"{"categoryId":"cat-1","ids":["product-2","product-1"]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let products: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(products[0]["id"], "product-2");
+
+    let csv = [
+        "category,name,price,description,department,prepMinutes,imageUrl,isAvailable,isActive",
+        "نوشیدنی سرد,چای,80000,چای تازه,,3,,true,true",
+        "دسر,چیزکیک,180000,,,8,,,",
+    ]
+    .join("\n");
+    let dry_body = serde_json::json!({"csv": csv, "dryRun": true}).to_string();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/catalog/import")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(dry_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let dry: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(dry["dryRun"], true);
+    assert_eq!(dry["summary"]["created"], 2);
+    assert_eq!(dry["summary"]["categoriesCreated"], 1);
+    assert_eq!(dry["summary"]["errors"], 0);
+
+    let import_body = serde_json::json!({"csv": csv, "dryRun": false}).to_string();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/catalog/import")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(import_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let imported: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(imported["summary"]["created"], 2);
+    assert_eq!(imported["summary"]["categoriesCreated"], 1);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/catalog")
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let catalog: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(
+        catalog["categories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["nameFa"] == "دسر")
+    );
+    let tea = catalog["products"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["nameFa"] == "چای")
+        .unwrap();
+    assert_eq!(tea["prepMinutes"], 3);
+    assert_eq!(tea["basePrice"], 80000);
+
+    let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/catalog/images")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(format!(
+                    r#"{{"dataUrl":"data:image/png;base64,{png}"}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let image: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let url = image["url"].as_str().unwrap().to_string();
+    assert!(url.starts_with("/api/v1/public/product-images/"));
+    assert_eq!(image["mime"], "image/png");
+
+    let response = app
+        .clone()
+        .oneshot(Request::builder().uri(&url).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "image/png");
+    assert_eq!(
+        response.headers()[header::CACHE_CONTROL],
+        "public, max-age=31536000, immutable"
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/api/v1/catalog/categories/{category_id}"))
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("CATEGORY_NOT_EMPTY"));
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/api/v1/catalog/products/{product_id}"))
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["isArchived"],
+        true
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/v1/catalog/products/{product_id}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(r#"{"isArchived":false}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["isArchived"],
+        false
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/catalog/products")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session)
+                .body(Body::from(format!(
+                    r#"{{"categoryId":"{category_id}","nameFa":"نوشیدنی خطرناک","basePrice":1000,"imageUrl":"javascript:alert(1)"}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.contains("VALIDATION_FAILED"));
+}

@@ -1,5 +1,7 @@
 pub mod app;
 pub mod auth;
+pub mod catalog;
+pub mod catalog_import;
 pub mod config;
 pub mod dashboard;
 pub mod error;

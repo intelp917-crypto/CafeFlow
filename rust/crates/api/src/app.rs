@@ -1,11 +1,13 @@
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware;
-use axum::routing::{delete, get, patch, post};
+use axum::routing::{delete, get, patch, post, put};
 use tower_http::compression::CompressionLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::auth;
+use crate::catalog;
+use crate::catalog_import;
 use crate::dashboard;
 use crate::error::{AppError, not_found};
 use crate::health;
@@ -40,6 +42,36 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/sessions/{id}", delete(auth::revoke_session))
         .route("/auth/password", post(auth::change_password))
         .route("/dashboard/overview", get(dashboard::overview))
+        .route("/catalog", get(catalog::get_catalog))
+        .route("/catalog/categories", post(catalog::create_category))
+        .route(
+            "/catalog/categories/order",
+            put(catalog::reorder_categories),
+        )
+        .route(
+            "/catalog/categories/{id}",
+            patch(catalog::update_category).delete(catalog::delete_category),
+        )
+        .route("/catalog/images", post(catalog::upload_image))
+        .route("/catalog/import", post(catalog_import::import_catalog))
+        .route("/catalog/products", post(catalog::create_product))
+        .route("/catalog/products/order", put(catalog::reorder_products))
+        .route(
+            "/catalog/products/{id}",
+            patch(catalog::update_product).delete(catalog::archive_product),
+        )
+        .route(
+            "/catalog/products/{id}/options",
+            put(catalog::replace_options),
+        )
+        .route(
+            "/catalog/products/{id}/extras",
+            put(catalog::replace_extras),
+        )
+        .route(
+            "/catalog/products/{id}/availability",
+            put(catalog::replace_availability),
+        )
         .route(
             "/orders",
             get(staff_orders::list).post(staff_ordering::create),
@@ -81,6 +113,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/prep/{id}/transition", post(prep::transition))
         .route("/public/branding", get(public::branding))
         .route("/public/branding/manifest", get(public::branding_manifest))
+        .route("/public/product-images/{file}", get(catalog::product_image))
         .route("/public/requests", post(requests::create_public_request))
         .route(
             "/public/terminal-requests",
