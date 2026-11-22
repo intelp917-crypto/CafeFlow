@@ -202,11 +202,11 @@ CREATE TABLE floorplan_objects (
   floorplan_id TEXT NOT NULL REFERENCES floorplans (id) ON DELETE CASCADE,
   type TEXT NOT NULL,
   ref_table_id TEXT REFERENCES dining_tables (id) ON DELETE SET NULL,
-  x REAL NOT NULL DEFAULT 0,
-  y REAL NOT NULL DEFAULT 0,
-  width REAL NOT NULL DEFAULT 100,
-  height REAL NOT NULL DEFAULT 100,
-  rotation REAL NOT NULL DEFAULT 0,
+  x DOUBLE PRECISION NOT NULL DEFAULT 0,
+  y DOUBLE PRECISION NOT NULL DEFAULT 0,
+  width DOUBLE PRECISION NOT NULL DEFAULT 100,
+  height DOUBLE PRECISION NOT NULL DEFAULT 100,
+  rotation DOUBLE PRECISION NOT NULL DEFAULT 0,
   z_index INTEGER NOT NULL DEFAULT 0,
   layer TEXT NOT NULL DEFAULT 'default',
   is_locked INTEGER NOT NULL DEFAULT 0 CHECK (is_locked IN (0, 1)),
@@ -218,9 +218,9 @@ CREATE TABLE chairs (
   id TEXT PRIMARY KEY,
   floorplan_object_id TEXT REFERENCES floorplan_objects (id) ON DELETE CASCADE,
   table_id TEXT REFERENCES dining_tables (id) ON DELETE CASCADE,
-  x REAL NOT NULL DEFAULT 0,
-  y REAL NOT NULL DEFAULT 0,
-  rotation REAL NOT NULL DEFAULT 0,
+  x DOUBLE PRECISION NOT NULL DEFAULT 0,
+  y DOUBLE PRECISION NOT NULL DEFAULT 0,
+  rotation DOUBLE PRECISION NOT NULL DEFAULT 0,
   label TEXT
 );
 
@@ -671,8 +671,8 @@ CREATE TABLE ingredients (
   id TEXT PRIMARY KEY,
   name_fa TEXT NOT NULL,
   unit_id TEXT REFERENCES measurement_units (id) ON DELETE SET NULL,
-  current_qty REAL NOT NULL DEFAULT 0,
-  min_qty REAL NOT NULL DEFAULT 0,
+  current_qty DOUBLE PRECISION NOT NULL DEFAULT 0,
+  min_qty DOUBLE PRECISION NOT NULL DEFAULT 0,
   cost_per_unit INTEGER NOT NULL DEFAULT 0,
   is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
   created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
@@ -682,7 +682,7 @@ CREATE INDEX idx_ingredients_low_stock ON ingredients (is_active);
 CREATE TABLE recipes (
   id TEXT PRIMARY KEY,
   product_id TEXT NOT NULL UNIQUE REFERENCES products (id) ON DELETE CASCADE,
-  yield_qty REAL NOT NULL DEFAULT 1,
+  yield_qty DOUBLE PRECISION NOT NULL DEFAULT 1,
   note TEXT
 );
 
@@ -690,7 +690,7 @@ CREATE TABLE recipe_items (
   id TEXT PRIMARY KEY,
   recipe_id TEXT NOT NULL REFERENCES recipes (id) ON DELETE CASCADE,
   ingredient_id TEXT NOT NULL REFERENCES ingredients (id) ON DELETE RESTRICT,
-  qty REAL NOT NULL CHECK (qty > 0)
+  qty DOUBLE PRECISION NOT NULL CHECK (qty > 0)
 );
 
 CREATE TABLE suppliers (
@@ -715,7 +715,7 @@ CREATE TABLE purchase_items (
   id TEXT PRIMARY KEY,
   purchase_id TEXT NOT NULL REFERENCES purchases (id) ON DELETE CASCADE,
   ingredient_id TEXT NOT NULL REFERENCES ingredients (id) ON DELETE RESTRICT,
-  qty REAL NOT NULL CHECK (qty > 0),
+  qty DOUBLE PRECISION NOT NULL CHECK (qty > 0),
   unit_cost INTEGER NOT NULL DEFAULT 0
 );
 
@@ -723,7 +723,7 @@ CREATE TABLE stock_movements (
   id TEXT PRIMARY KEY,
   ingredient_id TEXT NOT NULL REFERENCES ingredients (id) ON DELETE CASCADE,
   type TEXT NOT NULL CHECK (type IN ('purchase', 'sale_deduction', 'adjustment', 'waste', 'restore')),
-  qty REAL NOT NULL,
+  qty DOUBLE PRECISION NOT NULL,
   unit_cost INTEGER NOT NULL DEFAULT 0,
   ref_type TEXT,
   ref_id TEXT,
@@ -736,7 +736,7 @@ CREATE INDEX idx_stock_movements_ingredient ON stock_movements (ingredient_id, c
 CREATE TABLE waste_records (
   id TEXT PRIMARY KEY,
   ingredient_id TEXT NOT NULL REFERENCES ingredients (id) ON DELETE CASCADE,
-  qty REAL NOT NULL CHECK (qty > 0),
+  qty DOUBLE PRECISION NOT NULL CHECK (qty > 0),
   reason TEXT,
   recorded_by_user_id TEXT REFERENCES users (id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))

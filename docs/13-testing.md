@@ -14,7 +14,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-## وضعیت مهاجرت Rust (موج ۱، ۳ تا ۱۲)
+## وضعیت مهاجرت Rust (موج ۱ تا ۱۴)
 
 - `cafeflow-domain`: پول ریالی، جلالی، وضعیت سفارش و ماژول‌ها با آزمون برابری.
 - `cafeflow-db`: مهاجرت‌های SQLite/PostgreSQL، `schema_migrations` سازگار با نصب فعلی،
@@ -66,6 +66,17 @@ cargo test --workspace
   `INVALID_PRINT_STATUS`، job چاپ‌شده `PRINT_JOB_ALREADY_PRINTED` و claim تکراری
   `PRINT_JOB_NOT_QUEUED` می‌گیرد. آزمون
   `print_queue_claims_jobs_atomically_and_tracks_status`.
+- موج ۱۳: تنظیمات کافه و ماژول‌ها، کاربران/نقش‌ها/مجوزها، حسابرسی، تأییدها، اعلان‌ها و
+  پیام‌های درون‌برنامه‌ای، رزروها، کارکنان/شیفت/عملکرد. دسترسی هر مسیر با مجوز و ماژول
+  کنترل می‌شود و آزمون‌های `admin_settings_staff_and_management_flow` و
+  `notifications_and_message_queue_are_scoped_and_idempotent` این رفتارها را پوشش می‌دهند.
+- موج ۱۴: چیدمان و QR (طبقه/بخش/میز، پلان و نسخه‌ها، توکن QR و PNG/SVG واقعی)، انبار
+  (مواد اولیه، اصلاح موجودی، خرید/تأمین‌کننده، ضایعات، دستور پخت)، مالی (باز/بستن صندوق،
+  هزینه و خلاصه) و CRM (مشتری، امتیاز/کیف پول، سطح و سابقهٔ رزرو). آزمون یکپارچهٔ
+  `layout_inventory_finance_and_crm_flow` همهٔ این مسیرها را روی SQLite اجرا می‌کند.
+- هم‌ترازی PostgreSQL: مهاجرت `018_double_precision.sql` ستون‌های اعشاری (مختصات پلان،
+  موجودی/دستور پخت، عرض/طول جغرافیایی) را از `REAL` (float4) به `DOUBLE PRECISION` می‌برد
+  تا با دیکودر `f64` و SQLite یکسان باشند. این باگ در آزمون واقعی PostgreSQL پیدا و رفع شد.
 - seed دمو اکنون کاتالوگ قابل استفاده می‌سازد: ۲ دسته، ۵ محصول، ۳ میز با QR و گزینه/افزودنی؛
   آزمون `demo_menu_seed_creates_a_ready_to_order_catalog`.
 - موج ۱۲ (بازی‌ها): هر ۳۸ قاعدهٔ GameNest دست‌نخورده داخل `rust/crates/games/assets` هستند و
@@ -79,6 +90,13 @@ cargo test --workspace
   گرگینه با نقش مخفی و ددلاین ۴۰ ثانیه، ۲۰۴۸، دو گوشی واقعی دوز تا برد، رفرش و بازگشت به همان
   صندلی، «دست تازه»، و همان سناریو داخل ایمیج `cafeflow:rust-wave12` روی SQLite. گرگینه با
   شش دستگاه/۶ سوکت واقعی و بدون افشای نقش بازیکنان دیگر اجرا شد.
+- آزمون دستی نهایی روی **PostgreSQL ۱۷ تازه** (کانتینر `postgres:17-alpine`): ورود مدیر،
+  فعال‌سازی ماژول‌های انبار/مالی/CRM، ساخت میز و دریافت PNG/SVG معتبر QR، ساخت ماده اولیه،
+  اصلاح/ضایعات/خرید/دستور پخت، باز و بستن صندوق، هزینه و خلاصهٔ مالی، و ساخت مشتری با
+  امتیاز/کیف پول/سطح نقره‌ای. سپس همان سناریو داخل ایمیج نهایی `cafeflow:rust-wave14`
+  یک‌بار با SQLite و SPA ساخته‌شده و یک‌بار با PostgreSQL اجرا شد. صفحات
+  `/admin/layout`، `/admin/inventory`، `/admin/cash`، `/admin/finance` و `/admin/customers`
+  در مرورگر واقعی باز شدند و درخواست‌های API آن‌ها ۲۰۰ و بدون خطای console بودند.
 - آزمون دستی انجام‌شده: SQLite تازه، PostgreSQL تازه (`postgres:17-alpine`)، کپی ۵۲۶ ردیف
   از snapshot موجود، ورود مدیر و `/auth/me` روی هر دو، SPA و deep link روی باینری؛ در موج ۴
   فهرست/جزئیات/انتقال سفارش روی PostgreSQL و مرورگر واقعی هم تأیید شد. در موج ۶ صف
