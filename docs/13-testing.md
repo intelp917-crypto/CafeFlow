@@ -59,6 +59,13 @@ cargo test --workspace
   جدید). بازهٔ پیش‌فرض امروز تهران است، تاریخ‌های نامعتبر با `INVALID_DATE_RANGE` رد
   می‌شوند و مرز روزها به UTC تبدیل می‌شود. آزمون
   `reports_summarize_sales_refunds_and_export_payments`.
+- موج ۱۱: `GET /print/jobs` با فیلتر وضعیت و سقف ۱۰۰ کار، `POST /print/jobs/:id/sent`
+  با claim اتمی `queued → sent` و رفتار idempotent برای job ارسال‌شده،
+  `POST /print/jobs/:id/printed` با `printed_at` و افزایش تلاش، و
+  `POST /print/jobs/:id/failed` با خطای حداکثر ۲۰۰ نویسه. وضعیت نامعتبر
+  `INVALID_PRINT_STATUS`، job چاپ‌شده `PRINT_JOB_ALREADY_PRINTED` و claim تکراری
+  `PRINT_JOB_NOT_QUEUED` می‌گیرد. آزمون
+  `print_queue_claims_jobs_atomically_and_tracks_status`.
 - seed دمو اکنون کاتالوگ قابل استفاده می‌سازد: ۲ دسته، ۵ محصول، ۳ میز با QR و گزینه/افزودنی؛
   آزمون `demo_menu_seed_creates_a_ready_to_order_catalog`.
 - `cafeflow-games`: فقط registry اتاق در این موج؛ موتورهای ۳۸ بازی هنوز منتقل نشده‌اند.
@@ -73,8 +80,11 @@ cargo test --workspace
   افزودنی، ساعت سرو، ترتیب، ایمپورت CSV، تصویر و بایگانی/بازگردانی روی PostgreSQL و
   صفحهٔ `/admin/catalog` تأیید شدند. در موج ۱۰ خلاصه، CSV و XLSX روی PostgreSQL تازه
   (شامل بازپرداخت و دو روش پرداخت) و صفحهٔ `/admin/reports` در مرورگر واقعی تأیید شدند؛
-  workbook با zipfile و XML باز و ردیف‌های متنی/عددی آن بررسی شد.
-- **هنوز منتقل نشده:** صف چاپ و بازی‌ها. تا سبز شدن آزمون برابری، cutover انجام
+  workbook با zipfile و XML باز و ردیف‌های متنی/عددی آن بررسی شد. در موج ۱۱ دو job
+  (بلیت باریستا و پیش‌فاکتور) روی PostgreSQL تازه با `scripts/print-bridge.mjs` واقعی چاپ
+  شدند، فایل‌های متنی نوشته شدند و صف/دیتابیس وضعیت `printed` با یک تلاش را تأیید کردند.
+  صفحهٔ `/admin/print` و مودال متن رسید هم در مرورگر واقعی بررسی شدند.
+- **هنوز منتقل نشده:** بازی‌ها. تا سبز شدن آزمون برابری، cutover انجام
   نمی‌شود.
 
 ## وضعیت فعلی (پایان فاز ۱۰)

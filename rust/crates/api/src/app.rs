@@ -85,6 +85,10 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/orders/{id}/receipt", post(printing::queue_receipt))
         .route("/orders/{id}/tickets", post(printing::queue_tickets))
+        .route("/print/jobs", get(printing::list_jobs))
+        .route("/print/jobs/{id}/sent", post(printing::mark_sent))
+        .route("/print/jobs/{id}/printed", post(printing::mark_printed))
+        .route("/print/jobs/{id}/failed", post(printing::mark_failed))
         .route(
             "/orders/{id}/payments",
             get(payments::summary).post(payments::record),
