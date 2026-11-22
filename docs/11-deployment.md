@@ -202,6 +202,10 @@ DB_DRIVER=sqlite CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -
   Wolfi بدون Node/nginx). پایه‌ها به‌صورت پیش‌فرض از `cgr.dev/chainguard` هستند تا به Docker Hub
   وابسته نباشند؛ با `--build-arg NODE_IMAGE=...`، `RUST_IMAGE=...` یا `RUNTIME_IMAGE=...`
   می‌توان آن‌ها را عوض کرد.
+- ایمیج ساخته‌شده و منتشرشده: `quay.io/intelp917/cafeflow:0.2.0` (و `:latest`)؛ برای دیپلوی
+  نیازی به build نیست. با SQLite داخل همان کانتینر بالا می‌آید:
+  `docker run ... --entrypoint /bin/sh quay.io/intelp917/cafeflow:0.2.0 -c 'cafeflow db setup && exec cafeflow serve'`.
+  راهنمای کامل اجرا، HTTPS، پشتیبان/بازیابی، به‌روزرسانی و اندازهٔ هاست در `README.md` است.
 - Compose تک‌سرویسی: `infra/docker/compose.rust.yml`؛ SQLite پیش‌فرض است. در اولین اجرا
   `cafeflow db setup` مهاجرت و seed را انجام می‌دهد. برای PostgreSQL
   `DB_DRIVER=postgres` و `DATABASE_URL` را تنظیم کنید؛ سرور PostgreSQL سرویس جداگانه است.
