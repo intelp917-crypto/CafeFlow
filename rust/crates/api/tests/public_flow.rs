@@ -3116,3 +3116,299 @@ async fn notifications_and_message_queue_are_scoped_and_idempotent() {
         0
     );
 }
+
+#[tokio::test]
+async fn layout_inventory_finance_and_crm_flow() {
+    let (app, _directory) = app_with_catalog().await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"username":"admin","password":"CafeFlow@1404"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (_, cookie, _) = body_of(response).await;
+    let session = cookie.split(';').next().unwrap().to_string();
+    for module in ["inventory", "finance", "crm"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/api/v1/modules/{module}"))
+                    .header(header::COOKIE, &session)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"enabled":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let (status, _, body) = body_of(response).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/layout")
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(serde_json::from_str::<serde_json::Value>(&body).unwrap()["floors"].is_array());
+
+    let response = app.clone().oneshot(Request::builder().method("POST").uri("/api/v1/layout/tables")
+        .header(header::COOKIE, &session).header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"floorId":"floor-1","capacity":4,"shape":"round","x":300,"y":200,"width":120,"height":120}"#)).unwrap()).await.unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let table: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let table_id = table["id"].as_str().unwrap().to_string();
+    assert!(table["plan"]["objects"].as_array().unwrap().len() >= 2);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/layout/tables/{table_id}/qr.png"))
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(header::CONTENT_TYPE).unwrap(),
+        "image/png"
+    );
+
+    let response = app.clone().oneshot(Request::builder().method("POST").uri("/api/v1/inventory/ingredients")
+        .header(header::COOKIE, &session).header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"nameFa":"دانه قهوه","unitSymbol":"g","currentQty":1000,"minQty":100,"costPerUnit":2}"#)).unwrap()).await.unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let ingredient: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let ingredient_id = ingredient["id"].as_str().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/inventory/ingredients/{ingredient_id}/adjustments"
+                ))
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"delta":500,"reason":"شمارش انبار"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["currentQty"],
+        1500.0
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/inventory/waste")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"ingredientId":"{ingredient_id}","qty":10,"reason":"ریختن"}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["qty"],
+        10.0
+    );
+
+    let response = app.clone().oneshot(Request::builder().method("POST").uri("/api/v1/inventory/purchases")
+        .header(header::COOKIE, &session).header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(format!(r#"{{"invoiceNo":"INV-1","items":[{{"ingredientId":"{ingredient_id}","qty":100,"unitCost":3}}]}}"#))).unwrap()).await.unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["total"],
+        300
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/inventory/recipes/product-1")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"yieldQty":1,"items":[{{"ingredientId":"{ingredient_id}","qty":18}}]}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["items"][0]["qty"],
+        18.0
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/cash-sessions")
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let cash: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let register_id = cash["registers"][0]["id"].as_str().unwrap().to_string();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/cash-sessions/open")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"registerId":"{register_id}","openingFloat":100000}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let cash_session: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(cash_session["openingFloat"], 100000);
+    let cash_id = cash_session["id"].as_str().unwrap().to_string();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/cash-sessions/{cash_id}/close"))
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"closingAmount":100000}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["status"],
+        "closed"
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/finance/expenses")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"category":"rent","amount":5000000,"description":"اجاره ماه"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/finance/summary")
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["expenses"],
+        5000000
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/customers")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"name":"سارا","phone":"09121234567","consentMarketing":true}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let customer: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let customer_id = customer["id"].as_str().unwrap().to_string();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/customers/{customer_id}/loyalty"))
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"points":250,"wallet":50000,"reason":"خرید اول"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let customer: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(customer["points"], 250);
+    assert_eq!(customer["tier"], "silver");
+    assert_eq!(customer["walletBalance"], 50000);
+    assert_eq!(customer["ledger"].as_array().unwrap().len(), 2);
+    assert!(customer["reservations"].is_array());
+}

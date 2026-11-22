@@ -23,6 +23,8 @@ dotenvy.workspace = true
 hex.workspace = true
 hmac.workspace = true
 mime_guess.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }
+qrcode = { version = "0.14", default-features = false, features = ["image", "svg"] }
 rand.workspace = true
 scrypt.workspace = true
 serde.workspace = true

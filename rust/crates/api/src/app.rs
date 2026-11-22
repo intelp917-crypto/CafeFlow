@@ -9,10 +9,14 @@ use crate::admin;
 use crate::auth;
 use crate::catalog;
 use crate::catalog_import;
+use crate::crm;
 use crate::dashboard;
 use crate::error::{AppError, not_found};
+use crate::finance;
 use crate::games;
 use crate::health;
+use crate::inventory;
+use crate::layout;
 use crate::management;
 use crate::middleware::{api_headers, request_id, static_headers};
 use crate::payments;
@@ -156,6 +160,34 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/orders/{id}/transition", post(staff_orders::transition))
         .route("/tables", get(staff_ordering::tables))
+        .route("/layout", get(layout::overview))
+        .route("/layout/floors", post(layout::create_floor))
+        .route(
+            "/layout/floors/{id}",
+            patch(layout::update_floor).delete(layout::delete_floor),
+        )
+        .route("/layout/floors/{id}/areas", post(layout::create_area))
+        .route(
+            "/layout/areas/{id}",
+            patch(layout::update_area).delete(layout::delete_area),
+        )
+        .route("/layout/floors/{id}/plan", put(layout::save_plan))
+        .route("/layout/floors/{id}/versions", get(layout::versions))
+        .route(
+            "/layout/floors/{floor_id}/versions/{version_id}/restore",
+            post(layout::restore_version),
+        )
+        .route("/layout/tables", post(layout::create_table))
+        .route(
+            "/layout/tables/{id}",
+            patch(layout::update_table).delete(layout::delete_table),
+        )
+        .route(
+            "/layout/tables/{id}/qr",
+            get(layout::table_qr).post(layout::regenerate_qr),
+        )
+        .route("/layout/tables/{id}/qr.png", get(layout::table_qr_png))
+        .route("/layout/tables/{id}/qr.svg", get(layout::table_qr_svg))
         .route("/tables/{id}/close", post(requests::close_table))
         .route("/service-requests", get(requests::list_service))
         .route(
@@ -166,6 +198,47 @@ pub fn build_router(state: AppState) -> Router {
         .route("/prep/queue", get(prep::queue))
         .route("/prep/{id}/transition", post(prep::transition))
         .route("/reports/summary", get(reports::summary))
+        .route("/inventory/overview", get(inventory::overview))
+        .route(
+            "/inventory/ingredients",
+            get(inventory::ingredients).post(inventory::create_ingredient),
+        )
+        .route(
+            "/inventory/ingredients/{id}/adjustments",
+            post(inventory::adjust_ingredient),
+        )
+        .route("/inventory/movements", get(inventory::movements))
+        .route(
+            "/inventory/suppliers",
+            get(inventory::suppliers).post(inventory::create_supplier),
+        )
+        .route(
+            "/inventory/purchases",
+            get(inventory::purchases).post(inventory::create_purchase),
+        )
+        .route(
+            "/inventory/waste",
+            get(inventory::waste).post(inventory::create_waste),
+        )
+        .route("/inventory/recipes", get(inventory::recipes))
+        .route("/inventory/recipes/{id}", post(inventory::set_recipe))
+        .route("/cash-sessions", get(finance::cash_overview))
+        .route("/cash-sessions/open", post(finance::open_cash_session))
+        .route(
+            "/cash-sessions/{id}/close",
+            post(finance::close_cash_session),
+        )
+        .route("/finance/summary", get(finance::summary))
+        .route(
+            "/finance/expenses",
+            get(finance::expenses).post(finance::create_expense),
+        )
+        .route(
+            "/customers",
+            get(crm::list_customers).post(crm::create_customer),
+        )
+        .route("/customers/{id}", get(crm::customer_detail))
+        .route("/customers/{id}/loyalty", post(crm::adjust_loyalty))
         .route("/reports/payments.csv", get(reports::payments_csv))
         .route("/reports/payments.xlsx", get(reports::payments_xlsx))
         .route("/public/branding", get(public::branding))
