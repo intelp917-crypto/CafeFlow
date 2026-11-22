@@ -18,6 +18,7 @@ use crate::printing;
 use crate::public;
 use crate::public_menu;
 use crate::public_orders;
+use crate::reports;
 use crate::requests;
 use crate::staff_ordering;
 use crate::staff_orders;
@@ -111,6 +112,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/terminal-requests", get(requests::list_terminal))
         .route("/prep/queue", get(prep::queue))
         .route("/prep/{id}/transition", post(prep::transition))
+        .route("/reports/summary", get(reports::summary))
+        .route("/reports/payments.csv", get(reports::payments_csv))
+        .route("/reports/payments.xlsx", get(reports::payments_xlsx))
         .route("/public/branding", get(public::branding))
         .route("/public/branding/manifest", get(public::branding_manifest))
         .route("/public/product-images/{file}", get(catalog::product_image))

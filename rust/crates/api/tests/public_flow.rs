@@ -2037,3 +2037,198 @@ async fn catalog_manages_categories_products_options_extras_and_images() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body.contains("VALIDATION_FAILED"));
 }
+
+#[tokio::test]
+async fn reports_summarize_sales_refunds_and_export_payments() {
+    let (app, _directory) = app_with_catalog().await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"username":"admin","password":"CafeFlow@1404"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, cookie, _) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let session_cookie = cookie.split(';').next().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/orders")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(
+                    r#"{"tableId":"table-1","items":[{"productId":"product-1","quantity":1},{"productId":"product-2","quantity":1,"optionIds":["option-1"],"extraIds":["extra-1"]}]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let created: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(created["total"], 235000);
+    let order_id = created["id"].as_str().unwrap().to_string();
+
+    for target in ["preparing", "ready", "served"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/v1/orders/{order_id}/transition"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header(header::COOKIE, &session_cookie)
+                    .body(Body::from(format!(r#"{{"to":"{target}"}}"#)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let (status, _, body) = body_of(response).await;
+        assert_eq!(status, StatusCode::OK, "{target}: {body}");
+    }
+
+    for (method, amount) in [("cash", 200000), ("card", 35000)] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/v1/orders/{order_id}/payments"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header(header::COOKIE, &session_cookie)
+                    .body(Body::from(format!(
+                        r#"{{"method":"{method}","amount":{amount}}}"#
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let (status, _, body) = body_of(response).await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/orders/{order_id}/refunds"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(
+                    r#"{"amount":20000,"reason":"اشتباه در سفارش","method":"cash"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/reports/summary")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let report: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(report["totals"]["sales"], 235000);
+    assert_eq!(report["totals"]["refunds"], 20000);
+    assert_eq!(report["totals"]["net"], 215000);
+    assert_eq!(report["totals"]["payments"], 2);
+    assert_eq!(report["totals"]["orders"], 1);
+    assert_eq!(report["totals"]["averageOrder"], 235000);
+    assert_eq!(report["byMethod"][0]["method"], "cash");
+    assert_eq!(report["byMethod"][0]["methodLabelFa"], "نقدی");
+    assert_eq!(report["byMethod"][0]["total"], 200000);
+    assert_eq!(report["byMethod"][1]["method"], "card");
+    assert_eq!(report["daily"].as_array().unwrap().len(), 1);
+    assert_eq!(report["daily"][0]["sales"], 235000);
+    assert_eq!(report["topProducts"][0]["nameFa"], "اسپرسو");
+    assert_eq!(report["topProducts"][0]["revenue"], 120000);
+    assert_eq!(report["topProducts"][1]["nameFa"], "کاپوچینو");
+    assert_eq!(report["topProducts"][1]["revenue"], 115000);
+    let from = report["from"].as_str().unwrap();
+    let to = report["to"].as_str().unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/reports/payments.csv?from={from}&to={to}"
+                ))
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "text/csv; charset=utf-8"
+    );
+    let csv = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    let csv = String::from_utf8(csv.to_vec()).unwrap();
+    assert!(csv.starts_with('\u{feff}'));
+    assert!(csv.contains("\"نقدی\""));
+    assert!(csv.contains("\"refunded\""));
+    assert_eq!(csv.lines().count(), 4);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/reports/payments.xlsx?from={from}&to={to}"
+                ))
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let xlsx = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    assert!(xlsx.starts_with(b"PK\x03\x04"));
+    assert!(xlsx.len() > 1000);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/reports/summary?from=2026-02-30&to=2026-03-01")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.contains("INVALID_DATE_RANGE"));
+}

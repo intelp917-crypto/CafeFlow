@@ -13,12 +13,14 @@ pub mod printing;
 pub mod public;
 pub mod public_menu;
 pub mod public_orders;
+pub mod reports;
 pub mod requests;
 pub mod staff_ordering;
 pub mod staff_orders;
 pub mod state;
 pub mod static_files;
 pub mod totp;
+pub mod xlsx;
 
 pub use app::build_router;
 pub use config::Config;

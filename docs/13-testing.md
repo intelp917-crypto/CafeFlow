@@ -14,7 +14,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-## وضعیت مهاجرت Rust (موج ۱، ۳، ۴، ۵، ۶ و ۷)
+## وضعیت مهاجرت Rust (موج ۱، ۳ تا ۱۰)
 
 - `cafeflow-domain`: پول ریالی، جلالی، وضعیت سفارش و ماژول‌ها با آزمون برابری.
 - `cafeflow-db`: مهاجرت‌های SQLite/PostgreSQL، `schema_migrations` سازگار با نصب فعلی،
@@ -53,6 +53,12 @@ cargo test --workspace
   ایمپورت CSV با پیش‌نمایش، و آپلود تصویر محصول با بررسی امضا و مسیر امن؛ مهاجرت
   `017_catalog_child_order.sql` ترتیب پایدار افزودنی/ساعت سرو را برای PostgreSQL هم می‌سازد.
   آزمون `catalog_manages_categories_products_options_extras_and_images`.
+- موج ۱۰: `GET /reports/summary` با فروش/بازپرداخت/خالص، تفکیک روش پرداخت، فروش روزانهٔ
+  تقویم تهران و ۱۰ محصول پرفروش؛ `GET /reports/payments.csv` با BOM و فصل‌بندی
+  استاندارد و `GET /reports/payments.xlsx` به‌صورت workbook واقعی (ZIP/XML بدون وابستگی
+  جدید). بازهٔ پیش‌فرض امروز تهران است، تاریخ‌های نامعتبر با `INVALID_DATE_RANGE` رد
+  می‌شوند و مرز روزها به UTC تبدیل می‌شود. آزمون
+  `reports_summarize_sales_refunds_and_export_payments`.
 - seed دمو اکنون کاتالوگ قابل استفاده می‌سازد: ۲ دسته، ۵ محصول، ۳ میز با QR و گزینه/افزودنی؛
   آزمون `demo_menu_seed_creates_a_ready_to_order_catalog`.
 - `cafeflow-games`: فقط registry اتاق در این موج؛ موتورهای ۳۸ بازی هنوز منتقل نشده‌اند.
@@ -65,8 +71,10 @@ cargo test --workspace
   کارت‌خوان از QR، صف درخواست‌ها، پذیرش/انجام و بستن میز روی PostgreSQL و صفحات
   `/admin/requests` و `/admin/tables` تأیید شدند. در موج ۹ ساخت دسته/محصول، گزینه،
   افزودنی، ساعت سرو، ترتیب، ایمپورت CSV، تصویر و بایگانی/بازگردانی روی PostgreSQL و
-  صفحهٔ `/admin/catalog` تأیید شدند.
-- **هنوز منتقل نشده:** گزارش، صف چاپ و بازی‌ها. تا سبز شدن آزمون برابری، cutover انجام
+  صفحهٔ `/admin/catalog` تأیید شدند. در موج ۱۰ خلاصه، CSV و XLSX روی PostgreSQL تازه
+  (شامل بازپرداخت و دو روش پرداخت) و صفحهٔ `/admin/reports` در مرورگر واقعی تأیید شدند؛
+  workbook با zipfile و XML باز و ردیف‌های متنی/عددی آن بررسی شد.
+- **هنوز منتقل نشده:** صف چاپ و بازی‌ها. تا سبز شدن آزمون برابری، cutover انجام
   نمی‌شود.
 
 ## وضعیت فعلی (پایان فاز ۱۰)
