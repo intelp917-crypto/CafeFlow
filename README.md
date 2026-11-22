@@ -3,12 +3,11 @@
 ```bat
 cd /d C:\Projects\CafeFlow\rust
 set APP_ENV=development
-set SEED_ADMIN_PASSWORD=CafeFlow@1404
 cargo run --release -- db setup
 cargo run --release -- serve
 ```
 
-سپس `http://localhost:3000/staff/login` را باز کنید (کاربر `admin` و همان گذرواژه). داده‌ها در
+سپس `http://localhost:3000/staff/login` را باز کنید؛ بار اول ویزارد راه‌اندازی با کلید نصب می‌آید. داده‌ها در
 `rust/data` و روی SQLite ذخیره می‌شوند؛ برای بستن سرور در همان پنجره `Ctrl+C` بزنید.
 
 ---
@@ -107,8 +106,6 @@ docker run -d --name cafeflow \
   --restart unless-stopped \
   -p 8080:3000 \
   -e APP_ENV=production \
-  -e SEED_ADMIN_USERNAME=admin \
-  -e SEED_ADMIN_PASSWORD='یک-گذرواژه-قوی-بگذارید' \
   -e SEED_DEMO_STAFF=false \
   -e SEED_DEMO_MENU=true \
   -e SESSION_COOKIE_SECURE=false \
@@ -144,8 +141,6 @@ services:
       DB_AUTO_MIGRATE: "true"
       SESSION_COOKIE_SECURE: "true"     # HTTPS اجباری؛ برای آزمایش HTTP موقتاً false
       SESSION_TTL_HOURS: "168"
-      SEED_ADMIN_USERNAME: admin
-      SEED_ADMIN_PASSWORD: "یک-گذرواژه-قوی-بگذارید"
       SEED_DEMO_STAFF: "false"
       SEED_DEMO_MENU: "true"
     ports:
@@ -193,26 +188,29 @@ docker build -f infra/docker/Dockerfile.rust \
 
 ## ۵. اولین ورود
 
+اولین بار که `/staff/login` را باز کنید، به‌جای فرم ورود **ویزارد راه‌اندازی** نمایش داده می‌شود: نام کاربری و
+گذرواژهٔ مدیر اصلی را می‌سازید و **کلید نصب** را وارد می‌کنید. هیچ `SEED_ADMIN_*` لازم نیست.
+
 | مورد | مقدار |
 |---|---|
-| آدرس ورود | `/staff/login` |
-| کاربر مدیر | `SEED_ADMIN_USERNAME` (پیش‌فرض `admin`) |
-| گذرواژهٔ مدیر | `SEED_ADMIN_PASSWORD` — **قبل از اولین بوت تعیین کنید** |
-| گذرواژهٔ پیش‌فرض اگر تنظیم نشود | `CafeFlow@1404` (فقط برای توسعه؛ هرگز در تولید) |
+| آدرس | `/staff/login` |
+| کلید نصب | `P70w4EslWwiFvmay6Bs1` (قابل تغییر با `CAFEFLOW_INSTALL_KEY`) |
+| بعد از ساخت | ورود خودکار به `/admin` |
 | کارکنان نمونه (اگر `SEED_DEMO_STAFF=true`) | `manager`, `cashier`, `waiter`, `barista`, `kitchen` — گذرواژه `CafeFlow@1404` |
 
 نکات:
 
-1. seed فقط زمانی اجرا می‌شود که جدول کاربران خالی باشد؛ تغییر `SEED_ADMIN_PASSWORD` بعد از اولین بوت اثری ندارد.
-   برای تغییر گذرواژه از «امنیت حساب» در پنل استفاده کنید.
-2. در تولید `SEED_DEMO_STAFF=false` بگذارید؛ حساب‌های نمونه گذرواژهٔ شناخته‌شده دارند.
-3. `SEED_DEMO_MENU=true` منوی نمونه با دسته/محصول و چند میز نمایشی (`demo-table-1`، …) می‌سازد.
+1. ویزارد فقط وقتی نمایش داده می‌شود که هیچ کاربر فعالی با نقش `super_admin` وجود نداشته باشد؛ بعد از ساخت
+   دوباره اجرا نمی‌شود (`409`). برای تغییر گذرواژه بعداً از «امنیت حساب» در پنل استفاده کنید.
+2. اگر مدیر را از env می‌خواهید، `SEED_ADMIN_USERNAME` و `SEED_ADMIN_PASSWORD` را ست کنید (سازگاری با نصب قبلی).
+3. در تولید `SEED_DEMO_STAFF=false` بگذارید؛ حساب‌های نمونه گذرواژهٔ شناخته‌شده دارند.
+4. `SEED_DEMO_MENU=true` منوی نمونه با دسته/محصول و چند میز نمایشی (`demo-table-1`، …) می‌سازد.
    برای شروع با منوی خالی `false` بگذارید.
 4. ماژول‌های انبار، مالی، CRM و کارکنان به‌صورت پیش‌فرض خاموش‌اند؛ از **تنظیمات ← ماژول‌ها** روشن کنید.
 
 ## ۶. متغیرهای محیطی
 
-فایل آمادهٔ تولید: [`deploy.env.example`](deploy.env.example) — فقط `SEED_ADMIN_PASSWORD` را عوض کنید و با
+فایل آمادهٔ تولید: [`deploy.env.example`](deploy.env.example) — بدون تغییر هم کار می‌کند و با
 `--env-file` به کانتینر بدهید.
 
 | نام | پیش‌فرض | توضیح |
@@ -234,8 +232,9 @@ docker build -f infra/docker/Dockerfile.rust \
 | `SESSION_COOKIE_SECURE` | `true` در production | روی HTTPS `true`؛ برای HTTP آزمایشی `false`. |
 | `LOGIN_MAX_ATTEMPTS` | `5` | تلاش ناموفق پیش از قفل حساب. |
 | `LOGIN_LOCK_MINUTES` | `15` | مدت قفل. |
-| `SEED_ADMIN_USERNAME` | `admin` | فقط اولین seed. |
-| `SEED_ADMIN_PASSWORD` | `CafeFlow@1404` | فقط اولین seed — تغییر دهید. |
+| `CAFEFLOW_INSTALL_KEY` | `P70w4EslWwiFvmay6Bs1` | کلید ساخت اولین مدیر در `/staff/login`. |
+| `SEED_ADMIN_USERNAME` | — | اختیاری؛ مدیر را از env می‌سازد (بدون ویزارد). |
+| `SEED_ADMIN_PASSWORD` | — | اختیاری؛ خالی یعنی ساخت مدیر با ویزارد. |
 | `SEED_DEMO_STAFF` | در Compose: `false` · در CLI: `true` | ساخت کارکنان نمونه. |
 | `SEED_DEMO_MENU` | `true` | منوی نمونه و میزهای نمایشی. |
 | `PUBLIC_APP_URL` | — | آدرس عمومی سایت (مثل `https://cafe.example.com`) برای لینک داخل QR وقتی هدر `Origin` در دسترس نیست. |
@@ -443,8 +442,8 @@ docker compose pull && docker compose up -d
 - موقعیت build آلمان (`germany`) است تا دانلود پکیج محدودیت نداشته باشد.
 - در استقرار از GitHub فیلدهای `app` و `platform` را در `liara.json` نگذارید؛ لیارا خودش آن‌ها را
   تشخیص می‌دهد (فایل نمونهٔ پنل این دو را دارد و همان باعث خطا می‌شود).
-- متغیرها را در Environment Variables پنل ست کنید: `APP_ENV=production`، `SEED_ADMIN_USERNAME`،
-  `SEED_ADMIN_PASSWORD`، `SESSION_COOKIE_SECURE=true` و `PUBLIC_APP_URL=https://<دامنه>`.
+- متغیرها را در Environment Variables پنل ست کنید: `APP_ENV=production`، `SESSION_COOKIE_SECURE=true` و
+  `PUBLIC_APP_URL=https://<دامنه>`؛ مدیر اصلی را از ویزارد `/staff/login` بسازید.
 - اولین بوت خودکار `cafeflow db setup` را اجرا می‌کند (مهاجرت + seed فقط روی دیتابیس خالی)؛ برای
   خاموش کردنش `CAFEFLOW_AUTO_SETUP=0` بگذارید.
 
@@ -591,8 +590,6 @@ docker run -d --name cafeflow \
   --restart unless-stopped \
   -p 8080:3000 \
   -e APP_ENV=production \
-  -e SEED_ADMIN_USERNAME=admin \
-  -e SEED_ADMIN_PASSWORD='choose-a-strong-password' \
   -e SEED_DEMO_STAFF=false \
   -e SEED_DEMO_MENU=true \
   -e SESSION_COOKIE_SECURE=false \
@@ -624,8 +621,6 @@ services:
       DB_AUTO_MIGRATE: "true"
       SESSION_COOKIE_SECURE: "true"     # requires HTTPS; set false only for an HTTP trial
       SESSION_TTL_HOURS: "168"
-      SEED_ADMIN_USERNAME: admin
-      SEED_ADMIN_PASSWORD: "choose-a-strong-password"
       SEED_DEMO_STAFF: "false"
       SEED_DEMO_MENU: "true"
     ports:
@@ -671,21 +666,30 @@ docker build -f infra/docker/Dockerfile.rust -t cafeflow:0.2.0 .
 | Item | Value |
 |---|---|
 | Login URL | `/staff/login` |
-| Admin user | `SEED_ADMIN_USERNAME` (default `admin`) |
-| Admin password | `SEED_ADMIN_PASSWORD` — set it before the first boot |
-| Fallback if unset | `CafeFlow@1404` (development only) |
+The first visit to `/staff/login` shows a **setup wizard** instead of the login form: you choose the
+super admin username and password and enter the **install key**. No `SEED_ADMIN_*` variable is needed.
+
+| Item | Value |
+|---|---|
+| URL | `/staff/login` |
+| Install key | `P70w4EslWwiFvmay6Bs1` (override with `CAFEFLOW_INSTALL_KEY`) |
+| After creating | signed in automatically and redirected to `/admin` |
 | Demo staff (`SEED_DEMO_STAFF=true`) | `manager`, `cashier`, `waiter`, `barista`, `kitchen` with `CafeFlow@1404` |
 
-Seeding only runs while the user table is empty; changing `SEED_ADMIN_PASSWORD` after the first boot
-has no effect (use the in-app password change instead). Keep `SEED_DEMO_STAFF=false` in production.
+Notes:
+
+1. The wizard only appears while no active user holds the `super_admin` role; afterwards it returns
+   `409`. Change the password later under Account security in the panel.
+2. To keep creating the admin from env, set `SEED_ADMIN_USERNAME` and `SEED_ADMIN_PASSWORD`.
+3. Keep `SEED_DEMO_STAFF=false` in production.
 `SEED_DEMO_MENU=true` creates a demo catalog and demo tables (`demo-table-1`, …); set it to `false`
 to start with an empty menu. Inventory, finance, CRM and employees modules are disabled by default —
 enable them under Settings → Modules.
 
 ## 6. Environment variables
 
-A production-ready template lives in [`deploy.env.example`](deploy.env.example): change
-`SEED_ADMIN_PASSWORD` and pass it with `--env-file`.
+A production-ready template lives in [`deploy.env.example`](deploy.env.example): it works unchanged,
+and you pass it with `--env-file`.
 
 | Name | Default | Purpose |
 |---|---|---|
@@ -706,8 +710,9 @@ A production-ready template lives in [`deploy.env.example`](deploy.env.example):
 | `SESSION_COOKIE_SECURE` | `true` in production | Must be `true` behind HTTPS |
 | `LOGIN_MAX_ATTEMPTS` | `5` | Failed logins before lockout |
 | `LOGIN_LOCK_MINUTES` | `15` | Lockout duration |
-| `SEED_ADMIN_USERNAME` | `admin` | First-boot admin |
-| `SEED_ADMIN_PASSWORD` | `CafeFlow@1404` | First-boot password — change it |
+| `CAFEFLOW_INSTALL_KEY` | `P70w4EslWwiFvmay6Bs1` | Key for the first-admin wizard on `/staff/login` |
+| `SEED_ADMIN_USERNAME` | — | Optional; creates the admin from env instead of the wizard |
+| `SEED_ADMIN_PASSWORD` | — | Optional; empty means the wizard creates the admin |
 | `SEED_DEMO_STAFF` | compose `false`, CLI `true` | Create demo staff |
 | `SEED_DEMO_MENU` | `true` | Create demo catalog and tables |
 | `PUBLIC_APP_URL` | — | Public origin (e.g. `https://cafe.example.com`) used in QR links when `Origin` is unavailable |
@@ -850,8 +855,8 @@ or let watchtower/cron run `docker pull`.
 - For GitHub deploys do not put `app` or `platform` in `liara.json`; Liara detects both (the file
   the panel offers contains them, and that is what breaks the Git deploy).
 - Set the variables in the panel's Environment Variables: `APP_ENV=production`,
-  `SEED_ADMIN_USERNAME`, `SEED_ADMIN_PASSWORD`, `SESSION_COOKIE_SECURE=true` and
-  `PUBLIC_APP_URL=https://<domain>`.
+  `SESSION_COOKIE_SECURE=true` and `PUBLIC_APP_URL=https://<domain>`; create the first admin
+  through the `/staff/login` wizard.
 - The first boot runs `cafeflow db setup` automatically (migrations + seed only for an empty
   database); set `CAFEFLOW_AUTO_SETUP=0` to turn it off.
 

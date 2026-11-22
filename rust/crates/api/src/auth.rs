@@ -9,11 +9,12 @@ use cafeflow_db::{AuditEntry, AuthSession, UserRow, now_iso_after_minutes, sha25
 use cafeflow_domain::module_status;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sqlx::Row;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
-use crate::error::{AppError, bad_request, forbidden, unauthorized, validation_failed};
+use crate::error::{AppError, bad_request, conflict, forbidden, unauthorized, validation_failed};
 use crate::state::AppState;
 use crate::totp;
 
@@ -224,6 +225,180 @@ pub async fn login(
         }
     }
 
+    issue_session(&state, &headers, &user, "auth.login_success").await
+}
+
+/// Install key used by the first-run wizard when `CAFEFLOW_INSTALL_KEY` is not
+/// set. It only protects the one-time creation of the first super admin.
+const DEFAULT_INSTALL_KEY: &str = "P70w4EslWwiFvmay6Bs1";
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetupInput {
+    install_key: String,
+    username: String,
+    password: String,
+    full_name: Option<String>,
+}
+
+pub async fn setup_status(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+    Ok(Json(json!({ "required": setup_required(&state).await? })))
+}
+
+/// Creates the first super admin from `/staff/login` when no active super admin
+/// exists yet. No `SEED_ADMIN_*` variable is required: the wizard asks for the
+/// install key and the credentials instead.
+pub async fn setup(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, AppError> {
+    let input: SetupInput = serde_json::from_slice(&body)
+        .map_err(|_| validation_failed("اطلاعات راه‌اندازی معتبر نیست."))?;
+    let ip = client_ip(&headers);
+    if let Some(ip) = ip.as_deref() {
+        let mut limiter = state
+            .login_limiter
+            .lock()
+            .map_err(|_| AppError::internal("rate limiter"))?;
+        if !limiter.hit(&format!("setup:{ip}")) {
+            return Err(AppError::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                "RATE_LIMITED",
+                "تعداد تلاش‌های راه‌اندازی زیاد بوده است. چند دقیقه بعد دوباره تلاش کنید.",
+            ));
+        }
+    }
+    if !setup_required(&state).await? {
+        return Err(conflict(
+            "مدیر اصلی قبلاً ساخته شده است.",
+            "ALREADY_INITIALIZED",
+        ));
+    }
+    let expected = std::env::var("CAFEFLOW_INSTALL_KEY")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_INSTALL_KEY.to_string());
+    if sha256_hex(input.install_key.trim()) != sha256_hex(expected.trim()) {
+        audit(
+            &state,
+            AuditEntry {
+                actor_username: Some(input.username.trim().to_lowercase()),
+                action: "auth.setup_failed".to_string(),
+                entity_type: "user".to_string(),
+                metadata_json: Some(json!({"reason": "invalid_install_key"}).to_string()),
+                ip,
+                ..Default::default()
+            },
+        )
+        .await;
+        return Err(forbidden("کلید نصب نادرست است.", "INVALID_INSTALL_KEY"));
+    }
+
+    let username = input.username.trim().to_lowercase();
+    validate_username(&username)?;
+    if input.password.len() < 8 {
+        return Err(validation_failed("گذرواژه باید حداقل ۸ نویسه باشد."));
+    }
+    if input.password.len() > 128 {
+        return Err(validation_failed("گذرواژه بیش از حد طولانی است."));
+    }
+
+    let role_id: Option<String> =
+        sqlx::query_scalar("SELECT id FROM roles WHERE key = 'super_admin'")
+            .fetch_optional(&state.db.pool)
+            .await
+            .map_err(db_error)?;
+    let Some(role_id) = role_id else {
+        return Err(AppError::internal(
+            "نقش مدیر ساخته نشده است؛ ابتدا db setup را اجرا کنید.",
+        ));
+    };
+    let taken: Option<String> = sqlx::query_scalar("SELECT id FROM users WHERE username = $1")
+        .bind(&username)
+        .fetch_optional(&state.db.pool)
+        .await
+        .map_err(db_error)?;
+    if taken.is_some() {
+        return Err(conflict(
+            "این نام کاربری قبلاً استفاده شده است.",
+            "USERNAME_TAKEN",
+        ));
+    }
+
+    let hash = cafeflow_db::hash_password(&input.password).map_err(AppError::internal)?;
+    let user_id = Uuid::new_v4().to_string();
+    let now = cafeflow_db::now_iso();
+    let full_name = input
+        .full_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("مدیر سیستم");
+    sqlx::query(
+        "INSERT INTO users (id, username, full_name, password_hash, is_active, must_change_password, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 1, 0, $5, $5)",
+    )
+    .bind(&user_id)
+    .bind(&username)
+    .bind(full_name)
+    .bind(&hash)
+    .bind(&now)
+    .execute(&state.db.pool)
+    .await
+    .map_err(db_error)?;
+    sqlx::query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        .bind(&user_id)
+        .bind(&role_id)
+        .execute(&state.db.pool)
+        .await
+        .map_err(db_error)?;
+
+    audit(
+        &state,
+        AuditEntry {
+            actor_user_id: Some(user_id.clone()),
+            actor_username: Some(username.clone()),
+            action: "auth.setup_admin".to_string(),
+            entity_type: "user".to_string(),
+            entity_id: Some(user_id),
+            ip,
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let Some(user) = state
+        .db
+        .find_user_by_username(&username)
+        .await
+        .map_err(db_error)?
+    else {
+        return Err(AppError::internal("کاربر مدیر پیدا نشد."));
+    };
+    issue_session(&state, &headers, &user, "auth.setup_login").await
+}
+
+async fn setup_required(state: &AppState) -> Result<bool, AppError> {
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS n
+           FROM users u
+           JOIN user_roles ur ON ur.user_id = u.id
+           JOIN roles r ON r.id = ur.role_id
+          WHERE r.key = 'super_admin' AND u.is_active = 1",
+    )
+    .fetch_one(&state.db.pool)
+    .await
+    .map_err(db_error)?;
+    Ok(row.get::<i64, _>("n") == 0)
+}
+
+async fn issue_session(
+    state: &AppState,
+    headers: &HeaderMap,
+    user: &UserRow,
+    action: &str,
+) -> Result<Response, AppError> {
     state
         .db
         .register_successful_login(&user.id)
@@ -232,6 +407,10 @@ pub async fn login(
     let token = cafeflow_db::create_token();
     let session_id = Uuid::new_v4().to_string();
     let expires_at = now_iso_after_minutes(state.config.session_ttl_hours * 60);
+    let ip = client_ip(headers);
+    let user_agent = headers
+        .get(header::USER_AGENT)
+        .and_then(|value| value.to_str().ok());
     state
         .db
         .create_session(
@@ -246,11 +425,11 @@ pub async fn login(
         .map_err(db_error)?;
 
     audit(
-        &state,
+        state,
         AuditEntry {
             actor_user_id: Some(user.id.clone()),
             actor_username: Some(user.username.clone()),
-            action: "auth.login_success".to_string(),
+            action: action.to_string(),
             entity_type: "session".to_string(),
             entity_id: Some(session_id),
             ip,
@@ -260,7 +439,7 @@ pub async fn login(
     )
     .await;
 
-    let user_dto = user_dto(&state, &user).await?;
+    let user_dto = user_dto(state, user).await?;
     let modules = state.db.enabled_modules().await.map_err(db_error)?;
     let cookie = build_cookie(
         &state.config.session_cookie_name,
@@ -687,8 +866,7 @@ pub(crate) async fn session_has_permission(
         .any(|candidate| candidate == permission))
 }
 
-fn validate_login(input: &LoginInput) -> Result<(), AppError> {
-    let username = input.username.trim();
+fn validate_username(username: &str) -> Result<(), AppError> {
     if username.len() < 3 || username.len() > 64 {
         return Err(validation_failed("نام کاربری باید بین ۳ و ۶۴ نویسه باشد."));
     }
@@ -700,6 +878,11 @@ fn validate_login(input: &LoginInput) -> Result<(), AppError> {
             "نام کاربری فقط می‌تواند شامل حروف انگلیسی، عدد، نقطه، خط تیره و زیرخط باشد.",
         ));
     }
+    Ok(())
+}
+
+fn validate_login(input: &LoginInput) -> Result<(), AppError> {
+    validate_username(input.username.trim())?;
     if input.password.is_empty() {
         return Err(validation_failed("گذرواژه الزامی است."));
     }

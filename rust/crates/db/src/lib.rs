@@ -12,6 +12,6 @@ pub use config::{DbConfig, DbDriver};
 pub use copy::{CopyReport, copy_sqlite_to_postgres};
 pub use database::Database;
 pub use password::{
-    create_token, hash_password, now_iso_after_minutes, sha256_hex, verify_password,
+    create_token, hash_password, now_iso, now_iso_after_minutes, sha256_hex, verify_password,
 };
 pub use seed::{SeedOptions, is_seeded, seed_database};

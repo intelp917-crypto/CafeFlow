@@ -1,0 +1,4 @@
+# Container entrypoints must keep Unix line endings; a CRLF shebang makes
+# `exec` fail with "no such file or directory" inside Linux images.
+*.sh text eol=lf
+infra/docker/entrypoint.sh text eol=lf

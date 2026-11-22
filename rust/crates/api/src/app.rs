@@ -35,6 +35,7 @@ use crate::static_files::static_router;
 pub fn build_router(state: AppState) -> Router {
     let api = Router::new()
         .route("/health", get(health::health))
+        .route("/auth/setup", get(auth::setup_status).post(auth::setup))
         .route("/auth/login", post(auth::login))
         .route("/auth/logout", post(auth::logout))
         .route("/auth/me", get(auth::me))

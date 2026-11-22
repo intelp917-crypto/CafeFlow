@@ -1,20 +1,39 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Alert, Button, Card, Field, Input } from '@cafeflow/ui';
-import { ApiError, errorMessage } from '../lib/api';
+import { ApiError, api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useBranding } from '../lib/branding';
 import { DeveloperCredit } from '../components/DeveloperCredit';
 
 export function LoginPage() {
-  const { login, user, loading } = useAuth();
+  const { login, refresh, user, loading } = useAuth();
   const { nameFa: brandName } = useBranding();
+  const [mode, setMode] = useState<'checking' | 'login' | 'setup'>('checking');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [installKey, setInstallKey] = useState('');
   const [code, setCode] = useState('');
   const [needsCode, setNeedsCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get<{ required: boolean }>('/auth/setup')
+      .then((data) => {
+        if (active) setMode(data.required ? 'setup' : 'login');
+      })
+      .catch(() => {
+        if (active) setMode('login');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (!loading && user && !user.mustChangePassword) {
     return <Navigate to="/admin" replace />;
@@ -37,6 +56,32 @@ export function LoginPage() {
     }
   };
 
+  const submitSetup = async (event: FormEvent) => {
+    event.preventDefault();
+    if (submitting) return;
+    if (password !== confirmPassword) {
+      setError('تکرار گذرواژه با گذرواژه مطابقت ندارد.');
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      await api.post('/auth/setup', {
+        installKey: installKey.trim(),
+        username: username.trim(),
+        password,
+        ...(fullName.trim() ? { fullName: fullName.trim() } : {}),
+      });
+      await refresh();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const setupMode = mode === 'setup';
+
   return (
     <div className="min-h-dvh bg-canvas lg:grid lg:grid-cols-[1fr_1.05fr]">
       <main className="flex min-h-dvh flex-col justify-center px-5 py-10 sm:px-10 lg:px-14">
@@ -49,74 +94,165 @@ export function LoginPage() {
             </svg>
           </span>
           <div>
-            <h1 className="font-display text-xl font-bold text-ink">ورود به {brandName}</h1>
-            <p className="text-[11px] text-muted">سامانه مدیریت کافه و رستوران</p>
+            <h1 className="font-display text-xl font-bold text-ink">
+              {setupMode ? `راه‌اندازی ${brandName}` : `ورود به ${brandName}`}
+            </h1>
+            <p className="text-[11px] text-muted">
+              {setupMode ? 'ساخت نخستین مدیر اصلی' : 'سامانه مدیریت کافه و رستوران'}
+            </p>
           </div>
         </div>
 
         <Card className="p-6 sm:p-7">
-          <form className="space-y-4" onSubmit={submit} noValidate>
-            {error ? <Alert tone="danger" title="ورود انجام نشد">{error}</Alert> : null}
+          {setupMode ? (
+            <form className="space-y-4" onSubmit={submitSetup} noValidate>
+              {error ? <Alert tone="danger" title="راه‌اندازی انجام نشد">{error}</Alert> : null}
 
-            <Field label="نام کاربری" htmlFor="username" required>
-              <Input
-                id="username"
-                name="username"
-                autoComplete="username"
-                dir="ltr"
-                className="text-start"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="username"
-                required
-              />
-            </Field>
+              <p className="text-xs leading-6 text-muted">
+                هنوز مدیری ساخته نشده است. کلید نصب را وارد کنید و حساب مدیر اصلی را بسازید.
+              </p>
 
-            <Field label="گذرواژه" htmlFor="password" required>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                dir="ltr"
-                className="text-start"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-            </Field>
-
-            {needsCode ? (
               <Field
-                label="کد تأیید دو مرحله‌ای"
-                htmlFor="mfa-code"
-                hint="کد ۶ رقمی برنامه احراز هویت یا یکی از کدهای پشتیبان (مثل ABCD-EFGH)."
+                label="کلید نصب"
+                htmlFor="install-key"
+                hint="کلید یک‌بارمصرف راه‌اندازی را از مالک سیستم بگیرید."
                 required
               >
                 <Input
-                  id="mfa-code"
-                  name="one-time-code"
-                  inputMode="text"
-                  autoComplete="one-time-code"
+                  id="install-key"
+                  name="install-key"
+                  autoComplete="off"
                   dir="ltr"
-                  className="text-center tracking-[0.35em]"
-                  maxLength={9}
-                  value={code}
-                  onChange={(event) =>
-                    setCode(event.target.value.toUpperCase().replace(/[^0-9A-Z-]/g, '').slice(0, 9))
-                  }
+                  className="text-start font-mono"
+                  value={installKey}
+                  onChange={(event) => setInstallKey(event.target.value)}
+                  required
                 />
               </Field>
-            ) : null}
 
-            <Button type="submit" fullWidth loading={submitting}>
-              ورود
-            </Button>
-          </form>
+              <Field label="نام مدیر" htmlFor="full-name">
+                <Input
+                  id="full-name"
+                  name="full-name"
+                  autoComplete="name"
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                  placeholder="مدیر سیستم"
+                />
+              </Field>
+
+              <Field label="نام کاربری" htmlFor="username" required>
+                <Input
+                  id="username"
+                  name="username"
+                  autoComplete="username"
+                  dir="ltr"
+                  className="text-start"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder="admin"
+                  required
+                />
+              </Field>
+
+              <Field label="گذرواژه" htmlFor="password" hint="حداقل ۸ نویسه." required>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  dir="ltr"
+                  className="text-start"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+              </Field>
+
+              <Field label="تکرار گذرواژه" htmlFor="confirm-password" required>
+                <Input
+                  id="confirm-password"
+                  name="confirm-password"
+                  type="password"
+                  autoComplete="new-password"
+                  dir="ltr"
+                  className="text-start"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  required
+                />
+              </Field>
+
+              <Button type="submit" fullWidth loading={submitting}>
+                ساخت مدیر و ورود
+              </Button>
+            </form>
+          ) : (
+            <form className="space-y-4" onSubmit={submit} noValidate>
+              {error ? <Alert tone="danger" title="ورود انجام نشد">{error}</Alert> : null}
+
+              <Field label="نام کاربری" htmlFor="username" required>
+                <Input
+                  id="username"
+                  name="username"
+                  autoComplete="username"
+                  dir="ltr"
+                  className="text-start"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder="username"
+                  required
+                />
+              </Field>
+
+              <Field label="گذرواژه" htmlFor="password" required>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  dir="ltr"
+                  className="text-start"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+              </Field>
+
+              {needsCode ? (
+                <Field
+                  label="کد تأیید دو مرحله‌ای"
+                  htmlFor="mfa-code"
+                  hint="کد ۶ رقمی برنامه احراز هویت یا یکی از کدهای پشتیبان (مثل ABCD-EFGH)."
+                  required
+                >
+                  <Input
+                    id="mfa-code"
+                    name="one-time-code"
+                    inputMode="text"
+                    autoComplete="one-time-code"
+                    dir="ltr"
+                    className="text-center tracking-[0.35em]"
+                    maxLength={9}
+                    value={code}
+                    onChange={(event) =>
+                      setCode(event.target.value.toUpperCase().replace(/[^0-9A-Z-]/g, '').slice(0, 9))
+                    }
+                  />
+                </Field>
+              ) : null}
+
+              <Button type="submit" fullWidth loading={submitting}>
+                ورود
+              </Button>
+            </form>
+          )}
         </Card>
 
         <p className="text-[10px] leading-5 text-muted">
-          دسترسی‌ها بر اساس نقش شما تعیین می‌شود. در صورت فراموشی گذرواژه با مدیر سیستم تماس بگیرید.
+          {setupMode
+            ? 'این صفحه فقط تا زمانی نمایش داده می‌شود که هیچ مدیر اصلی فعالی وجود نداشته باشد.'
+            : 'دسترسی‌ها بر اساس نقش شما تعیین می‌شود. در صورت فراموشی گذرواژه با مدیر سیستم تماس بگیرید.'}
         </p>
 
         <div className="mt-10">

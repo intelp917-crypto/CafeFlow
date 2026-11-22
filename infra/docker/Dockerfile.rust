@@ -54,6 +54,7 @@ COPY infra/docker/entrypoint.sh /usr/local/bin/cafeflow-entrypoint
 # The old Node image used uid 1000 for its `node` user, so an existing named
 # volume mounted at /app/data keeps the same ownership when it is upgraded.
 RUN mkdir -p /app/data/backups /app/data/print-output \
+    && sed -i 's/\r$//' /usr/local/bin/cafeflow-entrypoint \
     && chmod 755 /usr/local/bin/cafeflow-entrypoint \
     && chown -R 1000:1000 /app
 
