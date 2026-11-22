@@ -1,3 +1,18 @@
+## اجرای بک‌اند Rust با CMD (ویندوز)
+
+```bat
+cd /d C:\Projects\CafeFlow\rust
+set APP_ENV=development
+set SEED_ADMIN_PASSWORD=CafeFlow@1404
+cargo run --release -- db setup
+cargo run --release -- serve
+```
+
+سپس `http://localhost:3000/staff/login` را باز کنید (کاربر `admin` و همان گذرواژه). داده‌ها در
+`rust/data` و روی SQLite ذخیره می‌شوند؛ برای بستن سرور در همان پنجره `Ctrl+C` بزنید.
+
+---
+
 # CafeFlow ☕ — کافه‌فلو
 
 **سامانه یکپارچه مدیریت کافه و رستوران — یک ایمیج، یک کانتینر، کل سایت.**
