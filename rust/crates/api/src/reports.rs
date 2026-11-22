@@ -129,21 +129,17 @@ fn calendar_date(value: &str, label: &str) -> Result<Date, AppError> {
             "INVALID_DATE_RANGE",
         ));
     };
-    Date::from_calendar_date(year, month, day).map_err(|_| {
-        bad_request(
-            format!("{label} تاریخ معتبری نیست."),
-            "INVALID_DATE_RANGE",
-        )
-    })
+    Date::from_calendar_date(year, month, day)
+        .map_err(|_| bad_request(format!("{label} تاریخ معتبری نیست."), "INVALID_DATE_RANGE"))
 }
 
 fn day_bounds(date: Date) -> Result<(String, String), AppError> {
     let midnight = PrimitiveDateTime::new(date, time::Time::MIDNIGHT)
         .assume_offset(tehran_offset())
         .to_offset(UtcOffset::UTC);
-    let next = date.next_day().ok_or_else(|| {
-        bad_request("تاریخ پایان معتبر نیست.", "INVALID_DATE_RANGE")
-    })?;
+    let next = date
+        .next_day()
+        .ok_or_else(|| bad_request("تاریخ پایان معتبر نیست.", "INVALID_DATE_RANGE"))?;
     let next_midnight = PrimitiveDateTime::new(next, time::Time::MIDNIGHT)
         .assume_offset(tehran_offset())
         .to_offset(UtcOffset::UTC);
@@ -175,8 +171,18 @@ fn resolve_range(query: &RangeQuery) -> Result<DateRange, AppError> {
     Ok(DateRange {
         start_iso,
         end_iso,
-        from: format!("{:04}-{:02}-{:02}", start.year(), start.month() as u8, start.day()),
-        to: format!("{:04}-{:02}-{:02}", end.year(), end.month() as u8, end.day()),
+        from: format!(
+            "{:04}-{:02}-{:02}",
+            start.year(),
+            start.month() as u8,
+            start.day()
+        ),
+        to: format!(
+            "{:04}-{:02}-{:02}",
+            end.year(),
+            end.month() as u8,
+            end.day()
+        ),
     })
 }
 
@@ -203,10 +209,7 @@ fn status_label(status: &str) -> &'static str {
 async fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), AppError> {
     let session = require_auth(state, headers).await?;
     if !session_has_permission(state, &session.user.id, "reports.read").await? {
-        return Err(forbidden(
-            "اجازهٔ مشاهدهٔ گزارش‌ها را ندارید.",
-            "FORBIDDEN",
-        ));
+        return Err(forbidden("اجازهٔ مشاهدهٔ گزارش‌ها را ندارید.", "FORBIDDEN"));
     }
     Ok(())
 }
@@ -308,11 +311,7 @@ pub async fn summary(
     }
     let daily = daily_map
         .into_iter()
-        .map(|(date, (sales, count))| DailyTotal {
-            date,
-            sales,
-            count,
-        })
+        .map(|(date, (sales, count))| DailyTotal { date, sales, count })
         .collect();
 
     let top_products = sqlx::query(
@@ -394,7 +393,9 @@ fn attachment(filename: String, content_type: &'static str, body: Vec<u8>) -> Re
         .headers_mut()
         .insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     if let Ok(value) = HeaderValue::from_str(&format!("attachment; filename=\"{filename}\"")) {
-        response.headers_mut().insert(header::CONTENT_DISPOSITION, value);
+        response
+            .headers_mut()
+            .insert(header::CONTENT_DISPOSITION, value);
     }
     response
 }
@@ -509,20 +510,26 @@ mod tests {
 
     #[test]
     fn invalid_calendar_dates_and_reversed_ranges_are_rejected() {
-        assert!(resolve_range(&RangeQuery {
-            from: Some("2026-02-30".to_string()),
-            to: None,
-        })
-        .is_err());
-        assert!(resolve_range(&RangeQuery {
-            from: Some("2026-11-23".to_string()),
-            to: Some("2026-11-22".to_string()),
-        })
-        .is_err());
-        assert!(resolve_range(&RangeQuery {
-            from: Some("22-11-2026".to_string()),
-            to: None,
-        })
-        .is_err());
+        assert!(
+            resolve_range(&RangeQuery {
+                from: Some("2026-02-30".to_string()),
+                to: None,
+            })
+            .is_err()
+        );
+        assert!(
+            resolve_range(&RangeQuery {
+                from: Some("2026-11-23".to_string()),
+                to: Some("2026-11-22".to_string()),
+            })
+            .is_err()
+        );
+        assert!(
+            resolve_range(&RangeQuery {
+                from: Some("22-11-2026".to_string()),
+                to: None,
+            })
+            .is_err()
+        );
     }
 }

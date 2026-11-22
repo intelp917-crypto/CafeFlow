@@ -42,5 +42,7 @@ unicode-normalization.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+futures-util = "0.3"
 tempfile = "3"
+tokio-tungstenite = "0.28"
 tower = { workspace = true, features = ["util"] }

@@ -57,7 +57,7 @@
   محاسبه مبلغ و ثبت idempotent سفارش، صفحه پیگیری وضعیت و درخواست گارسون/صورتحساب/کارت‌خوان.
 - **بازی میزی با QR میز**: مهمان‌های هر میز با همان QR منو، هر کدام روی گوشی خود، وارد یک اتاق
   بازی مشترک می‌شوند. فهرست هر ۳۸ بازی GameNest با نام و توضیح فارسی است و **هر ۳۸ بازی صفحهٔ فارسی
-  و رندرر واقعی دارند** و از همان QR میز شروع می‌شوند. اتاق و صندلی فقط در حافظه‌اند و هر صندلی نمای خودش را می‌گیرد؛ کل این
+  و رندرر واقعی دارند** و از همان QR میز شروع می‌شوند. قواعد ۳۸ بازی داخل موتور **Boa** در همان باینری Rust اجرا می‌شوند؛ اتاق و صندلی فقط در حافظه‌اند و هر صندلی نمای خودش را می‌گیرد؛ کل این
   بخش یک ماژول اختیاری است و از «تنظیمات ← ماژول‌ها» خاموش/روشن می‌شود.
 - **نام کافه در کل رابط**: نام ذخیره‌شده در تنظیمات در سایدبار، breadcrumb همهٔ صفحه‌ها، عنوان تب، ورودی
   سینمایی، ورود کارکنان و manifest نصب‌شدنی استفاده می‌شود؛ تغییر نام نیاز به دیپلوی ندارد.
@@ -67,13 +67,18 @@
 
 ```bash
 npm install
-npm run build:shared                 # پکیج دامنه مشترک (API از dist آن می‌خواند)
-npm run db:setup -w @cafeflow/api    # مهاجرت + داده اولیه
+npm run build:shared                 # پکیج دامنه مشترک
+npm run build -w @cafeflow/web       # SPA ساخته‌شده برای سرو توسط Rust
 
-npm start                            # shared + API + وب با هم (Ctrl+C هر دو را می‌بندد)
-npm run dev:api                      # http://localhost:3000
-npm run dev:web                      # http://localhost:5173  ← اینجا وارد شوید
+cd rust
+CAFEFLOW_DATA_DIR=../data cargo run -p cafeflow-api -- db setup
+CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -p cafeflow-api -- serve
+# http://localhost:3000  ← API + WebSocket + SPA روی یک پورت
 ```
+
+برای توسعهٔ رابط، `npm run dev:web` را کنار همان API اجرا کنید (`http://localhost:5173`).
+استک قدیمی NestJS (`npm start` / `npm run dev:api`) فقط مرجع تاریخی آزمون برابری است و در
+تولید استفاده نمی‌شود.
 
 همهٔ داده‌های ماندگار (پایگاه داده، پشتیبان‌ها و رسیدهای چاپ) زیر `CAFEFLOW_DATA_DIR` هستند — پیش‌فرض
 توسعه `data/` و در تولید مسیر مطلق روی دیسک پایدار (مثلاً `/var/lib/cafeflow`). جزئیات: `docs/11-deployment.md`.
@@ -94,7 +99,7 @@ npm run dev:web                      # http://localhost:5173  ← اینجا و�
 | دستور | کار |
 |---|---|
 | `npm run build` | ساخت shared + API + وب |
-| `npm test` | ۴۰۳ آزمون (دامنه + یکپارچه + قواعد و رندرر بازی) |
+| `npm test` | ۴۰۳ آزمون TypeScript مرجع (دامنه + Nest + قواعد و رندرر بازی) |
 | `npm run test:e2e` | ۱۸ سناریوی مرورگر با Playwright (Edge) |
 | `npm run verify:pwa` | تأیید manifest/service worker و صفحه آفلاین روی بیلد تولیدی |
 | `npm run backup` | پشتیبان آنلاین در `$CAFEFLOW_DATA_DIR/backups` با بررسی سلامت و چرخش |
@@ -102,7 +107,7 @@ npm run dev:web                      # http://localhost:5173  ← اینجا و�
 | `npm run db:migrate -w @cafeflow/api` | اعمال مهاجرت‌های جدید |
 | `npm start` | ساخت shared و اجرای هم‌زمان API و وب با لاگ پیشونددار |
 | `npm run dev:api` / `npm run dev:web` | اجرای توسعه |
-| `cd rust && cargo test --workspace` | آزمون دامنه، DB، احراز هویت و مسیر QR بک‌اند Rust |
+| `cd rust && cargo test --workspace` | آزمون کامل بک‌اند Rust: دامنه، DB، API، بازی‌ها و WebSocket |
 | `cd rust && CAFEFLOW_DATA_DIR=../data cargo run -p cafeflow-api -- db setup` | مهاجرت + seed نسخهٔ Rust |
 | `cd rust && CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -p cafeflow-api -- serve` | API + SPA روی یک پورت (Rust) |
 | `docker compose -f infra/docker/compose.rust.yml up -d --build` | ایمیج تک‌سرویسی Rust |
@@ -111,7 +116,7 @@ npm run dev:web                      # http://localhost:5173  ← اینجا و�
 
 | لایه | فناوری |
 |---|---|
-| API | NestJS 11، TypeScript، Zod، pino-style logging؛ بک‌اند Rust/Axum در حال مهاجرت (auth/health/SPA، منو/سفارش/پیگیری QR و داشبورد آماده) |
+| API | Rust/Axum + Tokio + SQLx — همهٔ دامنه‌ها، SPA و WebSocket بازی‌ها در یک باینری؛ NestJS فقط مرجع تاریخی/آزمون برابری |
 | پایگاه داده | SQLite (WAL) با انتخاب `DB_DRIVER=sqlite/postgres` در بک‌اند Rust |
 | وب | React 19، Vite 7، Tailwind CSS 4، React Router |
 | دامنه مشترک | TypeScript خالص (`packages/shared`) — ماشین وضعیت سفارش، ریال، جلالی، نرمال‌سازی فارسی |
@@ -120,12 +125,12 @@ npm run dev:web                      # http://localhost:5173  ← اینجا و�
 ## ساختار
 
 ```
-apps/api        NestJS API + migrations + tests
+rust/           Cargo workspace تولیدی: domain / db / games / api
+apps/api        NestJS مرجع تاریخی + migrations + tests (در تولید اجرا نمی‌شود)
 apps/web        React SPA (مشتری، کارکنان، مدیریت)
 packages/shared منطق دامنه مشترک و آزمون‌شده
 packages/ui     components RTL-first
-infra/docker    Dockerfile.api/web و Dockerfile.rust + compose.rust.yml
-rust/           Cargo workspace: domain / db / games / api
+infra/docker    Dockerfile.rust + compose.rust.yml (تک‌سرویس) و فایل‌های قدیمی Node
 docs/           ۱۶ سند فنی + PROGRESS.md
 ```
 

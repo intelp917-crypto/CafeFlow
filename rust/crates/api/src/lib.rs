@@ -5,6 +5,7 @@ pub mod catalog_import;
 pub mod config;
 pub mod dashboard;
 pub mod error;
+pub mod games;
 pub mod health;
 pub mod middleware;
 pub mod payments;

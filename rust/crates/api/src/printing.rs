@@ -71,10 +71,7 @@ pub async fn list_jobs(
     if let Some(status) = status.as_deref() {
         request = request.bind(status);
     }
-    let rows = request
-        .fetch_all(&state.db.pool)
-        .await
-        .map_err(db_error)?;
+    let rows = request.fetch_all(&state.db.pool).await.map_err(db_error)?;
     Ok(Json(json!({
         "items": rows.iter().map(job_json).collect::<Vec<_>>()
     })))

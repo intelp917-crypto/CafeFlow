@@ -1,0 +1,20 @@
+CafeFlow table games include rule modules from GameNest v2.2.0
+(https://github.com/absswds/GameNest), licensed under the Apache License 2.0.
+The JavaScript files under `upstream/games/` (game rules, their question/word
+data files, `games/lib` helpers and `games/vendor`) are copied verbatim from
+that project. The Persian catalogue, the seat/room layer, the WebSocket
+protocol and every screen are CafeFlow's own work; GameNest's server, page
+shell renderers and language packs are not used. One rule helper lives outside
+`games/` upstream: `public/js/paodekuai-patterns.js`, vendored unchanged at
+`upstream/public/js/` because the paodekuai module requires it.
+
+The full Apache-2.0 text is in `LICENSE` next to this file.
+
+This product includes software developed by Jeff Hlywa (https://github.com/jhlywa/chess.js)
+- chess.js v0.12.1, BSD-2-Clause, vendored at games/vendor/chessjs.js
+
+
+matter-js 0.19.0 (MIT) is bundled in public/vendor/ for the Suika battle game.
+
+games/lib/zh-variants.js contains a Traditional-to-Simplified Chinese character table generated
+from OpenCC (https://github.com/BYVoid/OpenCC, Apache-2.0) via opencc-js 1.0.5.

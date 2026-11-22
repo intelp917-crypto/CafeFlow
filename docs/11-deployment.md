@@ -36,10 +36,14 @@ docker compose --profile tls up -d   # https://localhost:8443 (گواهی داخ
 
 | سرویس | تصویر | نقش |
 |---|---|---|
-| `api` | `Dockerfile.api` (node:24-slim, multi-stage, `USER node`) | NestJS + SQLite + مهاجرت/seed در بوت |
+| `api` | `Dockerfile.api` (node:24-slim, multi-stage, `USER node`) | NestJS قدیمی + SQLite (فقط مرجع/استک پیش از cutover) |
 | `web` | `Dockerfile.web` (vite build → nginx) | SPA + پروکسی هم‌مبدأ `/api` |
 | `backup` | همان تصویر API (اسکریپت `scripts/backup.mjs`) | نسخهٔ `VACUUM INTO` روزانه + چرخش |
 | `proxy` | `caddy:2.8-alpine` با `profiles: ["tls"]` | پایانهٔ HTTPS/ACME |
+
+> مسیر تولید اکنون بخش «بک‌اند Rust و ایمیج تک‌سرویسی» در ادامهٔ همین سند است: یک image/یک
+> container با `Dockerfile.rust` و `compose.rust.yml`. استک سه‌سرویسی بالا فقط برای مقایسه و
+> بازگشت اضطراری نگه داشته شده است.
 
 - **Quay:** هر دو ایمیج در یک مخزن منتشر می‌شوند: `quay.io/intelp917/cafeflow:api-0.1.0` و
   `quay.io/intelp917/cafeflow:web-0.1.0`. تگ‌های کوتاه `api` و `web` برای دیپلوی پایدار (بدون نسخهٔ پین‌شده)
@@ -187,11 +191,11 @@ curl -s http://localhost:3000/api/v1/health
 > تخفیف، بازپرداخت و کارت‌خوان)، درخواست‌های گارسون/کارت‌خوان و بستن میز،
 > کاتالوگ مدیریت (دسته، محصول، گزینه، افزودنی، ساعت سرو، ایمپورت CSV و تصویر محصول)،
 > گزارش فروش/بازپرداخت/روش‌ها/محصولات با خروجی CSV و XLSX،
-> بلیت/پیش‌فاکتور چاپ و صف چاپ با claim اتمی برای پل چاپ، SPA/۴۰۴ واقعی media و
-> انتخاب SQLite/PostgreSQL. کاتالوگ دمو
-> در اولین seed ساخته می‌شود تا منوی QR و سفارش آزمایشی از همان ابتدا کار کنند. بقیهٔ دامنه
-> (بازی‌ها) هنوز در NestJS است؛ تا
-> عبور آزمون‌های برابری، استک دو تصویری فعلی مسیر deployable باقی می‌ماند.
+> بلیت/پیش‌فاکتور چاپ و صف چاپ با claim اتمی برای پل چاپ، کاتالوگ و اتاق/سوکت هر ۳۸ بازی
+> میزی با موتور قواعد Boa داخل همان باینری، SPA/۴۰۴ واقعی media و انتخاب SQLite/PostgreSQL. کاتالوگ دمو
+> در اولین seed ساخته می‌شود تا منوی QR و سفارش آزمایشی از همان ابتدا کار کنند. ایمیج تک‌سرویسی
+> Rust مسیر deployable است و هیچ سرویس Node در زمان اجرا
+> لازم نیست.
 
 ```bash
 # ساخت و اجرای محلی باینری

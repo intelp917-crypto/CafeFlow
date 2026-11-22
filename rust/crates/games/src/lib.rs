@@ -1,93 +1,64 @@
-//! Game room and engine port. The first wave ships the transport-neutral room
-//! primitives; individual game engines are added in the games wave.
+//! Embedded game rules and in-memory table rooms for CafeFlow.
 
-use std::collections::HashMap;
+pub mod engine;
+pub mod rooms;
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct Player {
-    pub id: String,
-    pub name: String,
-    pub is_ready: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct Room {
-    pub code: String,
-    pub game_key: String,
-    pub host_id: String,
-    pub players: Vec<Player>,
-    pub started: bool,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct RoomRegistry {
-    rooms: HashMap<String, Room>,
-}
-
-impl RoomRegistry {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn create(
-        &mut self,
-        code: impl Into<String>,
-        game_key: impl Into<String>,
-        host: Player,
-    ) -> Room {
-        let room = Room {
-            code: code.into(),
-            game_key: game_key.into(),
-            host_id: host.id.clone(),
-            players: vec![host],
-            started: false,
-        };
-        self.rooms.insert(room.code.clone(), room.clone());
-        room
-    }
-
-    pub fn get(&self, code: &str) -> Option<&Room> {
-        self.rooms.get(code)
-    }
-
-    pub fn remove(&mut self, code: &str) -> Option<Room> {
-        self.rooms.remove(code)
-    }
-
-    pub fn join(&mut self, code: &str, player: Player) -> Option<&Room> {
-        let room = self.rooms.get_mut(code)?;
-        if room.players.len() >= 8 || room.started {
-            return None;
-        }
-        room.players.push(player);
-        Some(room)
-    }
-}
+pub use engine::{
+    EngineError, GameEngine, GameManifest, GameMeta, MoveOutcome, is_game_id, manifest,
+    manifest_list,
+};
+pub use rooms::{
+    GameFailure, JoinReply, JoinRequest, MoveReply, RoomManager, RoomUpdate, RoomView, SeatFrame,
+    SeatView,
+};
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn room_lifecycle() {
-        let mut registry = RoomRegistry::new();
-        let host = Player {
-            id: "1".into(),
-            name: "میزبان".into(),
-            is_ready: true,
-        };
-        registry.create("ABC123", "uno", host);
-        let guest = Player {
-            id: "2".into(),
-            name: "مهمان".into(),
-            is_ready: false,
-        };
-        assert_eq!(registry.join("ABC123", guest).unwrap().players.len(), 2);
-        assert!(registry.remove("ABC123").is_some());
-        assert!(registry.get("ABC123").is_none());
+    fn embedded_engine_runs_upstream_commonjs_rules() {
+        assert_eq!(manifest_list().len(), 38);
+        let mut engine = GameEngine::new().unwrap();
+        let mut state = engine.create("tictactoe", 2).unwrap();
+        for (cell, player) in [(0, 0), (3, 1), (1, 0), (4, 1), (2, 0)] {
+            let outcome = engine
+                .apply_move(
+                    "tictactoe",
+                    &state,
+                    &format!(r#"{{"cell":{cell}}}"#),
+                    player,
+                )
+                .unwrap();
+            assert!(outcome.error.is_none(), "{:?}", outcome.error);
+            state = outcome.state;
+        }
+        let value: serde_json::Value = serde_json::from_str(&state).unwrap();
+        assert_eq!(value["winner"], 0);
+    }
+
+    #[test]
+    fn every_manifest_game_can_be_initialized_and_viewed() {
+        let mut engine = GameEngine::new().unwrap();
+        for game in manifest_list() {
+            let players = game.min_players.max(1) as usize;
+            let state = engine
+                .create(&game.id, players)
+                .unwrap_or_else(|error| panic!("{}: {error}", game.id));
+            serde_json::from_str::<serde_json::Value>(&state)
+                .unwrap_or_else(|error| panic!("{} state: {error}", game.id));
+            let meta = engine
+                .meta(&game.id)
+                .unwrap_or_else(|error| panic!("{} meta: {error}", game.id));
+            if meta.has_player_view {
+                for seat in 0..players {
+                    let view = engine
+                        .view(&game.id, &state, seat)
+                        .unwrap_or_else(|error| panic!("{} view {seat}: {error}", game.id));
+                    serde_json::from_str::<serde_json::Value>(&view)
+                        .unwrap_or_else(|error| panic!("{} view {seat}: {error}", game.id));
+                }
+            }
+        }
     }
 }

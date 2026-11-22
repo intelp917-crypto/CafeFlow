@@ -401,8 +401,8 @@
 | متد | مسیر | دسترسی | توضیح |
 |---|---|---|---|
 | GET | `/public/games/catalog` | عمومی | فهرست فارسی بازی‌ها: `id`, `nameFa`, `taglineFa`, `descriptionFa`, `howToFa`, `minPlayers`, `maxPlayers`, `mode` |
-| POST | `/public/games/join` | عمومی | `{ qrToken, gameId, nameFa? }` → `201 { seatToken, seat, room }`؛ `gameId` ناشناس `400`، QR نامعتبر/غیرفعال `404 QR_NOT_FOUND` |
-| WS | `/ws/games?seat=<seatToken>` | عمومی | پیام‌های `ready/start/move/restart` و پاسخ‌های `room/state/move/error`؛ توکن نامعتبر → بستن با کد `4401` |
+| POST | `/public/games/join` | عمومی | `{ qrToken, gameId, nameFa? }` → `201 { seatToken, seat, room, state, expiresAt }`؛ `gameId` ناشناس `400 GAME_UNKNOWN`، QR نامعتبر/غیرفعال `404 QR_NOT_FOUND`، میز در حال نظافت `409 TABLE_NOT_READY`، اتاق پر `409 GAME_FULL` |
+| WS | `/ws/games?seat=<seatToken>` | عمومی | پیام‌های `ready/start/move/restart/leave` و پاسخ‌های `room/state/error` (`{ code, message }`)؛ توکن نامعتبر → بستن با کد `4401`، خروج/حذف صندلی → `4400` |
 
 - `tableId` و `sessionEpoch` هرگز از کلاینت خوانده نمی‌شوند؛ سرور آن‌ها را از `qrToken` و نشست میز حل می‌کند. `qrToken` همان توکن QR منو است.
 - اتاق = `tableId:sessionEpoch:gameId` و فقط در حافظه است؛ هیچ جدول جدیدی اضافه نشد. جزئیات در `docs/16-table-games.md`.

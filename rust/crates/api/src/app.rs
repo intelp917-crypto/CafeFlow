@@ -10,6 +10,7 @@ use crate::catalog;
 use crate::catalog_import;
 use crate::dashboard;
 use crate::error::{AppError, not_found};
+use crate::games;
 use crate::health;
 use crate::middleware::{api_headers, request_id, static_headers};
 use crate::payments;
@@ -129,6 +130,8 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/public/branding/icon/{size}", get(public::branding_icon))
         .route("/public/menu", get(public_menu::menu))
+        .route("/public/games/catalog", get(games::catalog))
+        .route("/public/games/join", post(games::join))
         .route("/public/orders", post(public_orders::create_order))
         .route("/public/orders/{code}", get(public_orders::order_status))
         .fallback(api_not_found)
@@ -137,7 +140,7 @@ pub fn build_router(state: AppState) -> Router {
 
     let prefix = state.config.api_prefix.clone();
     Router::new()
-        .route("/ws/games", get(ws_not_ready))
+        .route("/ws/games", get(games::ws_games))
         .nest(&prefix, api)
         .merge(static_router(state.clone()))
         .layer(middleware::from_fn(request_id))
@@ -149,12 +152,4 @@ pub fn build_router(state: AppState) -> Router {
 
 async fn api_not_found() -> AppError {
     not_found("مسیر درخواستی یافت نشد.", "NOT_FOUND")
-}
-
-async fn ws_not_ready() -> AppError {
-    AppError::new(
-        axum::http::StatusCode::NOT_IMPLEMENTED,
-        "NOT_IMPLEMENTED",
-        "WebSocket بازی‌ها در موج بازی‌ها فعال می‌شود.",
-    )
 }

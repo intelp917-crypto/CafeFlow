@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use cafeflow_db::Database;
 
 use crate::config::Config;
+use crate::games::GamesHub;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -12,6 +13,9 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub login_limiter: Arc<Mutex<SlidingWindowLimiter>>,
     pub request_limiter: Arc<Mutex<SlidingWindowLimiter>>,
+    pub games_device_limiter: Arc<Mutex<SlidingWindowLimiter>>,
+    pub games_ip_limiter: Arc<Mutex<SlidingWindowLimiter>>,
+    pub games: GamesHub,
 }
 
 impl AppState {
@@ -28,6 +32,15 @@ impl AppState {
                 Duration::from_secs(60),
                 20,
             ))),
+            games_device_limiter: Arc::new(Mutex::new(SlidingWindowLimiter::new(
+                Duration::from_secs(60),
+                30,
+            ))),
+            games_ip_limiter: Arc::new(Mutex::new(SlidingWindowLimiter::new(
+                Duration::from_secs(60),
+                120,
+            ))),
+            games: GamesHub::spawn(),
         }
     }
 }

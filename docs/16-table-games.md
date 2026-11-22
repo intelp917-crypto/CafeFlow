@@ -12,7 +12,10 @@
 
 ## چه بازی‌هایی هست
 
-هر ۳۸ بازی GameNest در فهرست هستند و قاعده‌شان داخل `packages/games/upstream` است. ستون
+هر ۳۸ بازی GameNest در فهرست هستند و قاعده‌شان دست‌نخورده داخل
+`rust/crates/games/assets/games` است. موتور قواعد با **Boa** (موتور JavaScript پیوراست) داخل همان
+باینری Rust اجرا می‌شود؛ هیچ پروسه یا runtime Node در تولید وجود ندارد. اتاق، صندلی و سوکت در
+`rust/crates/games/src/rooms.rs` و `rust/crates/api/src/games.rs` هستند. ستون
 «آماده» یعنی صفحهٔ فارسی بازی نوشته شده و اتاق می‌تواند شروع شود. در وضعیت فعلی **هر ۳۸ بازی
 آماده‌اند** و بازی «به‌زودی» در فهرست وجود ندارد.
 
@@ -78,7 +81,7 @@
 2. بازی را انتخاب می‌کند و نامش را می‌نویسد (نام در مرورگر خودش ذخیره می‌شود).
 3. `POST /public/games/join` با `qrToken` و `gameId` اجرا می‌شود. سرور خودش `tableId` را از
    توکن QR و نشست فعال میز پیدا می‌کند؛ کلاینت هیچ‌گاه شناسهٔ میز نمی‌فرستد.
-4. پاسخ: `{ seatToken, seat, room }`. `seatToken` توکن کوتاه‌مدتِ همان صندلی است و در
+4. پاسخ: `{ seatToken, seat, room, state, expiresAt }` (`state` تا شروع دست `null` است). `seatToken` توکن کوتاه‌مدتِ همان صندلی است و در
    `sessionStorage` می‌ماند؛ سوکت با آن باز می‌شود.
 5. اولین مهمانِ میز **میزبان** است. هر صندلی «آماده» می‌شود و میزبان با رسیدن حداقل بازیکن‌ها
    شروع می‌کند.
@@ -127,7 +130,7 @@
 | `room` | صندلی‌ها، فاز، میزبان، `deadline` |
 | `state` | نمای همان صندلی از وضعیت بازی |
 | `move` | بازتاب حرکت در `state` |
-| `error` | `{ code, messageFa }` — متن فارسی برای نمایش مستقیم |
+| `error` | `{ code, message }` — متن فارسی برای نمایش مستقیم |
 
 سقف‌ها: پیام تا ۶۴ کیلوبایت، ۲۰ پیام در ثانیه برای هر صندلی (بیشتر از آن `429` منطقی و
 پیام `RATE_LIMITED`)، حداکثر بازیکن از `maxPlayers` همان بازی.
@@ -150,38 +153,28 @@
 ## مجوز
 
 ماژول‌های قواعد از [GameNest](https://github.com/absswds/GameNest) نسخهٔ v2.2.0 (Apache-2.0)
-گرفته شده‌اند و دست‌نخورده در `packages/games/upstream` هستند. `server.js`، رندررها و
-ترجمه‌های آن پروژه استفاده نشده‌اند. متن مجوز در `packages/games/LICENSE` و فهرست تغییرها در
-`packages/games/NOTICE` است؛ رابط کاربری، ترجمهٔ فارسی و لایهٔ اتاق/سوکت نوشتهٔ CafeFlow است.
+گرفته شده‌اند و دست‌نخورده در `rust/crates/games/assets/games` هستند. `server.js`، رندررها و
+ترجمه‌های آن پروژه استفاده نشده‌اند. متن مجوز در `rust/crates/games/assets/LICENSE` و فهرست
+تغییرها در `rust/crates/games/assets/NOTICE` است؛ رابط کاربری، ترجمهٔ فارسی، لودر CommonJS داخل
+Boa و لایهٔ اتاق/سوکت نوشتهٔ CafeFlow است.
 
 ## افزودن بازی بعدی
 
-1. فایل قاعده از قبل در `packages/games/upstream/games/` هست؛ اگر بازی تازه‌ای از GameNest آمد،
+1. فایل قاعده از قبل در `rust/crates/games/assets/games/` هست؛ اگر بازی تازه‌ای از GameNest آمد،
    همان را کپی و در `NOTICE` ثبت کنید.
 2. یک رندرر در `apps/web/src/features/games/renderers/` بنویسید که `GameRendererProps` را
    بگیرد و در `renderers/index.ts` ثبتش کنید.
 3. آزمون رندرر را کنار بقیه در `renderers/__tests__/` بگذارید.
-4. `playable: true` را در `packages/games/src/manifest.ts` برای همان بازی بگذارید. پیش از آن،
+4. `playable: true` را در `rust/crates/games/assets/manifest.json` برای همان بازی بگذارید. پیش از آن،
    کاتالوگ بازی را نشان می‌دهد ولی سرور شروعش را با `400 GAME_NOT_READY` رد می‌کند.
 
 ## آزمون‌ها
 
 | سطح | فایل |
 |---|---|
-| قواعد و manifest | `packages/games/test/manifest.test.ts` |
-| قواعد کارتی‌ها (داوینچی، دل، دوشیزه، بیگ‌تو، زمیندار) | `packages/games/test/card-games.test.ts` |
-| قواعد پائو دِه‌کوآی و بچه‌گربه‌های انفجاری | `packages/games/test/more-card-games.test.ts` |
-| قواعد گو، شطرنج چینی، نبرد ناوگان و میخانهٔ دروغگو | `packages/games/test/board-games.test.ts` |
-| قواعد بیست‌وچهار، شطرنج پروازی، تگزاس و نبرد مارها | `packages/games/test/more-games.test.ts` |
-| قواعد رامیکاب، ماهیونگ و محتوای فارسی بازی‌های اجتماعی | `packages/games/test/table-games.test.ts` |
-| ورود با QR | `apps/api/test/games.join.test.ts` |
-| مدیر اتاق (صندلی، نوبت، نشت اطلاعات، ددلاین) | `apps/api/test/games.unit.test.ts` |
-| سوکت دو کلاینت | `apps/api/test/games.ws.test.ts` |
-| صفحه‌های بازی | `apps/web/src/features/games/renderers/__tests__/*.test.tsx` |
-| پنج رندرر کارتی و انتخاب کارت | `apps/web/src/features/games/renderers/__tests__/card-games.test.tsx` |
-| رندرر پائو دِه‌کوآی و بچه‌گربه‌ها | `apps/web/src/features/games/renderers/__tests__/more-card-games.test.tsx` |
-| رندرر گو، شطرنج چینی، نبرد ناوگان و میخانهٔ دروغگو | `apps/web/src/features/games/renderers/__tests__/board-games.test.tsx` |
-| رندرر بیست‌وچهار، شطرنج پروازی، تگزاس و نبرد مارها | `apps/web/src/features/games/renderers/__tests__/more-games.test.tsx` |
-| رندرر رامیکاب و ماهیونگ | `apps/web/src/features/games/renderers/__tests__/table-games.test.tsx` |
-| رندرر جرئت‌وحقیقت، آندرکاور، مسابقه و نقاشی | `apps/web/src/features/games/renderers/__tests__/party-games.test.tsx` |
-| دو گوشی واقعی | `apps/web/e2e/table-games.spec.ts` |
+| موتور Boa و همهٔ ۳۸ بازی | `rust/crates/games/src/lib.rs` (`every_manifest_game_can_be_initialized_and_viewed`, `embedded_engine_runs_upstream_commonjs_rules`) |
+| اتاق، نوبت، تایمر فاز، نشت اطلاعات، grace و بازپخش | `rust/crates/games/src/rooms.rs` |
+| کاتالوگ/join، ظرفیت، QR و گیت ماژول | `rust/crates/api/tests/public_flow.rs` (`games_*`) |
+| سوکت دو کلاینت، حرکت مجاز/ردشده، برد، خروج و کد ۴۴۰۱ | `rust/crates/api/tests/public_flow.rs` (`games_websocket_*`) |
+| رندررهای وب (تست‌های قبلی، بدون تغییر رفتار) | `apps/web/src/features/games/renderers/__tests__/*.test.tsx` |
+| آزمون‌های قواعد TypeScript (مرجع برابری) | `packages/games/test/*.test.ts` |

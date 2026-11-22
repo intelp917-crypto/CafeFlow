@@ -4,6 +4,8 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
 use cafeflow_api::{AppState, Config, build_router};
 use cafeflow_db::{Database, DbConfig, DbDriver, SeedOptions};
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tower::ServiceExt;
 
 fn config(root: &Path) -> Config {
@@ -2174,9 +2176,7 @@ async fn reports_summarize_sales_refunds_and_export_payments() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!(
-                    "/api/v1/reports/payments.csv?from={from}&to={to}"
-                ))
+                .uri(format!("/api/v1/reports/payments.csv?from={from}&to={to}"))
                 .header(header::COOKIE, &session_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -2204,9 +2204,7 @@ async fn reports_summarize_sales_refunds_and_export_payments() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!(
-                    "/api/v1/reports/payments.xlsx?from={from}&to={to}"
-                ))
+                .uri(format!("/api/v1/reports/payments.xlsx?from={from}&to={to}"))
                 .header(header::COOKIE, &session_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -2411,10 +2409,7 @@ async fn print_queue_claims_jobs_atomically_and_tracks_status() {
     assert_eq!(status, StatusCode::CONFLICT);
     assert!(body.contains("PRINT_JOB_ALREADY_PRINTED"));
 
-    let long_error = format!(
-        r#"{{"error":"{}"}}"#,
-        "x".repeat(250)
-    );
+    let long_error = format!(r#"{{"error":"{}"}}"#, "x".repeat(250));
     let response = app
         .clone()
         .oneshot(
@@ -2493,4 +2488,378 @@ async fn print_queue_claims_jobs_atomically_and_tracks_status() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn games_join_reuses_the_device_seat_and_enforces_capacity() {
+    let (app, _directory) = app_with_catalog().await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/public/games/catalog")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let catalog: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(catalog["games"].as_array().unwrap().len(), 38);
+    let tictactoe = catalog["games"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|game| game["id"] == "tictactoe")
+        .unwrap();
+    assert_eq!(tictactoe["nameFa"], "دوز");
+    assert_eq!(tictactoe["playable"], true);
+
+    let join_body = r#"{"qrToken":"table-token-123","gameId":"tictactoe","nameFa":"میزبان"}"#;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/games/join")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(join_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, cookie, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert!(cookie.starts_with("cafe_device="));
+    let device_cookie = cookie.split(';').next().unwrap().to_string();
+    let host: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(host["seat"], 0);
+    assert_eq!(host["room"]["seats"].as_array().unwrap().len(), 1);
+    assert_eq!(host["room"]["seats"][0]["nameFa"], "میزبان");
+    assert!(host["state"].is_null());
+    assert!(host["seatToken"].as_str().unwrap().len() >= 32);
+    let room_id = host["room"]["roomId"].as_str().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/games/join")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &device_cookie)
+                .body(Body::from(join_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let rejoin: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(rejoin["seat"], 0);
+    assert_eq!(rejoin["room"]["roomId"], room_id);
+    assert_eq!(rejoin["room"]["seats"].as_array().unwrap().len(), 1);
+    assert_ne!(rejoin["seatToken"], host["seatToken"]);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/games/join")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"qrToken":"table-token-123","gameId":"tictactoe","nameFa":"مهمان"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let guest: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(guest["seat"], 1);
+    assert_eq!(guest["room"]["seats"].as_array().unwrap().len(), 2);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/games/join")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"qrToken":"table-token-123","gameId":"tictactoe"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("GAME_FULL"));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/games/join")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"qrToken":"missing-token","gameId":"tictactoe"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(body.contains("QR_NOT_FOUND"));
+}
+
+#[tokio::test]
+async fn games_are_blocked_when_the_module_is_disabled() {
+    let (app, directory) = app_with_catalog().await;
+    let database = Database::connect(&config(directory.path()).db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE module_settings SET is_enabled = 0 WHERE key = 'games'")
+        .execute(&database.pool)
+        .await
+        .unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/public/games/catalog")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(body.contains("MODULE_DISABLED"));
+}
+
+async fn join_games(app: &axum::Router, name: &str) -> (serde_json::Value, String) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/games/join")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"qrToken":"table-token-123","gameId":"tictactoe","nameFa":"{name}"}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let value: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let token = value["seatToken"].as_str().unwrap().to_string();
+    (value, token)
+}
+
+type GameSocket =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+async fn next_frame(socket: &mut GameSocket, kind: &str) -> serde_json::Value {
+    loop {
+        let message = tokio::time::timeout(std::time::Duration::from_secs(5), socket.next())
+            .await
+            .expect("websocket frame timeout")
+            .expect("websocket closed")
+            .expect("websocket error");
+        if let WsMessage::Text(text) = message {
+            let value: serde_json::Value = serde_json::from_str(text.as_str()).unwrap();
+            if value["type"] == kind {
+                return value;
+            }
+        }
+    }
+}
+
+async fn send_frame(socket: &mut GameSocket, value: serde_json::Value) {
+    socket
+        .send(WsMessage::Text(value.to_string().into()))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn games_websocket_plays_a_full_room_and_rejects_stale_seats() {
+    let (app, _directory) = app_with_catalog().await;
+    let (host, host_token) = join_games(&app, "میزبان").await;
+    let (guest, guest_token) = join_games(&app, "مهمان").await;
+    let room_id = host["room"]["roomId"].as_str().unwrap();
+    assert_eq!(guest["room"]["roomId"], room_id);
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let (mut host_ws, _) =
+        tokio_tungstenite::connect_async(format!("ws://{address}/ws/games?seat={host_token}"))
+            .await
+            .unwrap();
+    let lobby = next_frame(&mut host_ws, "room").await;
+    assert_eq!(lobby["room"]["phase"], "lobby");
+    assert_eq!(lobby["room"]["seats"][0]["connected"], true);
+
+    let (mut guest_ws, _) =
+        tokio_tungstenite::connect_async(format!("ws://{address}/ws/games?seat={guest_token}"))
+            .await
+            .unwrap();
+    let host_view = next_frame(&mut host_ws, "room").await;
+    assert_eq!(host_view["room"]["seats"].as_array().unwrap().len(), 2);
+    let guest_view = next_frame(&mut guest_ws, "room").await;
+    assert_eq!(guest_view["room"]["seats"].as_array().unwrap().len(), 2);
+
+    send_frame(
+        &mut host_ws,
+        serde_json::json!({"type": "ready", "ready": true}),
+    )
+    .await;
+    assert_eq!(
+        next_frame(&mut host_ws, "room").await["room"]["seats"][0]["ready"],
+        true
+    );
+    assert_eq!(
+        next_frame(&mut guest_ws, "room").await["room"]["seats"][0]["ready"],
+        true
+    );
+    send_frame(
+        &mut guest_ws,
+        serde_json::json!({"type": "ready", "ready": true}),
+    )
+    .await;
+    assert_eq!(
+        next_frame(&mut guest_ws, "room").await["room"]["seats"][1]["ready"],
+        true
+    );
+    assert_eq!(
+        next_frame(&mut host_ws, "room").await["room"]["seats"][1]["ready"],
+        true
+    );
+
+    send_frame(&mut host_ws, serde_json::json!({"type": "start"})).await;
+    let host_room = next_frame(&mut host_ws, "room").await;
+    assert_eq!(host_room["room"]["phase"], "playing");
+    let guest_room = next_frame(&mut guest_ws, "room").await;
+    assert_eq!(guest_room["room"]["phase"], "playing");
+    assert_eq!(
+        next_frame(&mut host_ws, "state").await["state"]["currentPlayer"],
+        0
+    );
+    assert_eq!(
+        next_frame(&mut guest_ws, "state").await["state"]["currentPlayer"],
+        0
+    );
+
+    send_frame(
+        &mut guest_ws,
+        serde_json::json!({"type": "move", "move": {"cell": 4}}),
+    )
+    .await;
+    let refused = next_frame(&mut guest_ws, "error").await;
+    assert_eq!(refused["code"], "MOVE_REFUSED");
+
+    send_frame(
+        &mut host_ws,
+        serde_json::json!({"type": "move", "move": {"cell": 0}}),
+    )
+    .await;
+    assert_eq!(
+        next_frame(&mut guest_ws, "state").await["state"]["currentPlayer"],
+        1
+    );
+    assert_eq!(
+        next_frame(&mut host_ws, "state").await["state"]["currentPlayer"],
+        1
+    );
+    send_frame(
+        &mut guest_ws,
+        serde_json::json!({"type": "move", "move": {"cell": 3}}),
+    )
+    .await;
+    assert_eq!(
+        next_frame(&mut host_ws, "state").await["state"]["currentPlayer"],
+        0
+    );
+    assert_eq!(
+        next_frame(&mut guest_ws, "state").await["state"]["currentPlayer"],
+        0
+    );
+    send_frame(
+        &mut host_ws,
+        serde_json::json!({"type": "move", "move": {"cell": 1}}),
+    )
+    .await;
+    assert_eq!(
+        next_frame(&mut guest_ws, "state").await["state"]["currentPlayer"],
+        1
+    );
+    assert_eq!(
+        next_frame(&mut host_ws, "state").await["state"]["currentPlayer"],
+        1
+    );
+    send_frame(
+        &mut guest_ws,
+        serde_json::json!({"type": "move", "move": {"cell": 4}}),
+    )
+    .await;
+    assert_eq!(
+        next_frame(&mut host_ws, "state").await["state"]["currentPlayer"],
+        0
+    );
+    assert_eq!(
+        next_frame(&mut guest_ws, "state").await["state"]["currentPlayer"],
+        0
+    );
+    send_frame(
+        &mut host_ws,
+        serde_json::json!({"type": "move", "move": {"cell": 2}}),
+    )
+    .await;
+    let finished = next_frame(&mut guest_ws, "state").await;
+    assert_eq!(finished["state"]["winner"], 0);
+    assert_eq!(
+        next_frame(&mut host_ws, "state").await["state"]["winner"],
+        0
+    );
+
+    send_frame(&mut guest_ws, serde_json::json!({"type": "leave"})).await;
+    let after_leave = next_frame(&mut host_ws, "room").await;
+    assert_eq!(after_leave["room"]["seats"].as_array().unwrap().len(), 1);
+    assert_eq!(after_leave["room"]["seats"][0]["nameFa"], "میزبان");
+
+    let (mut stale_ws, _) =
+        tokio_tungstenite::connect_async(format!("ws://{address}/ws/games?seat=not-a-real-seat"))
+            .await
+            .unwrap();
+    loop {
+        let message = tokio::time::timeout(std::time::Duration::from_secs(5), stale_ws.next())
+            .await
+            .expect("stale seat close timeout")
+            .expect("stale seat socket")
+            .expect("stale seat error");
+        if let WsMessage::Close(Some(frame)) = message {
+            assert_eq!(
+                frame.code,
+                tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Library(4401)
+            );
+            break;
+        }
+    }
+
+    host_ws.close(None).await.unwrap();
+    server.abort();
 }
