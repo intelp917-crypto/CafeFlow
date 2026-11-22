@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod app;
 pub mod auth;
 pub mod catalog;
@@ -7,6 +8,7 @@ pub mod dashboard;
 pub mod error;
 pub mod games;
 pub mod health;
+pub mod management;
 pub mod middleware;
 pub mod payments;
 pub mod prep;

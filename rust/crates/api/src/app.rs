@@ -5,6 +5,7 @@ use axum::routing::{delete, get, patch, post, put};
 use tower_http::compression::CompressionLayer;
 use tower_http::trace::TraceLayer;
 
+use crate::admin;
 use crate::auth;
 use crate::catalog;
 use crate::catalog_import;
@@ -12,6 +13,7 @@ use crate::dashboard;
 use crate::error::{AppError, not_found};
 use crate::games;
 use crate::health;
+use crate::management;
 use crate::middleware::{api_headers, request_id, static_headers};
 use crate::payments;
 use crate::prep;
@@ -44,6 +46,52 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/sessions/{id}", delete(auth::revoke_session))
         .route("/auth/password", post(auth::change_password))
         .route("/dashboard/overview", get(dashboard::overview))
+        .route(
+            "/settings",
+            get(admin::get_settings).patch(admin::update_settings),
+        )
+        .route("/modules", get(admin::list_modules))
+        .route("/modules/{key}", patch(admin::set_module))
+        .route("/users", get(admin::list_users).post(admin::create_user))
+        .route("/users/{id}", patch(admin::update_user))
+        .route("/roles", get(admin::list_roles))
+        .route("/permissions", get(admin::list_permissions))
+        .route("/audit", get(admin::list_audit))
+        .route("/approvals", get(admin::list_approvals))
+        .route(
+            "/reservations",
+            get(management::list_reservations).post(management::create_reservation),
+        )
+        .route(
+            "/reservations/{id}/status",
+            post(management::set_reservation_status),
+        )
+        .route(
+            "/employees",
+            get(management::list_employees).post(management::create_employee),
+        )
+        .route("/employees/{id}", patch(management::update_employee))
+        .route("/employees/performance", get(management::performance))
+        .route(
+            "/shifts",
+            get(management::list_shifts).post(management::create_shift),
+        )
+        .route("/shifts/{id}/check-in", post(management::check_in))
+        .route("/shifts/{id}/check-out", post(management::check_out))
+        .route("/shifts/{id}/cancel", post(management::cancel_shift))
+        .route("/approvals/{id}/decision", post(admin::decide_approval))
+        .route("/notifications", get(admin::list_notifications))
+        .route(
+            "/notifications/read-all",
+            post(admin::read_all_notifications),
+        )
+        .route("/notifications/{id}/read", post(admin::read_notification))
+        .route("/messages", get(admin::messages_overview))
+        .route("/messages/templates", post(admin::create_template))
+        .route("/messages/templates/{id}", patch(admin::update_template))
+        .route("/messages/send", post(admin::send_message))
+        .route("/messages/{id}/sent", post(admin::mark_message_sent))
+        .route("/messages/{id}/failed", post(admin::mark_message_failed))
         .route("/catalog", get(catalog::get_catalog))
         .route("/catalog/categories", post(catalog::create_category))
         .route(
