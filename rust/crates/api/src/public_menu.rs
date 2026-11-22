@@ -318,7 +318,7 @@ pub(crate) async fn settings(state: &AppState) -> Result<SettingsRow, AppError> 
 
 pub(crate) async fn find_qr(state: &AppState, token: &str) -> Result<QrRow, AppError> {
     let row = sqlx::query(
-        "SELECT q.kind, q.label, q.table_id, q.is_active,
+        "SELECT q.kind, q.label, t.id AS table_id, q.is_active,
                 t.code AS table_code, t.name_fa AS table_name_fa, f.name_fa AS floor_name_fa
            FROM qr_codes q
            LEFT JOIN dining_tables t

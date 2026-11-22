@@ -1,154 +1,826 @@
 # CafeFlow ☕ — کافه‌فلو
 
-سامانه یکپارچه مدیریت کافه و رستوران: منوی QR مشتری، مدیریت میز و سالن، داشبورد گارسون/باریستا/آشپزخانه،
-صندوق و پرداخت، رزرو، تخفیف، انبار، مالی، باشگاه مشتریان و اعلان‌ها.
+**سامانه یکپارچه مدیریت کافه و رستوران — یک ایمیج، یک کانتینر، کل سایت.**
+**All-in-one cafe & restaurant platform — one image, one container, the whole site.**
 
-رابط‌های کاربری **کاملاً فارسی** و **RTL** هستند؛ تقویم **جلالی** و فونت **Vazirmatn**. کد، نام‌گذاری،
-مسیرهای API و مستندات فنی به انگلیسی نوشته می‌شوند.
+| فارسی | English |
+|---|---|
+| [راهنمای فارسی](#فارسی) | [English guide](#english) |
 
-> **وضعیت: فازهای ۰ تا ۱۰ کامل شده‌اند** — از پایگاه داده و RBAC تا منوی QR، صندوق و رسید، رزرو/انبار/CRM،
-> طراح سالن و QR میز، ماژول‌های پشت‌صحنه (شیفت و عملکرد، خرید/ضایعات، سود و زیان، مرکز پیام) و
-> **مدیریت کاتالوگ/منو** (دسته، محصول، قیمت و گزینه‌ها از رابط، بدون دست‌زدن به پایگاه داده).
-> سناریوی کامل پول (مشتری → صندوق → رسید → بستن میز) در مرورگر و روی پایگاه داده آزمایشی جدا آزمون می‌شود.
-> **استقرار Docker و HTTPS** روی همین ماشین اجرا و تأیید شد (۲۰۲۶-۱۱-۲۰)؛ آنچه **تأیید نشده** است: سرور با دامنهٔ واقعی، مهاجرت PostgreSQL و Redis، و مجوز انتشار ویدیوی ورودی.
-> فهرست دقیق قابلیت‌ها، تصمیم‌ها و محدودیت‌های باقی‌مانده در [`docs/PROGRESS.md`](docs/PROGRESS.md) است.
+- ایمیج منتشرشده: `quay.io/intelp917/cafeflow:0.2.0` (و تگ کوتاه `latest`)
+- digest برای پین‌کردن: `sha256:cd6ff66e47df8ffd28c690aa6135064e94596b428bfaf86b36ff2ee4ad30febf`
+- پورت پیش‌فرض: `3000` (فقط یک پورت برای API + SPA + WebSocket + رسانه)
+- پایگاه داده پیش‌فرض: SQLite روی `/app/data` — بدون سرویس جانبی
+- گزینهٔ جایگزین: PostgreSQL ۱۷+ با `DB_DRIVER=postgres`
 
 ---
 
-## آنچه امروز کار می‌کند
+<a id="فارسی"></a>
 
-- **پایگاه داده کامل** (۶۹ جدول) با مهاجرت، کلید خارجی، ایندکس و داده اولیه فارسی واقعی.
-- **احراز هویت**: ورود با scrypt، نشست سمت سرور، کوکی `HttpOnly`، قفل حساب، تغییر گذرواژه، مدیریت نشست‌ها.
-- **کنترل دسترسی**: ۳۹ مجوز دقیق در ۸ نقش؛ بررسی کامل در سرور (`SessionGuard` → `PermissionsGuard` → `ModuleGuard`).
-- **گزارش رویدادها**: ثبت ورود، تغییر تنظیمات، تغییر ماژول و تصمیم‌های تأیید با مقدار قبل/بعد.
-- **ماژول‌ها**: ۱۵ ماژول با وضعیت واقعی؛ انبار/مالی/CRM/کارکنان پیش‌فرض خاموش و پشت گیت سرور؛ خاموش‌کردن داده را حذف نمی‌کند.
-- **صف تأیید**: درخواست‌ها، تأیید/رد با دلیل و ثبت حسابرسی.
-- **داشبورد عملیات** با اعداد زنده (فروش امروز، سفارش فعال، میز اشغال، درخواست مشتری، رویدادها).
-- **عملیات کارکنان**: صف سفارش‌ها با تغییر وضعیت از ماشین وضعیت مشترک، صف آماده‌سازی به تفکیک باریستا/آشپزخانه
-  با وضعیت خودکار `preparing`/`partially_ready`/`ready`، نمای زنده میزها و رسیدگی یک‌باره به درخواست‌های مشتری.
-- **صندوق و تسویه**: پرداخت جزئی یا کامل (نقد/کارت/آنلاین)، صورت‌حساب با `paid_total`، مشتق‌شدن وضعیت `paid`
-  از پرداخت‌های تأییدشده، بستن میز فقط بعد از تسویه کامل و تکمیل درخواست کارت‌خوان همراه با ثبت پرداخت.
-- **تخفیف و بازپرداخت**: تخفیف مبلغی/درصدی پیش از پرداخت با دلیل و الزام تأیید مدیر برای بیش از ۲۰٪،
-  بازپرداخت جزئی/کامل روی سفارش تسویه‌شده بدون بازگرداندن وضعیت، و بازمحاسبه مبلغ خالص از پایگاه داده.
-- **رسید و صف چاپ**: رسید متنی فارسی با تاریخ جلالی، صف `print_jobs` با کلید یکتا (بدون چاپ تکراری)،
-  صفحه `/admin/print` و پل چاپ `scripts/print-bridge.mjs` که کارها را به فایل متنی می‌نویسد.
-- **اعلان‌ها**: صندوق دریافت شخصی/نقش‌محور در `/admin/notifications` با علامت خوانده‌شده و شمارش خوانده‌نشده.
-- **گزارش‌ها**: فروش/بازپرداخت/خالص، تفکیک روش پرداخت، فروش روزانه تهران، ۱۰ محصول پرفروش و خروجی CSV.
-- **مدیریت منو و محصولات**: ساخت و ویرایش دسته‌ها، محصولات، قیمت، واحد آماده‌سازی و درخت گزینه‌ها از
-  `/admin/catalog`؛ ناموجودکردن سریع، بایگانی و بازگردانی، جست‌وجو و فیلتر دسته — تغییر بلافاصله در منوی QR.
-- **رزرو میز**: رزرو تلفنی/حضوری با بررسی ظرفیت و تداخل زمانی در SQLite، چرخه تأیید → حضور → لغو/عدم‌حضور
-  و اثر واقعی روی وضعیت میز (`/admin/reservations`).
-- **انبار (اختیاری، پیش‌فرض خاموش)**: مواد اولیه، واحد، حد هشدار، دستور پخت، کسر خودکار موجودی در همان
-  تراکنش سفارش، بازگردانی یک‌باره در لغو و گردش کامل انبار (`/admin/inventory`).
-- **مدیریت کارکنان**: ساخت حساب با نقش، ویرایش نقش/وضعیت، بازنشانی گذرواژه با ابطال نشست‌ها از UI
-  (`/admin/staff`).
-- **جلسات صندوق (اختیاری)**: باز کردن با موجودی اولیه، محاسبه انتظار از پرداخت‌های نقدی و بستن با مغایرت
-  (`/admin/cash`).
-- **باشگاه مشتریان (اختیاری)**: مشتری با شماره یکتا، امتیاز و سطح خودکار، کیف پول با دفتر تغییرات
-  (`/admin/customers`).
-- **سخت‌سازی**: هدرهای امنیتی و `X-Request-Id`، سقف نرخ ورود بر اساس IP، ایندکس‌های گزارش/رزرو، اسکریپت
-  پشتیبان‌گیری آنلاین با `VACUUM INTO`.
-- **تأیید دو مرحله‌ای (MFA)**: TOTP سازگار با برنامه‌های احراز هویت، بدون وابستگی خارجی، ۱۰ کد پشتیبان
-  یک‌بارمصرف با هش SHA-256، بازنشانی دستگاه گمشده توسط مدیر؛ مدیریت از `/admin/security` و مرحله کد در ورود.
-- **PWA**: manifest فارسی/RTL، آیکون‌ها، سرویس‌ورکر با فالبک آفلاین — پاسخ‌های API هرگز کش نمی‌شوند.
-- **E2E مرورگر**: ۱۸ سناریوی Playwright روی Edge نصب‌شده (`npm run test:e2e`)، شامل پوشش همهٔ مسیرها، نقش‌ها، CRUD کاتالوگ/انبار و دو گوشی هم‌زمان روی یک میز.
-- **لندینگ و منوی QR**: صفحه اصلی پریمیوم با کاروسل تعاملی دسته‌ها (کشیدن/کلیک/پخش خودکار و هاله رنگی)
-  و آمار زنده منو؛ منوی هر میز با ریل کپسولی شناور دسته‌ها در لبه چپ (باز/بسته، تولتیپ، اسکرول مستقل)، سبد خرید ماندگار،
-  محاسبه مبلغ و ثبت idempotent سفارش، صفحه پیگیری وضعیت و درخواست گارسون/صورتحساب/کارت‌خوان.
-- **بازی میزی با QR میز**: مهمان‌های هر میز با همان QR منو، هر کدام روی گوشی خود، وارد یک اتاق
-  بازی مشترک می‌شوند. فهرست هر ۳۸ بازی GameNest با نام و توضیح فارسی است و **هر ۳۸ بازی صفحهٔ فارسی
-  و رندرر واقعی دارند** و از همان QR میز شروع می‌شوند. اتاق و صندلی فقط در حافظه‌اند و هر صندلی نمای خودش را می‌گیرد؛ کل این
-  بخش یک ماژول اختیاری است و از «تنظیمات ← ماژول‌ها» خاموش/روشن می‌شود.
-- **نام کافه در کل رابط**: نام ذخیره‌شده در تنظیمات در سایدبار، breadcrumb همهٔ صفحه‌ها، عنوان تب، ورودی
-  سینمایی، ورود کارکنان و manifest نصب‌شدنی استفاده می‌شود؛ تغییر نام نیاز به دیپلوی ندارد.
-- **سیستم طراحی RTL-first** با رنگ‌های برند `#aa472b` و `#96a09f`.
+# راهنمای فارسی
 
-## شروع سریع
+## ۱. این پروژه چیست؟
 
-```bash
-npm install
-npm run build:shared                 # پکیج دامنه مشترک (API از dist آن می‌خواند)
-npm run db:setup -w @cafeflow/api    # مهاجرت + داده اولیه
+CafeFlow کل چرخهٔ یک کافه/رستوران را در یک برنامهٔ وب فارسی و RTL پوشش می‌دهد:
 
-npm start                            # shared + API + وب با هم (Ctrl+C هر دو را می‌بندد)
-npm run dev:api                      # http://localhost:3000
-npm run dev:web                      # http://localhost:5173  ← اینجا وارد شوید
+- **منوی QR مشتری**: `/menu` (بدون میز) و `/menu/<qr-token>` (منوی همان میز)، سبد خرید، ثبت سفارش idempotent،
+  پیگیری وضعیت در `/order/<code>` و درخواست گارسون/صورتحساب/کارت‌خوان.
+- **پنل کارکنان**: `/staff/login` → `/admin` شامل داشبورد، سفارش‌ها، صف آماده‌سازی، میزها، درخواست‌ها،
+  اعلان‌ها، صف چاپ، گزارش‌ها، چیدمان سالن و QR میز، کاتالوگ/منو، کارکنان و تنظیمات.
+- **صندوق و مالی**: پرداخت جزئی/کامل، تقسیم فاکتور، تخفیف با تأیید مدیر، بازپرداخت، جلسات صندوق با مغایرت،
+  هزینه‌ها و خلاصهٔ سود و زیان.
+- **انبار و CRM (اختیاری)**: مواد اولیه، دستور پخت، خرید، ضایعات، گردش انبار؛ مشتری، امتیاز، کیف پول.
+- **۳۸ بازی میزی چندنفره** با QR میز (ماژول اختیاری، اتاق‌ها در حافظهٔ همان پروسه).
+- **امنیت**: scrypt، نشست سمت سرور با کوکی `HttpOnly`، RBAC با ۳۹ مجوز، قفل حساب، MFA (TOTP)،
+  ثبت audit، هدرهای امنیتی.
+
+رابط کاربری فارسی/RTL با تقویم جلالی، فونت Vazirmatn و رنگ برند `#aa472b`. مبلغ‌ها همیشه **عدد صحیح ریال** و
+محاسبهٔ نهایی سمت سرور است.
+
+## ۲. معماری ایمیج
+
+```
+                    ┌──────────────────────────── یک کانتینر ────────────────────────────┐
+  مرورگر / موبایل ──▶│  cafeflow (Rust/Axum) :3000                                       │
+                    │   • /api/v1/*     REST API                                        │
+                    │   • /ws/games     WebSocket بازی‌ها                                │
+                    │   • /assets /images /scenes /videos   فایل‌های SPA                 │
+                    │   • fallback      index.html برای مسیرهای SPA                      │
+                    │   • /app/data     SQLite + آپلودها + پشتیبان‌ها (volume)           │
+                    └──────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+                              quay.io/intelp917/cafeflow:0.2.0
 ```
 
-همهٔ داده‌های ماندگار (پایگاه داده، پشتیبان‌ها و رسیدهای چاپ) زیر `CAFEFLOW_DATA_DIR` هستند — پیش‌فرض
-توسعه `data/` و در تولید مسیر مطلق روی دیسک پایدار (مثلاً `/var/lib/cafeflow`). جزئیات: `docs/11-deployment.md`.
+- ایمیج نهایی بر پایهٔ Wolfi است و **Node و nginx ندارد**؛ فقط باینری، فایل‌های SPA و ابزارهای پایهٔ Wolfi
+  (`curl` برای healthcheck و `apk` برای نگهداری) در آن است. Node فقط در مرحلهٔ build برای ساخت SPA استفاده می‌شود.
+- کاربر اجرا: UID/GID `1000`؛ پورت داخلی `3000`؛ حجم ایمیج حدود **۲۴۳ مگابایت**
+  (باینری `cafeflow` ≈ ۳۴MB و SPA ≈ ۷۸MB).
+- فقط یک پروسهٔ API وجود دارد: **با SQLite و بازی‌های درون‌حافظه‌ای، چند نمونهٔ هم‌زمان روی یک volume پشتیبانی نمی‌شود.**
 
-آدرس‌های مشتری: `/` (لندینگ کافه)، `/menu` (منو بدون میز)، `/menu/<qr-token>` (منوی همان میز)،
-`/order/<code>` (پیگیری وضعیت). پنل کارکنان: `/staff/login` → `/admin`
-(سفارش‌ها، صف آماده‌سازی، صندوق، میزها، درخواست‌ها، اعلان‌ها، صف چاپ و گزارش‌ها).
-توکن QR میزهای نمونه در پایگاه داده است (`SELECT token FROM qr_codes WHERE kind = 'table'`).
+## ۳. پیش‌نیازها
 
-حساب اولیه: `admin` / `CafeFlow@1404` (یا مقدار `SEED_ADMIN_PASSWORD`).
-کارکنان نمونه برای آزمودن نقش‌ها: `manager`, `cashier`, `waiter`, `barista`, `kitchen` با گذرواژه `CafeFlow@1404`.
+| مورد | حداقل | پیشنهادی |
+|---|---|---|
+| سیستم‌عامل | Linux با Docker (Ubuntu 22.04/24.04 یا Debian 12) | Ubuntu 24.04 LTS |
+| Docker | Docker Engine 24+ | آخرین نسخهٔ پایدار + Compose v2 |
+| CPU | ۱ vCPU | **۲ vCPU** |
+| RAM | ۱ گیگابایت | **۲ گیگابایت** |
+| دیسک | ۱۰ گیگابایت SSD | **۴۰ گیگابایت NVMe** |
+| شبکه | دسترسی خروجی برای pull ایمیج | IP ثابت + دامنه + HTTPS |
+| اختیاری | PostgreSQL 17 (اگر SQLite کافی نیست) | ۴ vCPU / ۸GB / ۸۰GB جداگانه |
 
-> ⚠️ گذرواژه‌های پیش‌فرض فقط برای نصب توسعه‌اند. پیش از استفاده واقعی، `SEED_ADMIN_PASSWORD` را تنظیم
-> و گذرواژه را از رابط تغییر دهید.
+**چرا این اعداد؟** ایمیج ≈۲۴۳MB است و هر به‌روزرسانی یک لایهٔ تازه می‌آورد؛ SQLite و آپلودها روی دیسک رشد می‌کنند؛
+پشتیبان روزانه هم همان دیسک را مصرف می‌کند. بار پردازشی یک کافه (چند ده کاربر هم‌زمان) با یک هستهٔ Rust
+و SQLite راحت پاسخ می‌دهد؛ ۲ هسته/۲GB برای پشتیبان‌گیری، به‌روزرسانی بدون فشار و رشد آیندهٔ منو/بازی است.
+برای چند شعبه یا چند نمونهٔ API هم‌زمان به PostgreSQL و ۴ هسته/۸GB بروید.
 
-## دستورها
+> اگر bind mount به‌جای named volume استفاده می‌کنید، مالکیت پوشه باید `1000:1000` باشد:
+> `sudo chown -R 1000:1000 /srv/cafeflow`
+
+## ۴. اجرای سریع (سه راه)
+
+### راه ۱ — فقط Docker (سریع‌ترین)
+
+```bash
+# ۱) یک volume پایدار بسازید
+docker volume create cafeflow_data
+
+# ۲) اولین اجرا: مهاجرت + داده اولیه، سپس سرویس
+docker run -d --name cafeflow \
+  --restart unless-stopped \
+  -p 8080:3000 \
+  -e APP_ENV=production \
+  -e SEED_ADMIN_USERNAME=admin \
+  -e SEED_ADMIN_PASSWORD='یک-گذرواژه-قوی-بگذارید' \
+  -e SEED_DEMO_STAFF=false \
+  -e SEED_DEMO_MENU=true \
+  -e SESSION_COOKIE_SECURE=false \
+  -v cafeflow_data:/app/data \
+  --entrypoint /bin/sh \
+  quay.io/intelp917/cafeflow:0.2.0 \
+  -c 'cafeflow db setup && exec cafeflow serve'
+
+# ۳) بررسی
+curl -s http://127.0.0.1:8080/api/v1/health
+# {"status":"ok","database":"ok","databaseDriver":"sqlite","version":"0.2.0",...}
+```
+
+سپس `http://SERVER-IP:8080/staff/login` را باز کنید.
+
+> `SESSION_COOKIE_SECURE=false` فقط برای آزمایش HTTP است. روی HTTPS واقعی آن را `true` بگذارید
+> (در حالت `APP_ENV=production` پیش‌فرض هم `true` است).
+
+### راه ۲ — Docker Compose (پیشنهادی برای سرور)
+
+فایل `docker-compose.yml` را روی سرور بسازید:
+
+```yaml
+services:
+  cafeflow:
+    image: quay.io/intelp917/cafeflow:0.2.0
+    container_name: cafeflow
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["cafeflow db setup && exec cafeflow serve"]
+    environment:
+      APP_ENV: production
+      PORT: "3000"
+      CAFEFLOW_DATA_DIR: /app/data
+      CAFEFLOW_BACKUP_DIR: /app/data/backups
+      DB_DRIVER: sqlite
+      DB_AUTO_MIGRATE: "true"
+      SESSION_COOKIE_SECURE: "true"     # HTTPS اجباری؛ برای آزمایش HTTP موقتاً false
+      SESSION_TTL_HOURS: "168"
+      SEED_ADMIN_USERNAME: admin
+      SEED_ADMIN_PASSWORD: "یک-گذرواژه-قوی-بگذارید"
+      SEED_DEMO_STAFF: "false"
+      SEED_DEMO_MENU: "true"
+    ports:
+      - "127.0.0.1:8080:3000"           # پشت reverse proxy
+      # - "8080:3000"                   # دسترسی مستقیم بدون proxy
+    volumes:
+      - cafeflow_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  cafeflow_data:
+```
+
+```bash
+docker compose up -d
+docker compose logs -f cafeflow
+docker compose ps            # STATUS باید healthy باشد
+```
+
+`db setup` idempotent است: در هر بوت اجرا می‌شود، ولی مهاجرت/دادهٔ اولیه را فقط یک‌بار (وقتی لازم باشد) اعمال می‌کند.
+
+### راه ۳ — از سورس (توسعه یا ساخت ایمیج خودتان)
+
+```bash
+git clone <repo> && cd CafeFlow
+npm ci
+npm run build:shared
+npm run build -w @cafeflow/web
+
+cd rust
+CAFEFLOW_DATA_DIR=../data cargo run -p cafeflow-api -- db setup
+CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -p cafeflow-api -- serve
+# http://localhost:3000
+
+# یا ساخت همان ایمیج تولیدی:
+cd ..
+docker build -f infra/docker/Dockerfile.rust \
+  -t cafeflow:0.2.0 -t quay.io/intelp917/cafeflow:0.2.0 .
+```
+
+## ۵. اولین ورود
+
+| مورد | مقدار |
+|---|---|
+| آدرس ورود | `/staff/login` |
+| کاربر مدیر | `SEED_ADMIN_USERNAME` (پیش‌فرض `admin`) |
+| گذرواژهٔ مدیر | `SEED_ADMIN_PASSWORD` — **قبل از اولین بوت تعیین کنید** |
+| گذرواژهٔ پیش‌فرض اگر تنظیم نشود | `CafeFlow@1404` (فقط برای توسعه؛ هرگز در تولید) |
+| کارکنان نمونه (اگر `SEED_DEMO_STAFF=true`) | `manager`, `cashier`, `waiter`, `barista`, `kitchen` — گذرواژه `CafeFlow@1404` |
+
+نکات:
+
+1. seed فقط زمانی اجرا می‌شود که جدول کاربران خالی باشد؛ تغییر `SEED_ADMIN_PASSWORD` بعد از اولین بوت اثری ندارد.
+   برای تغییر گذرواژه از «امنیت حساب» در پنل استفاده کنید.
+2. در تولید `SEED_DEMO_STAFF=false` بگذارید؛ حساب‌های نمونه گذرواژهٔ شناخته‌شده دارند.
+3. `SEED_DEMO_MENU=true` منوی نمونه با دسته/محصول و چند میز نمایشی (`demo-table-1`، …) می‌سازد.
+   برای شروع با منوی خالی `false` بگذارید.
+4. ماژول‌های انبار، مالی، CRM و کارکنان به‌صورت پیش‌فرض خاموش‌اند؛ از **تنظیمات ← ماژول‌ها** روشن کنید.
+
+## ۶. متغیرهای محیطی
+
+فایل آمادهٔ تولید: [`deploy.env.example`](deploy.env.example) — فقط `SEED_ADMIN_PASSWORD` را عوض کنید و با
+`--env-file` به کانتینر بدهید.
+
+| نام | پیش‌فرض | توضیح |
+|---|---|---|
+| `APP_ENV` | `development` | `production` باعث پیش‌فرض `SESSION_COOKIE_SECURE=true` می‌شود. `NODE_ENV` هم خوانده می‌شود. |
+| `PORT` | `3000` | پورت داخلی HTTP. اگر عوض کردید، healthcheck ایمیج را هم override کنید. |
+| `HOST` | `0.0.0.0` | رابط شنود. |
+| `API_PREFIX` | `/api/v1` | پیشوند REST. |
+| `WEB_ROOT` | `apps/web/dist` (در ایمیج `/app/public`) | ریشهٔ فایل‌های SPA. |
+| `CAFEFLOW_DATA_DIR` | `data` (در ایمیج `/app/data`) | **ریشهٔ همهٔ دادهٔ پایدار**: پایگاه داده، آپلودها، پشتیبان‌ها. |
+| `DATABASE_PATH` | `$CAFEFLOW_DATA_DIR/cafeflow.db` | مسیر فایل SQLite. |
+| `CAFEFLOW_BACKUP_DIR` | `$CAFEFLOW_DATA_DIR/backups` | محل پشتیبان‌ها. |
+| `DB_DRIVER` | `sqlite` | `sqlite` یا `postgres`. |
+| `DATABASE_URL` | — | اجباری برای `postgres`؛ مثال: `postgres://user:pass@host:5432/cafeflow`. |
+| `DB_POOL_MAX` | `1` (SQLite) / `10` (Postgres) | حداکثر اتصال استخر. |
+| `DB_AUTO_MIGRATE` | `true` | اجرای مهاجرت‌ها در بوت. |
+| `SESSION_COOKIE_NAME` | `cafe_session` | نام کوکی نشست. |
+| `SESSION_TTL_HOURS` | `168` | عمر نشست (۷ روز). |
+| `SESSION_COOKIE_SECURE` | `true` در production | روی HTTPS `true`؛ برای HTTP آزمایشی `false`. |
+| `LOGIN_MAX_ATTEMPTS` | `5` | تلاش ناموفق پیش از قفل حساب. |
+| `LOGIN_LOCK_MINUTES` | `15` | مدت قفل. |
+| `SEED_ADMIN_USERNAME` | `admin` | فقط اولین seed. |
+| `SEED_ADMIN_PASSWORD` | `CafeFlow@1404` | فقط اولین seed — تغییر دهید. |
+| `SEED_DEMO_STAFF` | در Compose: `false` · در CLI: `true` | ساخت کارکنان نمونه. |
+| `SEED_DEMO_MENU` | `true` | منوی نمونه و میزهای نمایشی. |
+| `PUBLIC_APP_URL` | — | آدرس عمومی سایت (مثل `https://cafe.example.com`) برای لینک داخل QR وقتی هدر `Origin` در دسترس نیست. |
+| `RUST_LOG` | `cafeflow_api=info,tower_http=info,sqlx=warn` | سطح لاگ. |
+
+متغیرهای `SMS_*`، `VAPID_*` و `PRINT_BRIDGE_TOKEN` در این نسخه برای ارسال پیامک/پوش خارجی استفاده نمی‌شوند؛
+پل چاپ یک اسکریپت جداگانه روی رایانهٔ کافه است و وجودش برای اجرای سایت لازم نیست.
+
+## ۷. دادهٔ پایدار، پشتیبان و بازیابی
+
+همهٔ وضعیت زمان اجرا زیر `CAFEFLOW_DATA_DIR` (در ایمیج `/app/data`) است:
+
+```
+/app/data/
+  cafeflow.db          پایگاه داده SQLite
+  cafeflow.db-wal      تراکنش‌های WAL
+  cafeflow.db-shm      حافظهٔ مشترک
+  uploads/products/    عکس‌های آپلودی مدیر
+  backups/             نسخه‌های پشتیبان
+  print-output/        فایل رسیدها (فقط اگر پل چاپ استفاده شود)
+```
+
+### پشتیبان آنلاین (بدون توقف سرویس)
+
+```bash
+docker exec cafeflow cafeflow backup
+# ✅ پشتیبان ساخته شد: /app/data/backups/cafeflow-YYYYMMDD-HHmmss.sqlite
+docker cp cafeflow:/app/data/backups ./backups-$(date +%F)
+```
+
+پشتیبان با `VACUUM INTO` ساخته می‌شود: فایل تک‌پارچه و سازگار با WAL. برای اجرای روزانه (cron روی هاست):
+
+```cron
+# هر شب ۰۳:۰۰
+0 3 * * * docker exec cafeflow cafeflow backup && docker cp cafeflow:/app/data/backups /srv/cafeflow-offsite/backups
+```
+
+> نسخهٔ پشتیبان را روی دیسک/سرور دیگر هم نگه دارید؛ volume به‌تنهایی در برابر خرابی دیسک محافظت نمی‌کند.
+
+### بازیابی
+
+```bash
+docker stop cafeflow
+docker run --rm -v cafeflow_data:/data -v "$PWD":/restore alpine \
+  sh -c 'cp /restore/cafeflow-YYYYMMDD-HHmmss.sqlite /data/cafeflow.db && rm -f /data/cafeflow.db-wal /data/cafeflow.db-shm'
+docker start cafeflow
+```
+
+### ریست پایگاه داده (با حفظ عکس‌ها)
+
+فقط `cafeflow.db`, `-wal` و `-shm` را حذف کنید و دوباره `cafeflow db setup` اجرا کنید؛ `uploads/` دست‌نخورده می‌ماند.
+**این کار همهٔ سفارش‌ها، پرداخت‌ها و کاربران را پاک می‌کند.**
+
+## ۸. HTTPS و reverse proxy
+
+کوکی نشست در production `Secure` است؛ یعنی بدون HTTPS ورود «نمی‌چسبد». ساده‌ترین گزینه Caddy است:
+
+```caddyfile
+cafe.example.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+```bash
+sudo caddy run --config /etc/caddy/Caddyfile
+```
+
+با nginx:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name cafe.example.com;
+    ssl_certificate     /etc/letsencrypt/live/cafe.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cafe.example.com/privkey.pem;
+    client_max_body_size 3m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;      # WebSocket بازی‌ها
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+نکات:
+
+- WebSocket بازی‌ها روی `/ws/games` است؛ هدرهای `Upgrade`/`Connection` را عبور دهید.
+- کانتینر را روی `127.0.0.1:8080` منتشر کنید و TLS را در proxy terminate کنید.
+- **QR را از دامنهٔ عمومی بسازید.** لینک داخل QR از هدر `Origin` درخواست پنل ساخته می‌شود؛
+  اگر پنل را با `http://localhost` باز کنید، QR هم `localhost` می‌شود. یا از دامنه وارد شوید،
+  یا `PUBLIC_APP_URL=https://cafe.example.com` را تنظیم کنید.
+
+## ۹. PostgreSQL (اختیاری)
+
+SQLite برای یک کافه کافی است. PostgreSQL را وقتی انتخاب کنید که چند نمونهٔ API، چند شعبه یا
+گزارش‌گیری سنگین می‌خواهید.
+
+```bash
+docker run -d --name cafeflow-db --restart unless-stopped \
+  -e POSTGRES_DB=cafeflow -e POSTGRES_USER=cafeflow \
+  -e POSTGRES_PASSWORD='یک-گذرواژه-قوی' \
+  -v cafeflow_pg:/var/lib/postgresql/data \
+  postgres:17-alpine
+```
+
+سپس برای کانتینر برنامه:
+
+```yaml
+environment:
+  DB_DRIVER: postgres
+  DATABASE_URL: postgres://cafeflow:یک-گذرواژه-قوی@cafeflow-db:5432/cafeflow
+  DB_POOL_MAX: "10"
+```
+
+مهاجرت‌ها روی PostgreSQL هم خودکار اجرا می‌شوند. پشتیبان با `pg_dump` بگیرید (دستور داخلی `cafeflow backup`
+فقط SQLite است و برای PostgreSQL خطا می‌دهد).
+
+### کپی دادهٔ موجود SQLite به PostgreSQL
+
+```bash
+# پیش‌نمایش (هیچ تغییری نمی‌دهد)
+docker run --rm -v cafeflow_data:/app/data --network host \
+  -e DB_DRIVER=sqlite -e CAFEFLOW_DATA_DIR=/app/data \
+  -e POSTGRES_URL='postgres://cafeflow:pass@127.0.0.1:5432/cafeflow' \
+  quay.io/intelp917/cafeflow:0.2.0 db migrate-to-postgres --dry-run
+
+# اجرای واقعی (مقصد باید خالی باشد)
+docker run --rm -v cafeflow_data:/app/data --network host \
+  -e DB_DRIVER=sqlite -e CAFEFLOW_DATA_DIR=/app/data \
+  -e POSTGRES_URL='postgres://cafeflow:pass@127.0.0.1:5432/cafeflow' \
+  quay.io/intelp917/cafeflow:0.2.0 db migrate-to-postgres
+```
+
+## ۱۰. دستورهای باینری داخل ایمیج
+
+```bash
+docker exec cafeflow cafeflow --help
+```
 
 | دستور | کار |
 |---|---|
-| `npm run build` | ساخت shared + API + وب |
-| `npm test` | ۴۰۳ آزمون (دامنه + یکپارچه + قواعد و رندرر بازی) |
-| `npm run test:e2e` | ۱۸ سناریوی مرورگر با Playwright (Edge) |
-| `npm run verify:pwa` | تأیید manifest/service worker و صفحه آفلاین روی بیلد تولیدی |
-| `npm run backup` | پشتیبان آنلاین در `$CAFEFLOW_DATA_DIR/backups` با بررسی سلامت و چرخش |
-| `npm run db:setup -w @cafeflow/api` | مهاجرت + داده اولیه |
-| `npm run db:migrate -w @cafeflow/api` | اعمال مهاجرت‌های جدید |
-| `npm start` | ساخت shared و اجرای هم‌زمان API و وب با لاگ پیشونددار |
-| `npm run dev:api` / `npm run dev:web` | اجرای توسعه |
-| `cd rust && cargo test --workspace` | آزمون دامنه، DB، احراز هویت و مسیر QR بک‌اند Rust |
-| `cd rust && CAFEFLOW_DATA_DIR=../data cargo run -p cafeflow-api -- db setup` | مهاجرت + seed نسخهٔ Rust |
-| `cd rust && CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -p cafeflow-api -- serve` | API + SPA روی یک پورت (Rust) |
-| `docker compose -f infra/docker/compose.rust.yml up -d --build` | ایمیج تک‌سرویسی Rust |
+| `cafeflow serve` | اجرای HTTP (پیش‌فرض) |
+| `cafeflow db setup` | مهاجرت + داده اولیه (idempotent) |
+| `cafeflow db migrate` | فقط مهاجرت‌ها |
+| `cafeflow db seed` | فقط داده اولیه |
+| `cafeflow backup` | پشتیبان SQLite در `CAFEFLOW_BACKUP_DIR` |
+| `cafeflow db migrate-to-postgres [--dry-run] [--force]` | کپی SQLite → PostgreSQL |
 
-## پشته فناوری
+## ۱۱. به‌روزرسانی و بازگشت
 
-| لایه | فناوری |
+```bash
+# ۱) پشتیبان
+docker exec cafeflow cafeflow backup
+# ۲) دریافت نسخهٔ تازه (تگ دقیق را پین کنید)
+docker pull quay.io/intelp917/cafeflow:0.2.0
+# ۳) بازسازی کانتینر با همان volume
+docker compose up -d          # یا: docker rm -f cafeflow && docker run ... (راه ۱)
+```
+
+- مهاجرت‌های جدید در بوت خودکار اعمال می‌شوند؛ `db setup` دوباره seed نمی‌سازد.
+- برای بازگشت، تگ قبلی (مثلاً `0.1.0`) را در compose بگذارید و `up -d` کنید. اگر مهاجرت ناسازگار باشد،
+  از پشتیبان قبل از به‌روزرسانی استفاده کنید.
+- برای دیپلوی قطعی‌تر، ایمیج را با digest پین کنید: `quay.io/intelp917/cafeflow@sha256:...`.
+
+## ۱۲. بررسی سلامت و عملیات
+
+```bash
+curl -s http://127.0.0.1:8080/api/v1/health
+docker logs -f --tail=200 cafeflow
+docker stats --no-stream cafeflow
+```
+
+- `status: ok` و `database: ok` یعنی API و پایگاه داده سالم‌اند.
+- محدودیت ورود: ۶۰ درخواست ورود در ۱۰ دقیقه از هر IP؛ جدا از آن، ۵ تلاش ناموفق حساب را ۱۵ دقیقه قفل می‌کند.
+- سقف‌های داخلی به تفکیک دستگاه: ۲۰ درخواست مشتری در دقیقه برای هر دستگاه، ۳۰ ورود به بازی در دقیقه برای هر
+  دستگاه و ۱۲۰ در دقیقه برای هر IP در بازی‌ها.
+- برای **ساخت سفارش عمومی سقف IP داخلی وجود ندارد** (فقط idempotency هر دستگاه). اگر سایت روی اینترنت
+  عمومی است، rate limit را در reverse proxy بگذارید.
+- بازی‌ها اتاق در حافظه دارند؛ با ری‌استارت کانتینر، اتاق‌های بازی بسته می‌شوند (سفارش‌ها و داده‌ها نه).
+- فقط **یک نمونه** از کانتینر روی یک volume اجرا کنید.
+
+## ۱۳. عیب‌یابی
+
+| نشانه | علت رایج | راه‌حل |
+|---|---|---|
+| ورود انجام می‌شود ولی بلافاصله خارج می‌شوید | `SESSION_COOKIE_SECURE=true` روی HTTP | HTTPS بگذارید یا موقتاً `false` کنید (فقط آزمایش) |
+| QR به `localhost` اشاره می‌کند | پنل از `localhost` باز شده | از دامنه وارد شوید یا `PUBLIC_APP_URL` را تنظیم کنید |
+| `429 RATE_LIMITED` | سقف نرخ ورود یا درخواست دستگاه/بازی | چند دقیقه صبر کنید؛ برای بار عمومی از rate limit پروکسی استفاده کنید |
+| کانتینر `unhealthy` | پورت داخلی عوض شده | `PORT=3000` را نگه دارید یا healthcheck را override کنید |
+| `Permission denied` روی `/app/data` | bind mount با مالک اشتباه | `chown -R 1000:1000 /srv/cafeflow` |
+| `database is locked` | چند نمونهٔ هم‌زمان روی یک SQLite | فقط یک کانتینر؛ برای مقیاس، PostgreSQL |
+| لاگین ۴۰۱ بدون پیام خطا | کوکی مرورگر قدیمی/نام دامنه عوض شده | کوکی‌ها را پاک کنید و دوباره وارد شوید |
+
+## ۱۴. توسعه و آزمون
+
+```bash
+npm ci
+npm run build:shared
+npm run dev:web                 # Vite روی 5173 با proxy به API
+(cd rust && CAFEFLOW_DATA_DIR=../data cargo run -p cafeflow-api -- serve)
+
+cd rust
+cargo test --workspace          # دامنه، DB، API، بازی‌ها و WebSocket
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
+```
+
+`apps/api` (NestJS) فقط مرجع تاریخی آزمون برابری است و در تولید استفاده نمی‌شود.
+
+## ۱۵. ساختار مخزن
+
+```
+rust/            Cargo workspace: domain / db / games / api
+apps/web         React SPA (مشتری، کارکنان، مدیریت)
+apps/api         NestJS مرجع تاریخی (در تولید اجرا نمی‌شود)
+packages/shared  منطق دامنه مشترک
+packages/ui      کامپوننت‌های RTL
+infra/docker     Dockerfile.rust و compose
+docs/            مستندات فنی
+```
+
+## ۱۶. امنیت
+
+- گذرواژهٔ مدیر را قبل از اولین بوت تنظیم کنید؛ seed فقط روی جدول خالی اجرا می‌شود.
+- `SEED_DEMO_STAFF=false` در تولید.
+- HTTPS اجباری؛ کوکی `Secure` + `HttpOnly` + `SameSite=Lax`.
+- فایل `.env` هرگز commit نمی‌شود و در ایمیج نیست.
+- دسترسی SSH و Docker روی سرور را محدود کنید؛ هر کسی به Docker دسترسی داشته باشد معادل root است.
+- پشتیبان‌ها را بیرون از سرور نگه دارید.
+
+## ۱۷. مستندات بیشتر
+
+[معماری](docs/01-architecture.md) · [پایگاه داده](docs/02-database-schema.md) · [API](docs/04-api.md) ·
+[امنیت](docs/05-auth-and-authorization.md) · [ماژول‌ها](docs/06-modules.md) · [چاپ](docs/10-printing.md) ·
+[استقرار](docs/11-deployment.md) · [پشتیبان‌گیری](docs/12-backup-and-recovery.md) · [آزمون](docs/13-testing.md) ·
+[محیط](docs/14-environment.md) · [بازی‌ها](docs/16-table-games.md) · [پیشرفت](docs/PROGRESS.md)
+
+---
+
+<a id="english"></a>
+
+# English guide
+
+## 1. What this is
+
+CafeFlow is a complete, Persian-first (RTL) cafe and restaurant platform:
+
+- **Guest QR menu** at `/menu` and `/menu/<qr-token>`, cart, idempotent ordering, order tracking at
+  `/order/<code>`, and waiter/bill/card-terminal requests.
+- **Staff panel** at `/staff/login` → `/admin`: dashboard, orders, prep queue, tables, requests,
+  notifications, print queue, reports, floor plan/table QR, catalog, staff and settings.
+- **Cashier & finance**: partial/full payments, split bills, manager-approved discounts, refunds,
+  cash sessions with variance, expenses and profit summary.
+- **Inventory & CRM (optional modules)**: ingredients, recipes, purchases, waste, stock movements;
+  customers, loyalty points and wallet.
+- **38 multiplayer table games** launched from the table QR (optional module; rooms live in memory).
+- **Security**: scrypt, server-side sessions with `HttpOnly` cookies, 39-permission RBAC, account
+  lockout, TOTP MFA, audit log and security headers.
+
+All money is integer Iranian rial and every total is computed on the server. Dates use the Jalali
+calendar and the UI is RTL with Vazirmatn.
+
+## 2. Image architecture
+
+Published image: `quay.io/intelp917/cafeflow:0.2.0` (also `:latest`), digest
+`sha256:cd6ff66e47df8ffd28c690aa6135064e94596b428bfaf86b36ff2ee4ad30febf`.
+
+One container runs one Rust/Axum process on port `3000` that serves the REST API (`/api/v1`), the
+game WebSocket (`/ws/games`), the built SPA (with history fallback) and uploaded media. The final
+image is Wolfi-based with **no Node and no nginx** (only the binary, the SPA and base Wolfi tools such as
+`curl` and `apk`). It runs as UID/GID `1000`
+and weighs about **243 MB** (34 MB binary + 78 MB SPA). Node is used only in the build stage.
+
+Because SQLite and the in-memory game rooms live in the process, **run exactly one instance against
+one data volume**.
+
+## 3. Host sizing
+
+| Resource | Minimum | Recommended |
+|---|---|---|
+| OS | Linux + Docker (Ubuntu 22.04/24.04, Debian 12) | Ubuntu 24.04 LTS |
+| Docker | Engine 24+ | latest stable + Compose v2 |
+| CPU | 1 vCPU | **2 vCPU** |
+| RAM | 1 GB | **2 GB** |
+| Disk | 10 GB SSD | **40 GB NVMe** |
+| Network | outbound access to pull the image | static IP, domain, HTTPS |
+| Optional DB | PostgreSQL 17 | 4 vCPU / 8 GB / 80 GB, separate host |
+
+Why: the image is ~243 MB and each update pulls new layers, SQLite and uploads grow on disk, and
+local backups use the same disk. A single Rust process serves a busy cafe comfortably; 2 vCPU /
+2 GB leaves room for backups, image pulls and future menu/game growth. Move to PostgreSQL and
+4 vCPU / 8 GB for multiple API instances, multiple branches or heavy reporting.
+
+If you use a bind mount instead of a named volume, the directory must be owned by `1000:1000`:
+`sudo chown -R 1000:1000 /srv/cafeflow`.
+
+## 4. Quick start
+
+### Option A — Docker only
+
+```bash
+docker volume create cafeflow_data
+
+docker run -d --name cafeflow \
+  --restart unless-stopped \
+  -p 8080:3000 \
+  -e APP_ENV=production \
+  -e SEED_ADMIN_USERNAME=admin \
+  -e SEED_ADMIN_PASSWORD='choose-a-strong-password' \
+  -e SEED_DEMO_STAFF=false \
+  -e SEED_DEMO_MENU=true \
+  -e SESSION_COOKIE_SECURE=false \
+  -v cafeflow_data:/app/data \
+  --entrypoint /bin/sh \
+  quay.io/intelp917/cafeflow:0.2.0 \
+  -c 'cafeflow db setup && exec cafeflow serve'
+
+curl -s http://127.0.0.1:8080/api/v1/health
+```
+
+Open `http://SERVER-IP:8080/staff/login`. `SESSION_COOKIE_SECURE=false` is for a plain-HTTP trial
+only; use `true` with HTTPS (it is the default when `APP_ENV=production`).
+
+### Option B — Docker Compose (recommended on a server)
+
+Create `docker-compose.yml`:
+
+```yaml
+services:
+  cafeflow:
+    image: quay.io/intelp917/cafeflow:0.2.0
+    container_name: cafeflow
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["cafeflow db setup && exec cafeflow serve"]
+    environment:
+      APP_ENV: production
+      PORT: "3000"
+      CAFEFLOW_DATA_DIR: /app/data
+      CAFEFLOW_BACKUP_DIR: /app/data/backups
+      DB_DRIVER: sqlite
+      DB_AUTO_MIGRATE: "true"
+      SESSION_COOKIE_SECURE: "true"     # requires HTTPS; set false only for an HTTP trial
+      SESSION_TTL_HOURS: "168"
+      SEED_ADMIN_USERNAME: admin
+      SEED_ADMIN_PASSWORD: "choose-a-strong-password"
+      SEED_DEMO_STAFF: "false"
+      SEED_DEMO_MENU: "true"
+    ports:
+      - "127.0.0.1:8080:3000"           # behind a reverse proxy
+      # - "8080:3000"                   # direct access without a proxy
+    volumes:
+      - cafeflow_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  cafeflow_data:
+```
+
+```bash
+docker compose up -d
+docker compose logs -f cafeflow
+```
+
+`db setup` is idempotent: it runs on every boot but migrates and seeds only when needed.
+
+### Option C — From source
+
+```bash
+npm ci && npm run build:shared && npm run build -w @cafeflow/web
+cd rust
+CAFEFLOW_DATA_DIR=../data cargo run -p cafeflow-api -- db setup
+CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -p cafeflow-api -- serve
+```
+
+Or build the production image yourself:
+
+```bash
+docker build -f infra/docker/Dockerfile.rust -t cafeflow:0.2.0 .
+```
+
+## 5. First login and seeding
+
+| Item | Value |
 |---|---|
-| API | NestJS 11، TypeScript، Zod، pino-style logging؛ بک‌اند Rust/Axum در حال مهاجرت (auth/health/SPA، منو/سفارش/پیگیری QR و داشبورد آماده) |
-| پایگاه داده | SQLite (WAL) با انتخاب `DB_DRIVER=sqlite/postgres` در بک‌اند Rust |
-| وب | React 19، Vite 7، Tailwind CSS 4، React Router |
-| دامنه مشترک | TypeScript خالص (`packages/shared`) — ماشین وضعیت سفارش، ریال، جلالی، نرمال‌سازی فارسی |
-| زیرساخت | Docker/Compose؛ ایمیج تک‌سرویسی Rust با پایه‌های Chainguard (بدون وابستگی به Docker Hub) |
+| Login URL | `/staff/login` |
+| Admin user | `SEED_ADMIN_USERNAME` (default `admin`) |
+| Admin password | `SEED_ADMIN_PASSWORD` — set it before the first boot |
+| Fallback if unset | `CafeFlow@1404` (development only) |
+| Demo staff (`SEED_DEMO_STAFF=true`) | `manager`, `cashier`, `waiter`, `barista`, `kitchen` with `CafeFlow@1404` |
 
-## ساختار
+Seeding only runs while the user table is empty; changing `SEED_ADMIN_PASSWORD` after the first boot
+has no effect (use the in-app password change instead). Keep `SEED_DEMO_STAFF=false` in production.
+`SEED_DEMO_MENU=true` creates a demo catalog and demo tables (`demo-table-1`, …); set it to `false`
+to start with an empty menu. Inventory, finance, CRM and employees modules are disabled by default —
+enable them under Settings → Modules.
+
+## 6. Environment variables
+
+A production-ready template lives in [`deploy.env.example`](deploy.env.example): change
+`SEED_ADMIN_PASSWORD` and pass it with `--env-file`.
+
+| Name | Default | Purpose |
+|---|---|---|
+| `APP_ENV` | `development` | `production` implies `SESSION_COOKIE_SECURE=true`; `NODE_ENV` is also read |
+| `PORT` | `3000` | Internal HTTP port (also used by the image healthcheck) |
+| `HOST` | `0.0.0.0` | Bind interface |
+| `API_PREFIX` | `/api/v1` | REST prefix |
+| `WEB_ROOT` | `apps/web/dist` (`/app/public` in the image) | Built SPA root |
+| `CAFEFLOW_DATA_DIR` | `data` (`/app/data` in the image) | Root of all persistent state |
+| `DATABASE_PATH` | `$CAFEFLOW_DATA_DIR/cafeflow.db` | SQLite file |
+| `CAFEFLOW_BACKUP_DIR` | `$CAFEFLOW_DATA_DIR/backups` | Backup directory |
+| `DB_DRIVER` | `sqlite` | `sqlite` or `postgres` |
+| `DATABASE_URL` | — | Required for PostgreSQL |
+| `DB_POOL_MAX` | `1` (SQLite) / `10` (Postgres) | Connection pool size |
+| `DB_AUTO_MIGRATE` | `true` | Run migrations on startup |
+| `SESSION_COOKIE_NAME` | `cafe_session` | Session cookie name |
+| `SESSION_TTL_HOURS` | `168` | Session lifetime |
+| `SESSION_COOKIE_SECURE` | `true` in production | Must be `true` behind HTTPS |
+| `LOGIN_MAX_ATTEMPTS` | `5` | Failed logins before lockout |
+| `LOGIN_LOCK_MINUTES` | `15` | Lockout duration |
+| `SEED_ADMIN_USERNAME` | `admin` | First-boot admin |
+| `SEED_ADMIN_PASSWORD` | `CafeFlow@1404` | First-boot password — change it |
+| `SEED_DEMO_STAFF` | compose `false`, CLI `true` | Create demo staff |
+| `SEED_DEMO_MENU` | `true` | Create demo catalog and tables |
+| `PUBLIC_APP_URL` | — | Public origin (e.g. `https://cafe.example.com`) used in QR links when `Origin` is unavailable |
+| `RUST_LOG` | `cafeflow_api=info,tower_http=info,sqlx=warn` | Log filter |
+
+`SMS_*`, `VAPID_*` and `PRINT_BRIDGE_TOKEN` are not used for outbound SMS/push in this release. The
+print bridge is an optional script that runs on a cafe PC; the site does not need it.
+
+## 7. Persistent data, backup and restore
 
 ```
-apps/api        NestJS API + migrations + tests
-apps/web        React SPA (مشتری، کارکنان، مدیریت)
-packages/shared منطق دامنه مشترک و آزمون‌شده
-packages/ui     components RTL-first
-infra/docker    Dockerfile.api/web و Dockerfile.rust + compose.rust.yml
-rust/           Cargo workspace: domain / db / games / api
-docs/           ۱۶ سند فنی + PROGRESS.md
+/app/data/
+  cafeflow.db        SQLite database (+ -wal / -shm)
+  uploads/products/  product images uploaded by staff
+  backups/           VACUUM INTO snapshots
+  print-output/      receipt files (only when using the print bridge)
 ```
 
-## مستندات
+```bash
+# online backup, no downtime
+docker exec cafeflow cafeflow backup
+docker cp cafeflow:/app/data/backups ./backups-$(date +%F)
 
-- [معماری](docs/01-architecture.md) · [پایگاه داده](docs/02-database-schema.md) · [ERD](docs/03-erd.md)
-- [API](docs/04-api.md) · [امنیت و مجوزها](docs/05-auth-and-authorization.md) · [ماژول‌ها](docs/06-modules.md)
-- [سیستم طراحی](docs/07-design-system.md) · [نقشه سالن](docs/08-floor-plan-data-model.md) · [چرخه سفارش](docs/09-order-lifecycle.md)
-- [چاپ](docs/10-printing.md) · [استقرار](docs/11-deployment.md) · [پشتیبان‌گیری](docs/12-backup-and-recovery.md)
-- [آزمون](docs/13-testing.md) · [تنظیمات محیط](docs/14-environment.md) · [راهنمای توسعه‌دهنده](docs/15-developer-readme.md)
-- [بازی میزی با QR میز](docs/16-table-games.md)
-- [گزارش آزمون جامع](docs/TEST-REPORT.md) · [گزارش تست بار ۱۵۰ کاربر](docs/LOAD-TEST-REPORT.md)
-- [پیشرفت و تصمیم‌ها](docs/PROGRESS.md)
+# nightly cron example
+0 3 * * * docker exec cafeflow cafeflow backup && docker cp cafeflow:/app/data/backups /srv/cafeflow-offsite/backups
+```
 
-## اصول امنیتی
+Restore:
 
-- هر عملیات حساس در سرور مجازسنجی می‌شود؛ بررسی سمت کلاینت فقط برای پنهان‌کردن منو است.
-- مبلغ‌ها همیشه عدد صحیح ریال و محاسبه نهایی سمت سرور.
-- هیچ رمز یا کلیدی در مخزن نیست؛ `.env` در `.gitignore` است.
-- کوکی نشست `HttpOnly`؛ توکن در JavaScript نگه‌داری نمی‌شود.
+```bash
+docker stop cafeflow
+docker run --rm -v cafeflow_data:/data -v "$PWD":/restore alpine \
+  sh -c 'cp /restore/cafeflow-YYYYMMDD-HHmmss.sqlite /data/cafeflow.db && rm -f /data/cafeflow.db-wal /data/cafeflow.db-shm'
+docker start cafeflow
+```
 
-## مسیر پیش‌رو
+To reset only the database (keeping uploads), delete `cafeflow.db`, `-wal` and `-shm`, then run
+`cafeflow db setup` again. This deletes every order, payment and user.
 
-باقی‌مانده تا تولید: استقرار واقعی با Docker/HTTPS، مهاجرت PostgreSQL، Redis برای سقف نرخ مشترک،
-سناریوی کامل E2E پول→رسید و زمان‌بندی/آپلود خارج از سرور نسخه‌های پشتیبان. جزئیات در
-[PROGRESS](docs/PROGRESS.md).
+## 8. HTTPS and reverse proxy
+
+Production cookies are `Secure`, so login only sticks over HTTPS. Minimal Caddy setup:
+
+```caddyfile
+cafe.example.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+With nginx, proxy to `127.0.0.1:8080`, forward `Host`, `X-Forwarded-For`, `X-Forwarded-Proto`, and pass
+`Upgrade`/`Connection` for `/ws/games`; raise `proxy_read_timeout` for long-lived WebSockets.
+
+Publish the container on `127.0.0.1:8080` and let the proxy terminate TLS.
+
+**Generate QR codes from the public domain.** The menu URL inside a QR code is built from the
+request's `Origin` header, so opening the admin panel via `http://localhost` produces localhost QR
+codes. Either use the real domain or set `PUBLIC_APP_URL=https://cafe.example.com`.
+
+## 9. PostgreSQL (optional)
+
+```bash
+docker run -d --name cafeflow-db --restart unless-stopped \
+  -e POSTGRES_DB=cafeflow -e POSTGRES_USER=cafeflow \
+  -e POSTGRES_PASSWORD='a-strong-password' \
+  -v cafeflow_pg:/var/lib/postgresql/data \
+  postgres:17-alpine
+```
+
+Then set `DB_DRIVER=postgres`, `DATABASE_URL=postgres://cafeflow:...@cafeflow-db:5432/cafeflow` and
+`DB_POOL_MAX=10`. Migrations run automatically. Use `pg_dump` for backups — the built-in
+`cafeflow backup` command only supports SQLite.
+
+Copy an existing SQLite database into an empty PostgreSQL database:
+
+```bash
+docker run --rm -v cafeflow_data:/app/data --network host \
+  -e DB_DRIVER=sqlite -e CAFEFLOW_DATA_DIR=/app/data \
+  -e POSTGRES_URL='postgres://cafeflow:pass@127.0.0.1:5432/cafeflow' \
+  quay.io/intelp917/cafeflow:0.2.0 db migrate-to-postgres --dry-run
+# then run the same command without --dry-run
+```
+
+## 10. Image commands
+
+| Command | Purpose |
+|---|---|
+| `cafeflow serve` | Run the HTTP server (default) |
+| `cafeflow db setup` | Migrate + seed, idempotent |
+| `cafeflow db migrate` | Migrations only |
+| `cafeflow db seed` | Seed only |
+| `cafeflow backup` | SQLite snapshot into `CAFEFLOW_BACKUP_DIR` |
+| `cafeflow db migrate-to-postgres [--dry-run] [--force]` | Copy SQLite into PostgreSQL |
+
+## 11. Updates and rollback
+
+```bash
+docker exec cafeflow cafeflow backup
+docker pull quay.io/intelp917/cafeflow:0.2.0
+docker compose up -d        # or recreate the container with the same volume
+```
+
+New migrations apply on boot; `db setup` does not reseed. To roll back, pin the previous tag (or
+digest) and recreate the container; restore the pre-update backup if a migration is incompatible.
+
+## 12. Health and operations
+
+```bash
+curl -s http://127.0.0.1:8080/api/v1/health
+docker logs -f --tail=200 cafeflow
+docker stats --no-stream cafeflow
+```
+
+- `status: ok` and `database: ok` mean the API and database are healthy.
+- Login lockout: 5 failed attempts → 15 minutes.
+- Login is limited to 60 requests / 10 minutes / IP, and 5 failed passwords lock the account for 15 minutes.
+- Per-device limits: 20 customer requests/min, 30 game joins/min per device and 120/min per IP for games.
+- There is **no built-in per-IP cap on public order creation**; if the site is exposed to the open
+  internet, add a rate limit in your reverse proxy.
+- Game rooms are in memory and reset on restart (orders and data do not).
+- Run exactly one container per SQLite volume.
+
+## 13. Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| Login succeeds but immediately logs out | `SESSION_COOKIE_SECURE=true` over HTTP | use HTTPS, or set `false` for a trial only |
+| QR codes point to `localhost` | admin panel opened via localhost | use the domain or set `PUBLIC_APP_URL` |
+| `429 RATE_LIMITED` | login or per-device/game rate limit | wait a few minutes; add a proxy-level limit for public traffic |
+| Container `unhealthy` | internal port changed | keep `PORT=3000` or override the healthcheck |
+| `Permission denied` on `/app/data` | bind mount owned by another user | `chown -R 1000:1000 /srv/cafeflow` |
+| `database is locked` | several instances on one SQLite file | run one container; use PostgreSQL to scale |
+| Unauthorized after changing domain | stale cookies for the old host | clear cookies and sign in again |
+
+## 14. Development
+
+```bash
+npm ci && npm run build:shared
+npm run dev:web                  # Vite on 5173, proxying to the API
+(cd rust && CAFEFLOW_DATA_DIR=../data cargo run -p cafeflow-api -- serve)
+
+cd rust
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
+```
+
+`apps/api` (NestJS) is kept only as a historical parity reference and is not used in production.
+
+## 15. Security notes
+
+- Set a strong `SEED_ADMIN_PASSWORD` before the first boot; seeding only happens on an empty database.
+- Keep `SEED_DEMO_STAFF=false` in production.
+- Always serve over HTTPS with `Secure`/`HttpOnly`/`SameSite=Lax` cookies.
+- Never commit `.env`; it is not part of the image.
+- Restrict SSH and Docker access — Docker access is effectively root.
+- Keep off-site backups; a volume does not protect against disk failure.
+
+## 16. More documentation
+
+[Architecture](docs/01-architecture.md) · [Database](docs/02-database-schema.md) · [API](docs/04-api.md) ·
+[Auth](docs/05-auth-and-authorization.md) · [Modules](docs/06-modules.md) · [Printing](docs/10-printing.md) ·
+[Deployment](docs/11-deployment.md) · [Backup](docs/12-backup-and-recovery.md) · [Testing](docs/13-testing.md) ·
+[Environment](docs/14-environment.md) · [Table games](docs/16-table-games.md) · [Progress](docs/PROGRESS.md)

@@ -3,7 +3,7 @@
 
 use axum::Json;
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use cafeflow_domain::format_jalali;
@@ -21,11 +21,169 @@ use crate::staff_orders::build_detail;
 use crate::state::AppState;
 
 const RECEIPT_STATUSES: [&str; 3] = ["served", "awaiting_payment", "paid"];
+const PRINT_STATUSES: [&str; 5] = ["queued", "sent", "printed", "failed", "cancelled"];
 const SEPARATOR: &str = "--------------------------------";
 
 #[derive(Debug, Deserialize, Default)]
 struct ReceiptInput {
     proforma: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct JobsQuery {
+    status: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct FailedInput {
+    error: Option<String>,
+}
+
+pub async fn list_jobs(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<JobsQuery>,
+) -> Result<Json<Value>, AppError> {
+    authorize_print(&state, &headers).await?;
+    let status = query.status.filter(|value| !value.is_empty());
+    if let Some(status) = status.as_deref()
+        && !PRINT_STATUSES.contains(&status)
+    {
+        return Err(crate::error::bad_request(
+            "وضعیت کار چاپ نامعتبر است.",
+            "INVALID_PRINT_STATUS",
+        ));
+    }
+
+    let sql = if status.is_some() {
+        "SELECT j.id, j.order_id, o.code AS order_code, j.kind, j.status, j.attempts,
+                j.last_error, j.payload_json, j.created_at, j.printed_at
+           FROM print_jobs j LEFT JOIN orders o ON o.id = j.order_id
+          WHERE j.status = $1
+          ORDER BY j.created_at ASC LIMIT 100"
+    } else {
+        "SELECT j.id, j.order_id, o.code AS order_code, j.kind, j.status, j.attempts,
+                j.last_error, j.payload_json, j.created_at, j.printed_at
+           FROM print_jobs j LEFT JOIN orders o ON o.id = j.order_id
+          ORDER BY j.created_at ASC LIMIT 100"
+    };
+    let mut request = sqlx::query(sql);
+    if let Some(status) = status.as_deref() {
+        request = request.bind(status);
+    }
+    let rows = request.fetch_all(&state.db.pool).await.map_err(db_error)?;
+    Ok(Json(json!({
+        "items": rows.iter().map(job_json).collect::<Vec<_>>()
+    })))
+}
+
+pub async fn mark_sent(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    authorize_print(&state, &headers).await?;
+    let job = find_job(&state, &id).await?;
+    let status = job["status"].as_str().unwrap_or_default();
+    if status == "sent" {
+        return Ok(Json(job));
+    }
+    if status == "printed" {
+        return Err(conflict(
+            "این کار قبلاً چاپ شده است.",
+            "PRINT_JOB_ALREADY_PRINTED",
+        ));
+    }
+    if status == "cancelled" {
+        return Err(conflict("این کار چاپ لغو شده است.", "PRINT_JOB_CLOSED"));
+    }
+    let result = sqlx::query(
+        "UPDATE print_jobs SET status = 'sent', last_error = NULL
+          WHERE id = $1 AND status = 'queued'",
+    )
+    .bind(&id)
+    .execute(&state.db.pool)
+    .await
+    .map_err(db_error)?;
+    if result.rows_affected() != 1 {
+        return Err(conflict(
+            "این کار دیگر در صف نیست؛ پل دیگری آن را برداشته است.",
+            "PRINT_JOB_NOT_QUEUED",
+        ));
+    }
+    Ok(Json(find_job(&state, &id).await?))
+}
+
+pub async fn mark_printed(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    authorize_print(&state, &headers).await?;
+    find_job(&state, &id).await?;
+    let now = cafeflow_db::now_iso_after_minutes(0);
+    sqlx::query(
+        "UPDATE print_jobs
+            SET status = 'printed', last_error = NULL, attempts = attempts + 1,
+                printed_at = $2
+          WHERE id = $1",
+    )
+    .bind(&id)
+    .bind(&now)
+    .execute(&state.db.pool)
+    .await
+    .map_err(db_error)?;
+    Ok(Json(find_job(&state, &id).await?))
+}
+
+pub async fn mark_failed(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Result<Json<Value>, AppError> {
+    authorize_print(&state, &headers).await?;
+    find_job(&state, &id).await?;
+    let input = serde_json::from_slice::<FailedInput>(&body).unwrap_or_default();
+    let message = input
+        .error
+        .map(|value| value.trim().chars().take(200).collect::<String>())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "unknown error".to_string());
+    sqlx::query(
+        "UPDATE print_jobs
+            SET status = 'failed', last_error = $2, attempts = attempts + 1
+          WHERE id = $1",
+    )
+    .bind(&id)
+    .bind(&message)
+    .execute(&state.db.pool)
+    .await
+    .map_err(db_error)?;
+    Ok(Json(find_job(&state, &id).await?))
+}
+
+async fn authorize_print(state: &AppState, headers: &HeaderMap) -> Result<(), AppError> {
+    let session = require_auth(state, headers).await?;
+    if !session_has_permission(state, &session.user.id, "orders.read").await? {
+        return Err(forbidden("اجازهٔ مدیریت صف چاپ را ندارید.", "FORBIDDEN"));
+    }
+    Ok(())
+}
+
+async fn find_job(state: &AppState, id: &str) -> Result<Value, AppError> {
+    let row = sqlx::query(
+        "SELECT j.id, j.order_id, o.code AS order_code, j.kind, j.status, j.attempts,
+                j.last_error, j.payload_json, j.created_at, j.printed_at
+           FROM print_jobs j LEFT JOIN orders o ON o.id = j.order_id
+          WHERE j.id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&state.db.pool)
+    .await
+    .map_err(db_error)?
+    .ok_or_else(|| not_found("کار چاپ یافت نشد.", "PRINT_JOB_NOT_FOUND"))?;
+    Ok(job_json(&row))
 }
 
 pub async fn queue_receipt(

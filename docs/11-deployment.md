@@ -36,10 +36,14 @@ docker compose --profile tls up -d   # https://localhost:8443 (گواهی داخ
 
 | سرویس | تصویر | نقش |
 |---|---|---|
-| `api` | `Dockerfile.api` (node:24-slim, multi-stage, `USER node`) | NestJS + SQLite + مهاجرت/seed در بوت |
+| `api` | `Dockerfile.api` (node:24-slim, multi-stage, `USER node`) | NestJS قدیمی + SQLite (فقط مرجع/استک پیش از cutover) |
 | `web` | `Dockerfile.web` (vite build → nginx) | SPA + پروکسی هم‌مبدأ `/api` |
 | `backup` | همان تصویر API (اسکریپت `scripts/backup.mjs`) | نسخهٔ `VACUUM INTO` روزانه + چرخش |
 | `proxy` | `caddy:2.8-alpine` با `profiles: ["tls"]` | پایانهٔ HTTPS/ACME |
+
+> مسیر تولید اکنون بخش «بک‌اند Rust و ایمیج تک‌سرویسی» در ادامهٔ همین سند است: یک image/یک
+> container با `Dockerfile.rust` و `compose.rust.yml`. استک سه‌سرویسی بالا فقط برای مقایسه و
+> بازگشت اضطراری نگه داشته شده است.
 
 - **Quay:** هر دو ایمیج در یک مخزن منتشر می‌شوند: `quay.io/intelp917/cafeflow:api-0.1.0` و
   `quay.io/intelp917/cafeflow:web-0.1.0`. تگ‌های کوتاه `api` و `web` برای دیپلوی پایدار (بدون نسخهٔ پین‌شده)
@@ -180,17 +184,11 @@ curl -s http://localhost:3000/api/v1/health
 
 ## د) بک‌اند Rust و ایمیج تک‌سرویسی (پایهٔ مهاجرت)
 
-> **وضعیت صادقانه:** این موج زیرساخت، احراز هویت و مسیر مشتری QR را به Rust منتقل کرده است:
-> health، login/logout، نشست‌ها، تغییر گذرواژه، MFA، منوی عمومی، ثبت سفارش idempotent،
-> پیگیری سفارش، داشبورد عملیات، فهرست/جزئیات/انتقال سفارش کارکنان، سفارش دستی، ویرایش اقلام،
-> میزها، صف آماده‌سازی با پیشروی خودکار سفارش، صندوق (پرداخت جزئی/کامل، تقسیم فاکتور،
-> تخفیف، بازپرداخت و کارت‌خوان)، درخواست‌های گارسون/کارت‌خوان و بستن میز،
-> کاتالوگ مدیریت (دسته، محصول، گزینه، افزودنی، ساعت سرو، ایمپورت CSV و تصویر محصول)،
-> و بلیت/پیش‌فاکتور چاپ، SPA/۴۰۴ واقعی media و
-> انتخاب SQLite/PostgreSQL. کاتالوگ دمو
-> در اولین seed ساخته می‌شود تا منوی QR و سفارش آزمایشی از همان ابتدا کار کنند. بقیهٔ دامنه
-> (گزارش، صف چاپ و بازی‌ها) هنوز در NestJS است؛ تا
-> عبور آزمون‌های برابری، استک دو تصویری فعلی مسیر deployable باقی می‌ماند.
+> **وضعیت:** مهاجرت کامل شد. تمام دامنه‌های NestJS — از احراز هویت و منوی QR تا سفارش،
+> صندوق، گزارش، چاپ، بازی‌ها، تنظیمات/کارکنان، رزرو، چیدمان و QR میز، انبار، مالی و CRM —
+> در بک‌اند Rust پیاده شده‌اند. یک باینری `cafeflow` همان API، SPA، فایل‌های آپلودی و
+> WebSocket بازی‌ها را روی یک پورت سرو می‌کند و هیچ سرویس Node در زمان اجرا لازم نیست.
+> `apps/api` فقط مرجع تاریخی و آزمون برابری است.
 
 ```bash
 # ساخت و اجرای محلی باینری
@@ -204,6 +202,10 @@ DB_DRIVER=sqlite CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -
   Wolfi بدون Node/nginx). پایه‌ها به‌صورت پیش‌فرض از `cgr.dev/chainguard` هستند تا به Docker Hub
   وابسته نباشند؛ با `--build-arg NODE_IMAGE=...`، `RUST_IMAGE=...` یا `RUNTIME_IMAGE=...`
   می‌توان آن‌ها را عوض کرد.
+- ایمیج ساخته‌شده و منتشرشده: `quay.io/intelp917/cafeflow:0.2.0` (و `:latest`)؛ برای دیپلوی
+  نیازی به build نیست. با SQLite داخل همان کانتینر بالا می‌آید:
+  `docker run ... --entrypoint /bin/sh quay.io/intelp917/cafeflow:0.2.0 -c 'cafeflow db setup && exec cafeflow serve'`.
+  راهنمای کامل اجرا، HTTPS، پشتیبان/بازیابی، به‌روزرسانی و اندازهٔ هاست در `README.md` است.
 - Compose تک‌سرویسی: `infra/docker/compose.rust.yml`؛ SQLite پیش‌فرض است. در اولین اجرا
   `cafeflow db setup` مهاجرت و seed را انجام می‌دهد. برای PostgreSQL
   `DB_DRIVER=postgres` و `DATABASE_URL` را تنظیم کنید؛ سرور PostgreSQL سرویس جداگانه است.

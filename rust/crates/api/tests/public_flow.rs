@@ -4,6 +4,8 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
 use cafeflow_api::{AppState, Config, build_router};
 use cafeflow_db::{Database, DbConfig, DbDriver, SeedOptions};
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tower::ServiceExt;
 
 fn config(root: &Path) -> Config {
@@ -32,6 +34,11 @@ fn config(root: &Path) -> Config {
 }
 
 async fn app_with_catalog() -> (axum::Router, tempfile::TempDir) {
+    let (app, _, directory) = app_with_catalog_and_pool().await;
+    (app, directory)
+}
+
+async fn app_with_catalog_and_pool() -> (axum::Router, sqlx::AnyPool, tempfile::TempDir) {
     let directory = tempfile::tempdir().unwrap();
     let cfg = config(directory.path());
     let database = Database::connect(&cfg.db).await.unwrap();
@@ -63,8 +70,9 @@ async fn app_with_catalog() -> (axum::Router, tempfile::TempDir) {
         sqlx::query(statement).execute(pool).await.unwrap();
     }
 
+    let pool = database.pool.clone();
     let state = AppState::new(database, cfg);
-    (build_router(state), directory)
+    (build_router(state), pool, directory)
 }
 
 async fn body_of(response: axum::response::Response) -> (StatusCode, String, String) {
@@ -294,6 +302,32 @@ async fn invalid_qr_is_a_real_404() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
     assert!(String::from_utf8_lossy(&bytes).contains("QR_NOT_FOUND"));
+}
+
+#[tokio::test]
+async fn qr_of_a_deleted_table_stops_working() {
+    let (app, pool, _directory) = app_with_catalog_and_pool().await;
+    sqlx::query(
+        "UPDATE dining_tables
+            SET deleted_at = '2026-01-01T00:00:00.000Z', is_active = 0
+          WHERE id = 'table-1'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/public/menu?qr=table-token-123")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert!(body.contains("QR_TABLE_INACTIVE"), "{body}");
 }
 
 #[tokio::test]
@@ -2036,4 +2070,1377 @@ async fn catalog_manages_categories_products_options_extras_and_images() {
     let (status, _, body) = body_of(response).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body.contains("VALIDATION_FAILED"));
+}
+
+#[tokio::test]
+async fn reports_summarize_sales_refunds_and_export_payments() {
+    let (app, _directory) = app_with_catalog().await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"username":"admin","password":"CafeFlow@1404"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, cookie, _) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let session_cookie = cookie.split(';').next().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/orders")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(
+                    r#"{"tableId":"table-1","items":[{"productId":"product-1","quantity":1},{"productId":"product-2","quantity":1,"optionIds":["option-1"],"extraIds":["extra-1"]}]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let created: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(created["total"], 235000);
+    let order_id = created["id"].as_str().unwrap().to_string();
+
+    for target in ["preparing", "ready", "served"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/v1/orders/{order_id}/transition"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header(header::COOKIE, &session_cookie)
+                    .body(Body::from(format!(r#"{{"to":"{target}"}}"#)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let (status, _, body) = body_of(response).await;
+        assert_eq!(status, StatusCode::OK, "{target}: {body}");
+    }
+
+    for (method, amount) in [("cash", 200000), ("card", 35000)] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/v1/orders/{order_id}/payments"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header(header::COOKIE, &session_cookie)
+                    .body(Body::from(format!(
+                        r#"{{"method":"{method}","amount":{amount}}}"#
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let (status, _, body) = body_of(response).await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/orders/{order_id}/refunds"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(
+                    r#"{"amount":20000,"reason":"اشتباه در سفارش","method":"cash"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/reports/summary")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let report: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(report["totals"]["sales"], 235000);
+    assert_eq!(report["totals"]["refunds"], 20000);
+    assert_eq!(report["totals"]["net"], 215000);
+    assert_eq!(report["totals"]["payments"], 2);
+    assert_eq!(report["totals"]["orders"], 1);
+    assert_eq!(report["totals"]["averageOrder"], 235000);
+    assert_eq!(report["byMethod"][0]["method"], "cash");
+    assert_eq!(report["byMethod"][0]["methodLabelFa"], "نقدی");
+    assert_eq!(report["byMethod"][0]["total"], 200000);
+    assert_eq!(report["byMethod"][1]["method"], "card");
+    assert_eq!(report["daily"].as_array().unwrap().len(), 1);
+    assert_eq!(report["daily"][0]["sales"], 235000);
+    assert_eq!(report["topProducts"][0]["nameFa"], "اسپرسو");
+    assert_eq!(report["topProducts"][0]["revenue"], 120000);
+    assert_eq!(report["topProducts"][1]["nameFa"], "کاپوچینو");
+    assert_eq!(report["topProducts"][1]["revenue"], 115000);
+    let from = report["from"].as_str().unwrap();
+    let to = report["to"].as_str().unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/reports/payments.csv?from={from}&to={to}"))
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "text/csv; charset=utf-8"
+    );
+    let csv = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    let csv = String::from_utf8(csv.to_vec()).unwrap();
+    assert!(csv.starts_with('\u{feff}'));
+    assert!(csv.contains("\"نقدی\""));
+    assert!(csv.contains("\"refunded\""));
+    assert_eq!(csv.lines().count(), 4);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/reports/payments.xlsx?from={from}&to={to}"))
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let xlsx = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    assert!(xlsx.starts_with(b"PK\x03\x04"));
+    assert!(xlsx.len() > 1000);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/reports/summary?from=2026-02-30&to=2026-03-01")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.contains("INVALID_DATE_RANGE"));
+}
+
+#[tokio::test]
+async fn print_queue_claims_jobs_atomically_and_tracks_status() {
+    let (app, _directory) = app_with_catalog().await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"username":"admin","password":"CafeFlow@1404"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, cookie, _) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let session_cookie = cookie.split(';').next().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/orders")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(
+                    r#"{"tableId":"table-1","items":[{"productId":"product-1","quantity":1}]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let created: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let order_id = created["id"].as_str().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/orders/{order_id}/tickets"))
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let tickets: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let ticket_id = tickets["jobs"][0]["id"].as_str().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/orders/{order_id}/receipt"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(r#"{"proforma":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let proforma: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let proforma_id = proforma["job"]["id"].as_str().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/print/jobs?status=queued")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let queued: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(queued["items"].as_array().unwrap().len(), 2);
+    assert_eq!(queued["items"][0]["status"], "queued");
+    assert!(queued["items"][0]["receipt"].as_array().unwrap().len() > 3);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/print/jobs?status=unknown")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.contains("INVALID_PRINT_STATUS"));
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/print/jobs/{ticket_id}/sent"))
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let sent: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(sent["status"], "sent");
+    assert_eq!(sent["attempts"], 0);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/print/jobs/{ticket_id}/sent"))
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/print/jobs/{ticket_id}/printed"))
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let printed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(printed["status"], "printed");
+    assert_eq!(printed["attempts"], 1);
+    assert!(printed["printedAt"].as_str().is_some());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/print/jobs/{ticket_id}/sent"))
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("PRINT_JOB_ALREADY_PRINTED"));
+
+    let long_error = format!(r#"{{"error":"{}"}}"#, "x".repeat(250));
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/print/jobs/{proforma_id}/failed"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::from(long_error))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let failed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(failed["status"], "failed");
+    assert_eq!(failed["attempts"], 1);
+    assert_eq!(failed["error"].as_str().unwrap().chars().count(), 200);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/print/jobs/{proforma_id}/sent"))
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("PRINT_JOB_NOT_QUEUED"));
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/print/jobs?status=failed")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let failed_jobs: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(failed_jobs["items"].as_array().unwrap().len(), 1);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/print/jobs/missing/printed")
+                .header(header::COOKIE, &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(body.contains("PRINT_JOB_NOT_FOUND"));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/print/jobs")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn games_join_reuses_the_device_seat_and_enforces_capacity() {
+    let (app, _directory) = app_with_catalog().await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/public/games/catalog")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let catalog: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(catalog["games"].as_array().unwrap().len(), 38);
+    let tictactoe = catalog["games"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|game| game["id"] == "tictactoe")
+        .unwrap();
+    assert_eq!(tictactoe["nameFa"], "دوز");
+    assert_eq!(tictactoe["playable"], true);
+
+    let join_body = r#"{"qrToken":"table-token-123","gameId":"tictactoe","nameFa":"میزبان"}"#;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/games/join")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(join_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, cookie, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert!(cookie.starts_with("cafe_device="));
+    let device_cookie = cookie.split(';').next().unwrap().to_string();
+    let host: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(host["seat"], 0);
+    assert_eq!(host["room"]["seats"].as_array().unwrap().len(), 1);
+    assert_eq!(host["room"]["seats"][0]["nameFa"], "میزبان");
+    assert!(host["state"].is_null());
+    assert!(host["seatToken"].as_str().unwrap().len() >= 32);
+    let room_id = host["room"]["roomId"].as_str().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/games/join")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &device_cookie)
+                .body(Body::from(join_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let rejoin: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(rejoin["seat"], 0);
+    assert_eq!(rejoin["room"]["roomId"], room_id);
+    assert_eq!(rejoin["room"]["seats"].as_array().unwrap().len(), 1);
+    assert_ne!(rejoin["seatToken"], host["seatToken"]);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/games/join")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"qrToken":"table-token-123","gameId":"tictactoe","nameFa":"مهمان"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let guest: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(guest["seat"], 1);
+    assert_eq!(guest["room"]["seats"].as_array().unwrap().len(), 2);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/games/join")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"qrToken":"table-token-123","gameId":"tictactoe"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("GAME_FULL"));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/games/join")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"qrToken":"missing-token","gameId":"tictactoe"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(body.contains("QR_NOT_FOUND"));
+}
+
+#[tokio::test]
+async fn games_are_blocked_when_the_module_is_disabled() {
+    let (app, directory) = app_with_catalog().await;
+    let database = Database::connect(&config(directory.path()).db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE module_settings SET is_enabled = 0 WHERE key = 'games'")
+        .execute(&database.pool)
+        .await
+        .unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/public/games/catalog")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(body.contains("MODULE_DISABLED"));
+}
+
+async fn join_games(app: &axum::Router, name: &str) -> (serde_json::Value, String) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/public/games/join")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"qrToken":"table-token-123","gameId":"tictactoe","nameFa":"{name}"}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let value: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let token = value["seatToken"].as_str().unwrap().to_string();
+    (value, token)
+}
+
+type GameSocket =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+async fn next_frame(socket: &mut GameSocket, kind: &str) -> serde_json::Value {
+    loop {
+        let message = tokio::time::timeout(std::time::Duration::from_secs(5), socket.next())
+            .await
+            .expect("websocket frame timeout")
+            .expect("websocket closed")
+            .expect("websocket error");
+        if let WsMessage::Text(text) = message {
+            let value: serde_json::Value = serde_json::from_str(text.as_str()).unwrap();
+            if value["type"] == kind {
+                return value;
+            }
+        }
+    }
+}
+
+async fn send_frame(socket: &mut GameSocket, value: serde_json::Value) {
+    socket
+        .send(WsMessage::Text(value.to_string().into()))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn games_websocket_plays_a_full_room_and_rejects_stale_seats() {
+    let (app, _directory) = app_with_catalog().await;
+    let (host, host_token) = join_games(&app, "میزبان").await;
+    let (guest, guest_token) = join_games(&app, "مهمان").await;
+    let room_id = host["room"]["roomId"].as_str().unwrap();
+    assert_eq!(guest["room"]["roomId"], room_id);
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let (mut host_ws, _) =
+        tokio_tungstenite::connect_async(format!("ws://{address}/ws/games?seat={host_token}"))
+            .await
+            .unwrap();
+    let lobby = next_frame(&mut host_ws, "room").await;
+    assert_eq!(lobby["room"]["phase"], "lobby");
+    assert_eq!(lobby["room"]["seats"][0]["connected"], true);
+
+    let (mut guest_ws, _) =
+        tokio_tungstenite::connect_async(format!("ws://{address}/ws/games?seat={guest_token}"))
+            .await
+            .unwrap();
+    let host_view = next_frame(&mut host_ws, "room").await;
+    assert_eq!(host_view["room"]["seats"].as_array().unwrap().len(), 2);
+    let guest_view = next_frame(&mut guest_ws, "room").await;
+    assert_eq!(guest_view["room"]["seats"].as_array().unwrap().len(), 2);
+
+    send_frame(
+        &mut host_ws,
+        serde_json::json!({"type": "ready", "ready": true}),
+    )
+    .await;
+    assert_eq!(
+        next_frame(&mut host_ws, "room").await["room"]["seats"][0]["ready"],
+        true
+    );
+    assert_eq!(
+        next_frame(&mut guest_ws, "room").await["room"]["seats"][0]["ready"],
+        true
+    );
+    send_frame(
+        &mut guest_ws,
+        serde_json::json!({"type": "ready", "ready": true}),
+    )
+    .await;
+    assert_eq!(
+        next_frame(&mut guest_ws, "room").await["room"]["seats"][1]["ready"],
+        true
+    );
+    assert_eq!(
+        next_frame(&mut host_ws, "room").await["room"]["seats"][1]["ready"],
+        true
+    );
+
+    send_frame(&mut host_ws, serde_json::json!({"type": "start"})).await;
+    let host_room = next_frame(&mut host_ws, "room").await;
+    assert_eq!(host_room["room"]["phase"], "playing");
+    let guest_room = next_frame(&mut guest_ws, "room").await;
+    assert_eq!(guest_room["room"]["phase"], "playing");
+    assert_eq!(
+        next_frame(&mut host_ws, "state").await["state"]["currentPlayer"],
+        0
+    );
+    assert_eq!(
+        next_frame(&mut guest_ws, "state").await["state"]["currentPlayer"],
+        0
+    );
+
+    send_frame(
+        &mut guest_ws,
+        serde_json::json!({"type": "move", "move": {"cell": 4}}),
+    )
+    .await;
+    let refused = next_frame(&mut guest_ws, "error").await;
+    assert_eq!(refused["code"], "MOVE_REFUSED");
+
+    send_frame(
+        &mut host_ws,
+        serde_json::json!({"type": "move", "move": {"cell": 0}}),
+    )
+    .await;
+    assert_eq!(
+        next_frame(&mut guest_ws, "state").await["state"]["currentPlayer"],
+        1
+    );
+    assert_eq!(
+        next_frame(&mut host_ws, "state").await["state"]["currentPlayer"],
+        1
+    );
+    send_frame(
+        &mut guest_ws,
+        serde_json::json!({"type": "move", "move": {"cell": 3}}),
+    )
+    .await;
+    assert_eq!(
+        next_frame(&mut host_ws, "state").await["state"]["currentPlayer"],
+        0
+    );
+    assert_eq!(
+        next_frame(&mut guest_ws, "state").await["state"]["currentPlayer"],
+        0
+    );
+    send_frame(
+        &mut host_ws,
+        serde_json::json!({"type": "move", "move": {"cell": 1}}),
+    )
+    .await;
+    assert_eq!(
+        next_frame(&mut guest_ws, "state").await["state"]["currentPlayer"],
+        1
+    );
+    assert_eq!(
+        next_frame(&mut host_ws, "state").await["state"]["currentPlayer"],
+        1
+    );
+    send_frame(
+        &mut guest_ws,
+        serde_json::json!({"type": "move", "move": {"cell": 4}}),
+    )
+    .await;
+    assert_eq!(
+        next_frame(&mut host_ws, "state").await["state"]["currentPlayer"],
+        0
+    );
+    assert_eq!(
+        next_frame(&mut guest_ws, "state").await["state"]["currentPlayer"],
+        0
+    );
+    send_frame(
+        &mut host_ws,
+        serde_json::json!({"type": "move", "move": {"cell": 2}}),
+    )
+    .await;
+    let finished = next_frame(&mut guest_ws, "state").await;
+    assert_eq!(finished["state"]["winner"], 0);
+    assert_eq!(
+        next_frame(&mut host_ws, "state").await["state"]["winner"],
+        0
+    );
+
+    send_frame(&mut guest_ws, serde_json::json!({"type": "leave"})).await;
+    let after_leave = next_frame(&mut host_ws, "room").await;
+    assert_eq!(after_leave["room"]["seats"].as_array().unwrap().len(), 1);
+    assert_eq!(after_leave["room"]["seats"][0]["nameFa"], "میزبان");
+
+    let (mut stale_ws, _) =
+        tokio_tungstenite::connect_async(format!("ws://{address}/ws/games?seat=not-a-real-seat"))
+            .await
+            .unwrap();
+    loop {
+        let message = tokio::time::timeout(std::time::Duration::from_secs(5), stale_ws.next())
+            .await
+            .expect("stale seat close timeout")
+            .expect("stale seat socket")
+            .expect("stale seat error");
+        if let WsMessage::Close(Some(frame)) = message {
+            assert_eq!(
+                frame.code,
+                tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Library(4401)
+            );
+            break;
+        }
+    }
+
+    host_ws.close(None).await.unwrap();
+    server.abort();
+}
+
+#[tokio::test]
+async fn admin_settings_staff_and_management_flow() {
+    let (app, _directory) = app_with_catalog().await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"username":"admin","password":"CafeFlow@1404"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, cookie, _) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK);
+    let session = cookie.split(';').next().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/api/v1/settings")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"taxPercent":9,"digitMode":"latin"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let settings: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(settings["taxPercent"], 9);
+    assert_eq!(settings["digitMode"], "latin");
+
+    for module in ["employees", "reservations"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/api/v1/modules/{module}"))
+                    .header(header::COOKIE, &session)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"enabled":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let (status, _, body) = body_of(response).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/users")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"username":"shift.user","fullName":"کاربر شیفت","password":"CafeFlow@1404","roleKeys":["waiter"]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let staff: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let user_id = staff["id"].as_str().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/employees")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"userId":"{user_id}","employeeCode":"E-100","positionFa":"گارسون","status":"active"}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let employee: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let employee_id = employee["id"].as_str().unwrap().to_string();
+    assert_eq!(employee["statusLabelFa"], "فعال");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/shifts")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"employeeId":"{employee_id}","startsAt":"2026-12-01T09:00:00+03:30","endsAt":"2026-12-01T17:00:00+03:30","note":"شیفت صبح"}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let shift: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(shift["durationHours"], 8.0);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/reservations")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"customerName":"مهمان تست","customerPhone":"09121234567","guestCount":2,"reservedFor":"2026-12-02T19:30:00+03:30","durationMinutes":90,"tableId":"table-1"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let reservation: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(reservation["status"], "pending");
+    assert_eq!(reservation["tableCode"], "T1");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/audit?page=1&pageSize=10")
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let audit: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(audit["total"].as_i64().unwrap() >= 3);
+}
+
+#[tokio::test]
+async fn notifications_and_message_queue_are_scoped_and_idempotent() {
+    let (app, _directory) = app_with_catalog().await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"username":"admin","password":"CafeFlow@1404"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (_, cookie, _) = body_of(response).await;
+    let session = cookie.split(';').next().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/messages/templates")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"key":"test_welcome","channel":"sms","titleFa":"خوش آمدید","bodyFa":"سلام {{name}}","isActive":true}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/messages/send")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"channel":"sms","templateKey":"test_welcome","recipients":["09120000000"],"variables":{"name":"سارا"}}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let sent: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(sent["queued"], 1);
+    assert_eq!(sent["items"][0]["bodyFa"], "سلام سارا");
+    let id = sent["items"][0]["id"].as_str().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/messages/{id}/sent"))
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["status"],
+        "sent"
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/notifications")
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["unreadCount"],
+        0
+    );
+}
+
+#[tokio::test]
+async fn layout_inventory_finance_and_crm_flow() {
+    let (app, _directory) = app_with_catalog().await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"username":"admin","password":"CafeFlow@1404"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (_, cookie, _) = body_of(response).await;
+    let session = cookie.split(';').next().unwrap().to_string();
+    for module in ["inventory", "finance", "crm"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/api/v1/modules/{module}"))
+                    .header(header::COOKIE, &session)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"enabled":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let (status, _, body) = body_of(response).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/layout")
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(serde_json::from_str::<serde_json::Value>(&body).unwrap()["floors"].is_array());
+
+    let response = app.clone().oneshot(Request::builder().method("POST").uri("/api/v1/layout/tables")
+        .header(header::COOKIE, &session).header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"floorId":"floor-1","capacity":4,"shape":"round","x":300,"y":200,"width":120,"height":120}"#)).unwrap()).await.unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let table: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let table_id = table["id"].as_str().unwrap().to_string();
+    assert!(table["plan"]["objects"].as_array().unwrap().len() >= 2);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/layout/tables/{table_id}/qr.png"))
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(header::CONTENT_TYPE).unwrap(),
+        "image/png"
+    );
+
+    let response = app.clone().oneshot(Request::builder().method("POST").uri("/api/v1/inventory/ingredients")
+        .header(header::COOKIE, &session).header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"nameFa":"دانه قهوه","unitSymbol":"g","currentQty":1000,"minQty":100,"costPerUnit":2}"#)).unwrap()).await.unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let ingredient: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let ingredient_id = ingredient["id"].as_str().unwrap().to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/inventory/ingredients/{ingredient_id}/adjustments"
+                ))
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"delta":500,"reason":"شمارش انبار"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["currentQty"],
+        1500.0
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/inventory/waste")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"ingredientId":"{ingredient_id}","qty":10,"reason":"ریختن"}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["qty"],
+        10.0
+    );
+
+    let response = app.clone().oneshot(Request::builder().method("POST").uri("/api/v1/inventory/purchases")
+        .header(header::COOKIE, &session).header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(format!(r#"{{"invoiceNo":"INV-1","items":[{{"ingredientId":"{ingredient_id}","qty":100,"unitCost":3}}]}}"#))).unwrap()).await.unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["total"],
+        300
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/inventory/recipes/product-1")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"yieldQty":1,"items":[{{"ingredientId":"{ingredient_id}","qty":18}}]}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["items"][0]["qty"],
+        18.0
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/cash-sessions")
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let cash: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let register_id = cash["registers"][0]["id"].as_str().unwrap().to_string();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/cash-sessions/open")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"registerId":"{register_id}","openingFloat":100000}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let cash_session: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(cash_session["openingFloat"], 100000);
+    let cash_id = cash_session["id"].as_str().unwrap().to_string();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/cash-sessions/{cash_id}/close"))
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"closingAmount":100000}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["status"],
+        "closed"
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/finance/expenses")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"category":"rent","amount":5000000,"description":"اجاره ماه"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/finance/summary")
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["expenses"],
+        5000000
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/customers")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"name":"سارا","phone":"09121234567","consentMarketing":true}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let customer: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let customer_id = customer["id"].as_str().unwrap().to_string();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/customers/{customer_id}/loyalty"))
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"points":250,"wallet":50000,"reason":"خرید اول"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let customer: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(customer["points"], 250);
+    assert_eq!(customer["tier"], "silver");
+    assert_eq!(customer["walletBalance"], 50000);
+    assert_eq!(customer["ledger"].as_array().unwrap().len(), 2);
+    assert!(customer["reservations"].is_array());
 }

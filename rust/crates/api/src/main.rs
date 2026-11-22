@@ -84,9 +84,12 @@ async fn serve() -> Result<()> {
         config.db.driver.as_str(),
         config.data_directory.display()
     );
-    axum::serve(listener, app)
-        .await
-        .context("اجرای HTTP server")?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .context("اجرای HTTP server")?;
     Ok(())
 }
 

@@ -1,0 +1,392 @@
+// games/chinesechess.js — 中国象棋 (2 players)
+// 9×10 board, 7 piece types, check/checkmate detection
+
+const ROWS = 10, COLS = 9;
+
+// Bit flags for side
+const RED = 0, BLACK = 1;
+
+exports.name = 'chinesechess';
+exports.maxPlayers = 2;
+
+// Initial board layout
+// Convention: row 0 = black's back rank (top), row 9 = red's back rank (bottom)
+// RED is at bottom (rows 7-9), BLACK is at top (rows 0-2)
+function createInitialBoard() {
+  const board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+
+  const place = (row, col, type, side) => { board[row][col] = { type, side }; };
+
+  // Black pieces (top, side 1)
+  place(0, 0, 'R', BLACK); place(0, 1, 'H', BLACK); place(0, 2, 'E', BLACK);
+  place(0, 3, 'A', BLACK); place(0, 4, 'K', BLACK); place(0, 5, 'A', BLACK);
+  place(0, 6, 'E', BLACK); place(0, 7, 'H', BLACK); place(0, 8, 'R', BLACK);
+  place(2, 1, 'C', BLACK); place(2, 7, 'C', BLACK);
+  place(3, 0, 'P', BLACK); place(3, 2, 'P', BLACK); place(3, 4, 'P', BLACK);
+  place(3, 6, 'P', BLACK); place(3, 8, 'P', BLACK);
+
+  // Red pieces (bottom, side 0)
+  place(9, 0, 'R', RED); place(9, 1, 'H', RED); place(9, 2, 'E', RED);
+  place(9, 3, 'A', RED); place(9, 4, 'K', RED); place(9, 5, 'A', RED);
+  place(9, 6, 'E', RED); place(9, 7, 'H', RED); place(9, 8, 'R', RED);
+  place(7, 1, 'C', RED); place(7, 7, 'C', RED);
+  place(6, 0, 'P', RED); place(6, 2, 'P', RED); place(6, 4, 'P', RED);
+  place(6, 6, 'P', RED); place(6, 8, 'P', RED);
+
+  return board;
+}
+
+exports.createState = () => ({
+  currentPlayer: RED,
+  winner: null,
+  board: createInitialBoard(),
+  moveHistory: [],      // [{ from, to, piece, captured }]
+  _playerCount: 2,
+  _seen: {},            // position key -> times reached (threefold repetition = draw)
+  _quiet: 0,            // plies since the last capture (120 = draw)
+});
+
+const QUIET_LIMIT = 120;
+function positionKey(board, turn) {
+  return board.map(r => r.map(c => (c ? c.type + c.side : '0')).join('')).join('|') + turn;
+}
+exports.positionKey = positionKey;
+
+// ---- Move Generation ----
+
+function inBounds(r, c) { return Number.isInteger(r) && Number.isInteger(c) && r >= 0 && r < ROWS && c >= 0 && c < COLS; }
+
+// Get king position for a side
+function findKing(board, side) {
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      if (board[r][c] && board[r][c].type === 'K' && board[r][c].side === side)
+        return { row: r, col: c };
+  return null;
+}
+
+// Generate pseudo-legal moves for a piece at (r,c)
+// Does NOT filter moves that leave own king in check — filtered later
+function getPieceMoves(board, r, c) {
+  const piece = board[r][c];
+  if (!piece) return [];
+  const { type, side } = piece;
+  const moves = [];
+  const enemy = side === RED ? BLACK : RED;
+
+  function addIfValid(tr, tc) {
+    if (!inBounds(tr, tc)) return;
+    const target = board[tr][tc];
+    if (target && target.side === side) return; // can't capture own piece
+    moves.push({ fromRow: r, fromCol: c, toRow: tr, toCol: tc });
+  }
+
+  switch (type) {
+    case 'K': { // King: one step in 9-palace, cannot face other king
+      const palace = side === RED
+        ? { rMin: 7, rMax: 9, cMin: 3, cMax: 5 }
+        : { rMin: 0, rMax: 2, cMin: 3, cMax: 5 };
+      const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+      for (const [dr, dc] of dirs) {
+        const nr = r + dr, nc = c + dc;
+        if (nr >= palace.rMin && nr <= palace.rMax && nc >= palace.cMin && nc <= palace.cMax) {
+          addIfValid(nr, nc);
+        }
+      }
+      break;
+    }
+    case 'A': { // Advisor: diagonal one step in palace
+      const palace = side === RED
+        ? { rMin: 7, rMax: 9, cMin: 3, cMax: 5 }
+        : { rMin: 0, rMax: 2, cMin: 3, cMax: 5 };
+      const dirs = [[1,1],[1,-1],[-1,1],[-1,-1]];
+      for (const [dr, dc] of dirs) {
+        const nr = r + dr, nc = c + dc;
+        if (nr >= palace.rMin && nr <= palace.rMax && nc >= palace.cMin && nc <= palace.cMax) {
+          addIfValid(nr, nc);
+        }
+      }
+      break;
+    }
+    case 'E': { // Elephant: diagonal 2 steps, blocked by eye piece, cannot cross river
+      const homeRows = side === RED ? [5,6,7,8,9] : [0,1,2,3,4];
+      const dirs = [[2,2],[2,-2],[-2,2],[-2,-2]];
+      const eyes = [[1,1],[1,-1],[-1,1],[-1,-1]];
+      for (let i = 0; i < 4; i++) {
+        const [dr, dc] = dirs[i];
+        const [er, ec] = eyes[i];
+        const nr = r + dr, nc = c + dc;
+        const eyeR = r + er, eyeC = c + ec;
+        if (inBounds(nr, nc) && homeRows.includes(nr)) {
+          if (!board[eyeR][eyeC]) { // eye not blocked
+            addIfValid(nr, nc);
+          }
+        }
+      }
+      break;
+    }
+    case 'H': { // Horse: L-shape, blocked by leg
+      const steps = [
+        [-2, -1, -1, 0], [-2, 1, -1, 0], [2, -1, 1, 0], [2, 1, 1, 0],
+        [-1, -2, 0, -1], [-1, 2, 0, 1], [1, -2, 0, -1], [1, 2, 0, 1],
+      ];
+      for (let i = 0; i < 8; i++) {
+        const dr = steps[i][0], dc = steps[i][1];
+        const lr = r + steps[i][2], lc = c + steps[i][3]; // leg position
+        const nr = r + dr, nc = c + dc;
+        if (inBounds(nr, nc) && !board[lr][lc]) {
+          addIfValid(nr, nc);
+        }
+      }
+      break;
+    }
+    case 'R': { // Rook: straight line
+      const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+      for (const [dr, dc] of dirs) {
+        for (let i = 1; i < 10; i++) {
+          const nr = r + dr * i, nc = c + dc * i;
+          if (!inBounds(nr, nc)) break;
+          const target = board[nr][nc];
+          if (target) {
+            if (target.side === enemy) moves.push({ fromRow: r, fromCol: c, toRow: nr, toCol: nc });
+            break; // blocked
+          }
+          moves.push({ fromRow: r, fromCol: c, toRow: nr, toCol: nc });
+        }
+      }
+      break;
+    }
+    case 'C': { // Cannon: moves like rook, captures by jumping over exactly one piece
+      const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+      for (const [dr, dc] of dirs) {
+        for (let i = 1; i < 10; i++) {
+          const nr = r + dr * i, nc = c + dc * i;
+          if (!inBounds(nr, nc)) break;
+          if (!board[nr][nc]) {
+            moves.push({ fromRow: r, fromCol: c, toRow: nr, toCol: nc });
+          } else {
+            // Found a screen — look for capture beyond it
+            for (let j = i + 1; j < 10; j++) {
+              const cr = r + dr * j, cc = c + dc * j;
+              if (!inBounds(cr, cc)) break;
+              if (board[cr][cc]) {
+                if (board[cr][cc].side === enemy) {
+                  moves.push({ fromRow: r, fromCol: c, toRow: cr, toCol: cc });
+                }
+                break; // only capture first piece behind screen
+              }
+            }
+            break; // don't continue non-capture moves past screen
+          }
+        }
+      }
+      break;
+    }
+    case 'P': { // Pawn: forward one; after crossing river, can also go sideways
+      const forward = side === RED ? -1 : 1;
+      const homeRows = side === RED ? [5,6,7,8,9] : [0,1,2,3,4];
+      // Forward
+      addIfValid(r + forward, c);
+      // Sideways (only after crossing river)
+      if (!homeRows.includes(r)) {
+        addIfValid(r, c - 1);
+        addIfValid(r, c + 1);
+      }
+      break;
+    }
+  }
+  return moves;
+}
+
+// Check if a side's king is in check
+function isInCheck(board, side) {
+  const king = findKing(board, side);
+  if (!king) return true; // king captured = in check
+  const enemy = side === RED ? BLACK : RED;
+
+  // See if any enemy piece can capture the king
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (board[r][c] && board[r][c].side === enemy) {
+        const moves = getPieceMoves(board, r, c);
+        for (const m of moves) {
+          if (m.toRow === king.row && m.toCol === king.col) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Check if two kings are facing each other (no piece between on same column)
+function kingsAreFacing(board) {
+  const redKing = findKing(board, RED);
+  const blackKing = findKing(board, BLACK);
+  if (!redKing || !blackKing) return false;
+  if (redKing.col !== blackKing.col) return false;
+
+  const minRow = Math.min(redKing.row, blackKing.row);
+  const maxRow = Math.max(redKing.row, blackKing.row);
+  for (let r = minRow + 1; r < maxRow; r++) {
+    if (board[r][redKing.col]) return false; // piece between
+  }
+  return true;
+}
+
+// Make a move (mutate board), return captured piece if any
+function makeMove(board, move) {
+  const piece = board[move.fromRow][move.fromCol];
+  const captured = board[move.toRow][move.toCol];
+  board[move.toRow][move.toCol] = piece;
+  board[move.fromRow][move.fromCol] = null;
+  return captured;
+}
+
+function undoMove(board, move, captured) {
+  const piece = board[move.toRow][move.toCol];
+  board[move.fromRow][move.fromCol] = piece;
+  board[move.toRow][move.toCol] = captured;
+}
+
+// Get all legal moves for a side (filtered for check + facing king rule)
+function getLegalMoves(board, side) {
+  const allMoves = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (board[r][c] && board[r][c].side === side) {
+        const pieceMoves = getPieceMoves(board, r, c);
+        for (const move of pieceMoves) {
+          const captured = makeMove(board, move);
+          if (!isInCheck(board, side) && !kingsAreFacing(board)) {
+            allMoves.push(move);
+          }
+          undoMove(board, move, captured);
+        }
+      }
+    }
+  }
+  return allMoves;
+}
+
+// Legal moves of the single piece at (r,c): same filter as getLegalMoves, one piece only.
+function getLegalMovesFrom(board, r, c) {
+  const piece = board[r][c];
+  if (!piece) return [];
+  const result = [];
+  for (const move of getPieceMoves(board, r, c)) {
+    const captured = makeMove(board, move);
+    if (!isInCheck(board, piece.side) && !kingsAreFacing(board)) result.push(move);
+    undoMove(board, move, captured);
+  }
+  return result;
+}
+
+// ---- Handle Move ----
+
+// Repetition outcome (Asian xiangqi rules): the side that keeps checking through the whole
+// cycle must change its move, so it loses; if both sides keep checking, or neither does, draw.
+function repetitionResult(plies, key) {
+  const first = plies.findIndex(p => p.key === key);
+  const cycle = plies.slice(first + 1);
+  const perpetual = [true, true];
+  const moved = [false, false];
+  for (const p of cycle) {
+    if (p.mover === null) continue;
+    moved[p.mover] = true;
+    if (!p.check) perpetual[p.mover] = false;
+  }
+  const red = moved[RED] && perpetual[RED], black = moved[BLACK] && perpetual[BLACK];
+  if (red && !black) return BLACK;
+  if (black && !red) return RED;
+  return -1;
+}
+
+exports.repetitionResult = repetitionResult;
+
+exports.handleMove = (data, state, playerIndex) => {
+  if (state.winner !== null) return 'g_game_over';
+  if (state.currentPlayer !== playerIndex) return 'g_not_your_turn';
+
+  let { from, to } = data || {};
+  // Also accept the flat shape used by legalMoves: {fromRow,fromCol,toRow,toCol}
+  if (!from && !to && data && Number.isInteger(data.fromRow) && Number.isInteger(data.toRow)) {
+    from = { row: data.fromRow, col: data.fromCol };
+    to = { row: data.toRow, col: data.toCol };
+  }
+  if (!from || !to) return 'g_invalid_action';
+  const { row: fr, col: fc } = from;
+  const { row: tr, col: tc } = to;
+
+  if (!inBounds(fr, fc) || !inBounds(tr, tc)) return 'xq_out_of_bounds';
+  if (fr === tr && fc === tc) return 'xq_stand_still';
+
+  const piece = state.board[fr][fc];
+  if (!piece) return 'xq_no_piece_there';
+  if (piece.side !== playerIndex) return 'xq_not_your_piece';
+
+  const target = state.board[tr][tc];
+  if (target && target.side === playerIndex) return 'xq_cannot_take_own';
+
+  // Validate move against legal moves
+  const legalMoves = getLegalMovesFrom(state.board, fr, fc);
+  const found = legalMoves.find(m =>
+    m.fromRow === fr && m.fromCol === fc && m.toRow === tr && m.toCol === tc
+  );
+  if (!found) return 'xq_illegal_move';
+
+  // The opening position counts as the first occurrence (otherwise returning to it needs 4 visits).
+  if (!state._plies) {
+    state._seen = state._seen || {};
+    const k0 = positionKey(state.board, playerIndex);
+    state._seen[k0] = (state._seen[k0] || 0) + 1;
+    state._plies = [{ key: k0, mover: null, check: false }];
+  }
+
+  // Execute
+  const captured = makeMove(state.board, found);
+  state.moveHistory.push({ ...found, piece: { ...piece }, captured: captured ? { ...captured } : null });
+
+  // Switch turn
+  const enemy = playerIndex === RED ? BLACK : RED;
+  state.currentPlayer = enemy;
+
+  // Draw rules: the same position three times, or 60 moves each without a capture
+  const key = positionKey(state.board, enemy);
+  state._seen = state._seen || {};
+  state._seen[key] = (state._seen[key] || 0) + 1;
+  state._quiet = captured ? 0 : (state._quiet || 0) + 1;
+
+  // Check if enemy has no legal moves → checkmate or stalemate
+  const enemyMoves = getLegalMoves(state.board, enemy);
+  const gaveCheck = isInCheck(state.board, enemy);
+  state.moveHistory[state.moveHistory.length - 1].check = gaveCheck;
+  state._plies.push({ key, mover: playerIndex, check: gaveCheck });
+  if (enemyMoves.length === 0) {
+    // Checkmate and stalemate both lose for the side to move in Chinese chess
+    state.winner = playerIndex;
+  } else if (state._seen[key] >= 3) {
+    state.winner = repetitionResult(state._plies, key);
+  } else if (state._quiet >= QUIET_LIMIT) {
+    state.winner = -1;
+  }
+
+  return null;
+};
+
+// Per-player view: include legal moves for the current player only
+exports.playerView = function(state, playerIndex) {
+  var view = {
+    currentPlayer: state.currentPlayer,
+    winner: state.winner,
+    board: state.board,
+    moveHistory: state.moveHistory,
+    _playerCount: state._playerCount,
+  };
+  // Only include legal moves if it is this player's turn and game is not over
+  if (state.winner === null && state.currentPlayer === playerIndex) {
+    view.legalMoves = getLegalMoves(state.board, playerIndex);
+  } else {
+    view.legalMoves = [];
+  }
+  return view;
+};
