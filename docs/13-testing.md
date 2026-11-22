@@ -42,6 +42,12 @@ cargo test --workspace
   مشتق می‌شود، اضافه‌پرداخت رد می‌شود و سهم‌ها ترتیب پایدار `sort_order` دارند؛ آزمون‌های
   `cashier_records_partial_and_full_payments_then_refunds` و
   `cashier_splits_bills_and_applies_a_discount`.
+- موج ۸: `GET /service-requests` با فیلتر `pending|all`، `POST /service-requests/:id/status`
+  با پذیرش/انجام/لغو و رد درخواست بسته با `REQUEST_CLOSED`، `GET /terminal-requests` با
+  `pending|all`، ثبت عمومی `POST /public/requests` و `POST /public/terminal-requests` با
+  دستگاه/QR/اعلان نقش، و `POST /tables/:id/close` با شرط تسویهٔ همهٔ سفارش‌ها؛ آزمون‌های
+  `customer_requests_are_created_and_handled_once` و
+  `a_table_closes_only_when_its_orders_are_settled`.
 - seed دمو اکنون کاتالوگ قابل استفاده می‌سازد: ۲ دسته، ۵ محصول، ۳ میز با QR و گزینه/افزودنی؛
   آزمون `demo_menu_seed_creates_a_ready_to_order_catalog`.
 - `cafeflow-games`: فقط registry اتاق در این موج؛ موتورهای ۳۸ بازی هنوز منتقل نشده‌اند.
@@ -50,9 +56,11 @@ cargo test --workspace
   فهرست/جزئیات/انتقال سفارش روی PostgreSQL و مرورگر واقعی هم تأیید شد. در موج ۶ صف
   آماده‌سازی روی PostgreSQL تازه و در مرورگر واقعی (شروع/آماده‌شدن دو دپارتمان) تأیید شد.
   در موج ۷ پرداخت جزئی/کامل، تقسیم سه‌نفره، پرداخت سهم، بازپرداخت، تخفیف و تکمیل کارت‌خوان
-  روی PostgreSQL و صندوق در مرورگر واقعی تأیید شدند.
-- **هنوز منتقل نشده:** کاتالوگ مدیریت، گزارش، درخواست گارسون
-  و کارت‌خوان، صف چاپ و بازی‌ها. تا سبز شدن آزمون برابری، cutover انجام نمی‌شود.
+  روی PostgreSQL و صندوق در مرورگر واقعی تأیید شدند. در موج ۸ ثبت درخواست گارسون و
+  کارت‌خوان از QR، صف درخواست‌ها، پذیرش/انجام و بستن میز روی PostgreSQL و صفحات
+  `/admin/requests` و `/admin/tables` تأیید شدند.
+- **هنوز منتقل نشده:** کاتالوگ مدیریت، گزارش، صف چاپ و بازی‌ها. تا سبز شدن آزمون برابری،
+  cutover انجام نمی‌شود.
 
 ## وضعیت فعلی (پایان فاز ۱۰)
 

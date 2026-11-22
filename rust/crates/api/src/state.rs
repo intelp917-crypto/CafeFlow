@@ -11,6 +11,7 @@ pub struct AppState {
     pub db: Database,
     pub config: Arc<Config>,
     pub login_limiter: Arc<Mutex<SlidingWindowLimiter>>,
+    pub request_limiter: Arc<Mutex<SlidingWindowLimiter>>,
 }
 
 impl AppState {
@@ -22,6 +23,10 @@ impl AppState {
             login_limiter: Arc::new(Mutex::new(SlidingWindowLimiter::new(
                 Duration::from_secs(minutes * 60),
                 60,
+            ))),
+            request_limiter: Arc::new(Mutex::new(SlidingWindowLimiter::new(
+                Duration::from_secs(60),
+                20,
             ))),
         }
     }

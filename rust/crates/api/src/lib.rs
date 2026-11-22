@@ -11,6 +11,7 @@ pub mod printing;
 pub mod public;
 pub mod public_menu;
 pub mod public_orders;
+pub mod requests;
 pub mod staff_ordering;
 pub mod staff_orders;
 pub mod state;

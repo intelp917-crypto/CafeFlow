@@ -16,6 +16,7 @@ use crate::printing;
 use crate::public;
 use crate::public_menu;
 use crate::public_orders;
+use crate::requests;
 use crate::staff_ordering;
 use crate::staff_orders;
 use crate::state::AppState;
@@ -69,10 +70,22 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/orders/{id}/transition", post(staff_orders::transition))
         .route("/tables", get(staff_ordering::tables))
+        .route("/tables/{id}/close", post(requests::close_table))
+        .route("/service-requests", get(requests::list_service))
+        .route(
+            "/service-requests/{id}/status",
+            post(requests::update_service),
+        )
+        .route("/terminal-requests", get(requests::list_terminal))
         .route("/prep/queue", get(prep::queue))
         .route("/prep/{id}/transition", post(prep::transition))
         .route("/public/branding", get(public::branding))
         .route("/public/branding/manifest", get(public::branding_manifest))
+        .route("/public/requests", post(requests::create_public_request))
+        .route(
+            "/public/terminal-requests",
+            post(requests::create_public_terminal),
+        )
         .route("/public/branding/icon/{size}", get(public::branding_icon))
         .route("/public/menu", get(public_menu::menu))
         .route("/public/orders", post(public_orders::create_order))
