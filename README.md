@@ -98,9 +98,7 @@ docker run -d --name cafeflow \
   -e SEED_DEMO_MENU=true \
   -e SESSION_COOKIE_SECURE=false \
   -v cafeflow_data:/app/data \
-  --entrypoint /bin/sh \
-  quay.io/intelp917/cafeflow:0.2.0 \
-  -c 'cafeflow db setup && exec cafeflow serve'
+  quay.io/intelp917/cafeflow:0.2.0
 
 # ۳) بررسی
 curl -s http://127.0.0.1:8080/api/v1/health
@@ -122,8 +120,6 @@ services:
     image: quay.io/intelp917/cafeflow:0.2.0
     container_name: cafeflow
     restart: unless-stopped
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["cafeflow db setup && exec cafeflow serve"]
     environment:
       APP_ENV: production
       PORT: "3000"
@@ -424,6 +420,19 @@ docker compose pull && docker compose up -d
 
 یا با watchtower/کرون هر چند دقیقه `docker pull` را اجرا کنید.
 
+### استقرار روی لیارا (Git)
+
+فایل `liara.json` در ریشه اضافه شده و Dockerfile را از `infra/docker/Dockerfile.rust` می‌شناسد:
+
+- در پنل، پلتفرم برنامه **Docker** و پورت `3000` باشد؛ دیسک `data` روی `/app/data` سوار شود.
+- موقعیت build آلمان (`germany`) است تا دانلود پکیج محدودیت نداشته باشد.
+- در استقرار از GitHub فیلدهای `app` و `platform` را در `liara.json` نگذارید؛ لیارا خودش آن‌ها را
+  تشخیص می‌دهد (فایل نمونهٔ پنل این دو را دارد و همان باعث خطا می‌شود).
+- متغیرها را در Environment Variables پنل ست کنید: `APP_ENV=production`، `SEED_ADMIN_USERNAME`،
+  `SEED_ADMIN_PASSWORD`، `SESSION_COOKIE_SECURE=true` و `PUBLIC_APP_URL=https://<دامنه>`.
+- اولین بوت خودکار `cafeflow db setup` را اجرا می‌کند (مهاجرت + seed فقط روی دیتابیس خالی)؛ برای
+  خاموش کردنش `CAFEFLOW_AUTO_SETUP=0` بگذارید.
+
 ## ۱۲. بررسی سلامت و عملیات
 
 ```bash
@@ -573,9 +582,7 @@ docker run -d --name cafeflow \
   -e SEED_DEMO_MENU=true \
   -e SESSION_COOKIE_SECURE=false \
   -v cafeflow_data:/app/data \
-  --entrypoint /bin/sh \
-  quay.io/intelp917/cafeflow:0.2.0 \
-  -c 'cafeflow db setup && exec cafeflow serve'
+  quay.io/intelp917/cafeflow:0.2.0
 
 curl -s http://127.0.0.1:8080/api/v1/health
 ```
@@ -593,8 +600,6 @@ services:
     image: quay.io/intelp917/cafeflow:0.2.0
     container_name: cafeflow
     restart: unless-stopped
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["cafeflow db setup && exec cafeflow serve"]
     environment:
       APP_ENV: production
       PORT: "3000"
@@ -819,6 +824,21 @@ docker compose pull && docker compose up -d
 ```
 
 or let watchtower/cron run `docker pull`.
+
+### Deploying on Liara (Git)
+
+`liara.json` points Liara at the monorepo Dockerfile (`infra/docker/Dockerfile.rust`).
+
+- In the panel the app platform must be **Docker** with port `3000`, and the `data` disk mounted at
+  `/app/data`.
+- Build location is `germany` so package downloads are unrestricted.
+- For GitHub deploys do not put `app` or `platform` in `liara.json`; Liara detects both (the file
+  the panel offers contains them, and that is what breaks the Git deploy).
+- Set the variables in the panel's Environment Variables: `APP_ENV=production`,
+  `SEED_ADMIN_USERNAME`, `SEED_ADMIN_PASSWORD`, `SESSION_COOKIE_SECURE=true` and
+  `PUBLIC_APP_URL=https://<domain>`.
+- The first boot runs `cafeflow db setup` automatically (migrations + seed only for an empty
+  database); set `CAFEFLOW_AUTO_SETUP=0` to turn it off.
 
 ## 12. Health and operations
 

@@ -1,0 +1,13 @@
+{
+  "port": 3000,
+  "build": {
+    "location": "germany",
+    "dockerfile": "infra/docker/Dockerfile.rust"
+  },
+  "disks": [
+    {
+      "name": "data",
+      "mountTo": "/app/data"
+    }
+  ]
+}
