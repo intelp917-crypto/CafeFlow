@@ -5,6 +5,7 @@ import type { ModuleKey } from '@cafeflow/shared';
 import { useAuth } from '../lib/auth';
 import { useBranding } from '../lib/branding';
 import { DeveloperCredit } from '../components/DeveloperCredit';
+import { NotificationBell } from '../components/NotificationBell';
 
 interface NavItem {
   to: string;
@@ -164,6 +165,7 @@ export function AdminLayout() {
               </div>
 
               <div className="flex items-center gap-2">
+                <NotificationBell />
                 <Button size="sm" variant="ghost" onClick={() => navigate('/admin/security')}>
                   امنیت
                 </Button>

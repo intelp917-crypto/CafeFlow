@@ -6,6 +6,8 @@ import { errorMessage } from '../lib/api';
 import { customerApi, orderTokenFor } from '../lib/customer';
 import { formatCountFa, formatDateTimeFa } from '../lib/format';
 import { useBranding } from '../lib/branding';
+import { useNotifications } from '../lib/notifications';
+import { DeviceNotificationButton } from '../components/NotificationBell';
 import { CafeLocation } from '../components/customer/CafeLocation';
 
 const CUSTOMER_PATH = [
@@ -30,6 +32,25 @@ const CUSTOMER_STEP_LABELS: Record<string, string> = {
   served: 'سرو شد',
   awaiting_payment: 'در انتظار پرداخت',
   paid: 'پرداخت شد',
+};
+
+const STATUS_NOTIFICATIONS: Record<
+  string,
+  { title: string; body: string; tone: 'brand' | 'success' | 'warning' | 'danger' | 'info' }
+> = {
+  awaiting_confirmation: {
+    title: 'سفارش شما ثبت شد',
+    body: 'کارکنان سفارش را بررسی می‌کنند.',
+    tone: 'brand',
+  },
+  confirmed: { title: 'سفارش تأیید شد', body: 'به‌زودی آماده‌سازی شروع می‌شود.', tone: 'brand' },
+  preparing: { title: 'آماده‌سازی شروع شد', body: 'سفارش شما در حال آماده‌شدن است.', tone: 'brand' },
+  partially_ready: { title: 'بخشی از سفارش آماده است', body: 'بقیه اقلام هم به‌زودی آماده می‌شود.', tone: 'brand' },
+  ready: { title: 'سفارش شما آماده است', body: 'برای تحویل به بار مراجعه کنید.', tone: 'success' },
+  served: { title: 'سفارش سرو شد', body: 'نوش جان! اگر چیزی لازم داشتید از دکمه‌های درخواست استفاده کنید.', tone: 'success' },
+  awaiting_payment: { title: 'صورتحساب آماده است', body: 'برای پرداخت به صندوق مراجعه کنید یا کارت‌خوان بخواهید.', tone: 'warning' },
+  paid: { title: 'پرداخت ثبت شد', body: 'از حضور شما سپاسگزاریم.', tone: 'success' },
+  cancelled: { title: 'سفارش لغو شد', body: 'برای اطلاعات بیشتر با کارکنان صحبت کنید.', tone: 'danger' },
 };
 
 const ITEM_STATUS_LABELS: Record<string, string> = {
@@ -60,11 +81,26 @@ export function OrderStatusPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [requesting, setRequesting] = useState<CustomerRequestType | null>(null);
   const noticeTimer = useRef<number | null>(null);
+  const previousStatus = useRef<string | null>(null);
+  const { notify } = useNotifications();
 
+  // The status poll is also the guest's notification source: every real change
+  // becomes an in-app toast and, when enabled, a device notification.
   const load = useCallback(async () => {
     if (!code) return;
     try {
       const data = await customerApi.orderStatus(code, orderTokenFor(code));
+      const previous = previousStatus.current;
+      previousStatus.current = data.status;
+      if (previous && previous !== data.status) {
+        const preset = STATUS_NOTIFICATIONS[data.status];
+        notify({
+          id: `order:${code}:${data.status}`,
+          title: preset?.title ?? 'وضعیت سفارش شما تغییر کرد',
+          body: preset?.body ?? `وضعیت جدید: ${CUSTOMER_STEP_LABELS[data.status] ?? data.status}`,
+          tone: preset?.tone ?? 'brand',
+        });
+      }
       setOrder(data);
       setError(null);
     } catch (caught) {
@@ -72,6 +108,10 @@ export function OrderStatusPage() {
     } finally {
       setLoading(false);
     }
+  }, [code, notify]);
+
+  useEffect(() => {
+    previousStatus.current = null;
   }, [code]);
 
   useEffect(() => {
@@ -105,7 +145,12 @@ export function OrderStatusPage() {
     setRequesting(type);
     try {
       await customerApi.createRequest({ qrToken, type, orderCode: code });
-      showNotice('درخواست شما ثبت شد و به کارکنان اطلاع داده شد.');
+      notify({
+        id: `request:${code}:${Date.now()}`,
+        title: 'درخواست شما ثبت شد',
+        body: 'کارکنان در جریان هستند.',
+        tone: 'success',
+      });
     } catch (caught) {
       showNotice(errorMessage(caught));
     } finally {
@@ -167,6 +212,15 @@ export function OrderStatusPage() {
 
       <main className="mx-auto max-w-3xl space-y-4 px-4 py-5 sm:px-6">
         {notice ? <Alert tone="success">{notice}</Alert> : null}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-ink">اعلان وضعیت روی این دستگاه</p>
+            <p className="text-[10px] leading-5 text-muted">
+              با روشن‌کردن اعلان، تغییر وضعیت سفارش را روی گوشی یا رایانه می‌بینید.
+            </p>
+          </div>
+          <DeviceNotificationButton />
+        </div>
         {!qrToken ? (
           <Alert tone="info">
             برای ارسال درخواست به گارسون، صفحه را از روی QR میز باز کنید.

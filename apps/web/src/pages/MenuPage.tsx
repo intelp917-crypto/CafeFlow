@@ -16,6 +16,8 @@ import { ProductDialog, type CartLineDraft } from '../components/customer/Produc
 import { CategoryRail } from '../components/customer/CategoryRail';
 import { CafeLocation } from '../components/customer/CafeLocation';
 import { DeveloperCredit } from '../components/DeveloperCredit';
+import { useNotifications } from '../lib/notifications';
+import { DeviceNotificationButton } from '../components/NotificationBell';
 
 function lineKey(draft: CartLineDraft): string {
   return [
@@ -124,6 +126,7 @@ export function MenuPage() {
   const [searchParams] = useSearchParams();
   const roundCode = searchParams.get('order');
   const navigate = useNavigate();
+  const { notify } = useNotifications();
   const storageKey = `cafeflow:cart:${qrToken ?? 'browse'}`;
 
   const [menu, setMenu] = useState<PublicMenuResponse | null>(null);
@@ -285,6 +288,12 @@ export function MenuPage() {
         setOrderNote('');
         pendingRequestId.current = randomId();
         setCartOpen(false);
+        notify({
+          id: `order-items:${response.code}`,
+          title: 'اقلام به سفارش اضافه شد',
+          body: 'کارکنان سفارش به‌روزشده را می‌بینند.',
+          tone: 'success',
+        });
         navigate(`/order/${response.code}?qr=${encodeURIComponent(qrToken)}`);
         return;
       }
@@ -305,6 +314,12 @@ export function MenuPage() {
       setOrderNote('');
       pendingRequestId.current = randomId();
       setCartOpen(false);
+      notify({
+        id: `order:${response.code}`,
+        title: 'سفارش شما ثبت شد',
+        body: 'وضعیت سفارش را در همین صفحه دنبال کنید.',
+        tone: 'success',
+      });
       navigate(`/order/${response.code}?qr=${encodeURIComponent(qrToken)}`);
     } catch (caught) {
       setSubmitError(errorMessage(caught));
@@ -383,6 +398,7 @@ export function MenuPage() {
                 {menu.table.nameFa}
               </span>
             ) : null}
+            <DeviceNotificationButton className="hidden sm:inline-flex" />
             <Button size="sm" onClick={() => setCartOpen(true)} disabled={cart.length === 0}>
               سبد ({formatCountFa(itemCount)})
             </Button>

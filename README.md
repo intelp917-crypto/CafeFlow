@@ -240,8 +240,11 @@ docker build -f infra/docker/Dockerfile.rust \
 | `PUBLIC_APP_URL` | — | آدرس عمومی سایت (مثل `https://cafe.example.com`) برای لینک داخل QR وقتی هدر `Origin` در دسترس نیست. |
 | `RUST_LOG` | `cafeflow_api=info,tower_http=info,sqlx=warn` | سطح لاگ. |
 
-متغیرهای `SMS_*`، `VAPID_*` و `PRINT_BRIDGE_TOKEN` در این نسخه برای ارسال پیامک/پوش خارجی استفاده نمی‌شوند؛
-پل چاپ یک اسکریپت جداگانه روی رایانهٔ کافه است و وجودش برای اجرای سایت لازم نیست.
+اعلان‌ها روی خود دستگاه نمایش داده می‌شوند: توست درون‌برنامه‌ای در همهٔ صفحه‌ها (پنل کارکنان، منوی مشتری و صفحهٔ
+وضعیت سفارش) و اعلان موبایلی مرورگر پس از لمس دکمهٔ «فعال‌سازی اعلان». این قابلیت به `VAPID_*` یا سرویس پوش بیرونی
+نیازی ندارد؛ اگر تب مرورگر کامل بسته باشد اعلانی نمی‌رسد.
+متغیرهای `SMS_*` و `PRINT_BRIDGE_TOKEN` در این نسخه برای پیامک/چاپ خارجی استفاده نمی‌شوند؛ پل چاپ یک اسکریپت
+جداگانه روی رایانهٔ کافه است و وجودش برای اجرای سایت لازم نیست.
 
 ## ۷. دادهٔ پایدار، پشتیبان و بازیابی
 
@@ -718,8 +721,11 @@ and you pass it with `--env-file`.
 | `PUBLIC_APP_URL` | — | Public origin (e.g. `https://cafe.example.com`) used in QR links when `Origin` is unavailable |
 | `RUST_LOG` | `cafeflow_api=info,tower_http=info,sqlx=warn` | Log filter |
 
-`SMS_*`, `VAPID_*` and `PRINT_BRIDGE_TOKEN` are not used for outbound SMS/push in this release. The
-print bridge is an optional script that runs on a cafe PC; the site does not need it.
+Notifications are delivered on the device itself: an in-app toast on every page (staff panel, guest
+menu and order status) plus a browser/mobile notification after the user taps “Enable notifications”.
+No `VAPID_*` keys or external push service are needed; a fully closed tab receives nothing.
+`SMS_*` and `PRINT_BRIDGE_TOKEN` are not used for outbound SMS/print in this release; the print
+bridge is an optional script that runs on a cafe PC.
 
 ## 7. Persistent data, backup and restore
 

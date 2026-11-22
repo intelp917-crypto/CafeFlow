@@ -10,7 +10,7 @@
  */
 // Bump this whenever a cached response shape changes: activation deletes every
 // cache that does not start with the new version.
-const VERSION = 'cafeflow-v2';
+const VERSION = 'cafeflow-v3';
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const OFFLINE_URL = '/offline.html';
@@ -33,6 +33,28 @@ self.addEventListener('activate', (event) => {
         Promise.all(keys.filter((key) => !key.startsWith(VERSION)).map((key) => caches.delete(key))),
       )
       .then(() => self.clients.claim()),
+  );
+});
+
+/* Device notifications: tapping one focuses an open tab and opens the target
+ * route, or opens a new window when the site is closed. */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const href = (event.notification.data && event.notification.data.href) || '/';
+  const target = new URL(href, self.location.origin).href;
+
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const exact = windows.find((client) => client.url === target);
+      if (exact) return exact.focus();
+      const reusable = windows.find((client) => 'navigate' in client);
+      if (reusable) {
+        await reusable.navigate(target);
+        return reusable.focus();
+      }
+      return self.clients.openWindow(target);
+    })(),
   );
 });
 
