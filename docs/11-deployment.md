@@ -180,10 +180,17 @@ curl -s http://localhost:3000/api/v1/health
 
 ## د) بک‌اند Rust و ایمیج تک‌سرویسی (پایهٔ مهاجرت)
 
-> **وضعیت صادقانه:** این موج زیرساخت و احراز هویت را به Rust منتقل کرده است: health، login/logout،
-> نشست‌ها، تغییر گذرواژه، MFA، SPA/۴۰۴ مسیرهای واقعی media و انتخاب SQLite/PostgreSQL.
-> مسیرهای دامنه (منو، سفارش، پرداخت، گزارش، بازی و…) هنوز در NestJS هستند؛ تا عبور آزمون‌های
-> برابری، استک دو تصویری فعلی مسیر deployable باقی می‌ماند.
+> **وضعیت صادقانه:** این موج زیرساخت، احراز هویت و مسیر مشتری QR را به Rust منتقل کرده است:
+> health، login/logout، نشست‌ها، تغییر گذرواژه، MFA، منوی عمومی، ثبت سفارش idempotent،
+> پیگیری سفارش، داشبورد عملیات، فهرست/جزئیات/انتقال سفارش کارکنان، سفارش دستی، ویرایش اقلام،
+> میزها، صف آماده‌سازی با پیشروی خودکار سفارش، صندوق (پرداخت جزئی/کامل، تقسیم فاکتور،
+> تخفیف، بازپرداخت و کارت‌خوان)، درخواست‌های گارسون/کارت‌خوان و بستن میز،
+> کاتالوگ مدیریت (دسته، محصول، گزینه، افزودنی، ساعت سرو، ایمپورت CSV و تصویر محصول)،
+> و بلیت/پیش‌فاکتور چاپ، SPA/۴۰۴ واقعی media و
+> انتخاب SQLite/PostgreSQL. کاتالوگ دمو
+> در اولین seed ساخته می‌شود تا منوی QR و سفارش آزمایشی از همان ابتدا کار کنند. بقیهٔ دامنه
+> (گزارش، صف چاپ و بازی‌ها) هنوز در NestJS است؛ تا
+> عبور آزمون‌های برابری، استک دو تصویری فعلی مسیر deployable باقی می‌ماند.
 
 ```bash
 # ساخت و اجرای محلی باینری
@@ -194,8 +201,11 @@ DB_DRIVER=sqlite CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -
 ```
 
 - ایمیج واحد: `infra/docker/Dockerfile.rust` (مرحلهٔ Node فقط برای build وب؛ runtime نهایی
-  `debian:bookworm-slim` بدون Node/nginx).
-- Compose تک‌سرویسی: `infra/docker/compose.rust.yml`؛ SQLite پیش‌فرض است. برای PostgreSQL
+  Wolfi بدون Node/nginx). پایه‌ها به‌صورت پیش‌فرض از `cgr.dev/chainguard` هستند تا به Docker Hub
+  وابسته نباشند؛ با `--build-arg NODE_IMAGE=...`، `RUST_IMAGE=...` یا `RUNTIME_IMAGE=...`
+  می‌توان آن‌ها را عوض کرد.
+- Compose تک‌سرویسی: `infra/docker/compose.rust.yml`؛ SQLite پیش‌فرض است. در اولین اجرا
+  `cafeflow db setup` مهاجرت و seed را انجام می‌دهد. برای PostgreSQL
   `DB_DRIVER=postgres` و `DATABASE_URL` را تنظیم کنید؛ سرور PostgreSQL سرویس جداگانه است.
   `SESSION_COOKIE_SECURE` پیش‌فرض `true` است؛ فقط برای آزمون سادهٔ HTTP روی شبکهٔ محلی آن را
   صریحاً `false` کنید.

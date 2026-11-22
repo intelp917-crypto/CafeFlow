@@ -1,15 +1,26 @@
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post, put};
 use tower_http::compression::CompressionLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::auth;
+use crate::catalog;
+use crate::catalog_import;
+use crate::dashboard;
 use crate::error::{AppError, not_found};
 use crate::health;
 use crate::middleware::{api_headers, request_id, static_headers};
+use crate::payments;
+use crate::prep;
+use crate::printing;
 use crate::public;
+use crate::public_menu;
+use crate::public_orders;
+use crate::requests;
+use crate::staff_ordering;
+use crate::staff_orders;
 use crate::state::AppState;
 use crate::static_files::static_router;
 
@@ -30,9 +41,88 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/sessions", get(auth::sessions))
         .route("/auth/sessions/{id}", delete(auth::revoke_session))
         .route("/auth/password", post(auth::change_password))
+        .route("/dashboard/overview", get(dashboard::overview))
+        .route("/catalog", get(catalog::get_catalog))
+        .route("/catalog/categories", post(catalog::create_category))
+        .route(
+            "/catalog/categories/order",
+            put(catalog::reorder_categories),
+        )
+        .route(
+            "/catalog/categories/{id}",
+            patch(catalog::update_category).delete(catalog::delete_category),
+        )
+        .route("/catalog/images", post(catalog::upload_image))
+        .route("/catalog/import", post(catalog_import::import_catalog))
+        .route("/catalog/products", post(catalog::create_product))
+        .route("/catalog/products/order", put(catalog::reorder_products))
+        .route(
+            "/catalog/products/{id}",
+            patch(catalog::update_product).delete(catalog::archive_product),
+        )
+        .route(
+            "/catalog/products/{id}/options",
+            put(catalog::replace_options),
+        )
+        .route(
+            "/catalog/products/{id}/extras",
+            put(catalog::replace_extras),
+        )
+        .route(
+            "/catalog/products/{id}/availability",
+            put(catalog::replace_availability),
+        )
+        .route(
+            "/orders",
+            get(staff_orders::list).post(staff_ordering::create),
+        )
+        .route("/orders/{id}", get(staff_orders::detail))
+        .route("/orders/{id}/items", post(staff_ordering::add_items))
+        .route(
+            "/orders/{id}/items/{item_id}",
+            patch(staff_ordering::update_item),
+        )
+        .route("/orders/{id}/receipt", post(printing::queue_receipt))
+        .route("/orders/{id}/tickets", post(printing::queue_tickets))
+        .route(
+            "/orders/{id}/payments",
+            get(payments::summary).post(payments::record),
+        )
+        .route(
+            "/orders/{id}/splits",
+            post(payments::split)
+                .put(payments::split_custom)
+                .delete(payments::clear_splits),
+        )
+        .route("/orders/{id}/discount", post(payments::discount))
+        .route("/orders/{id}/refunds", post(payments::refund))
+        .route(
+            "/terminal-requests/{id}/complete",
+            post(payments::complete_terminal),
+        )
+        .route("/orders/{id}/transition", post(staff_orders::transition))
+        .route("/tables", get(staff_ordering::tables))
+        .route("/tables/{id}/close", post(requests::close_table))
+        .route("/service-requests", get(requests::list_service))
+        .route(
+            "/service-requests/{id}/status",
+            post(requests::update_service),
+        )
+        .route("/terminal-requests", get(requests::list_terminal))
+        .route("/prep/queue", get(prep::queue))
+        .route("/prep/{id}/transition", post(prep::transition))
         .route("/public/branding", get(public::branding))
         .route("/public/branding/manifest", get(public::branding_manifest))
+        .route("/public/product-images/{file}", get(catalog::product_image))
+        .route("/public/requests", post(requests::create_public_request))
+        .route(
+            "/public/terminal-requests",
+            post(requests::create_public_terminal),
+        )
         .route("/public/branding/icon/{size}", get(public::branding_icon))
+        .route("/public/menu", get(public_menu::menu))
+        .route("/public/orders", post(public_orders::create_order))
+        .route("/public/orders/{code}", get(public_orders::order_status))
         .fallback(api_not_found)
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
         .layer(middleware::from_fn_with_state(state.clone(), api_headers));

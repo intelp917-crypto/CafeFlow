@@ -353,11 +353,200 @@ pub async fn seed_database(database: &Database, options: &SeedOptions) -> Result
         .await?;
     }
 
-    tx.commit().await?;
     if options.demo_menu {
-        tracing::warn!("demo menu seed در موج کاتالوگ منتقل می‌شود؛ فعلاً فقط هسته ساخته شد.");
+        seed_demo_catalog(&mut tx, &now).await?;
     }
+
+    tx.commit().await?;
     Ok(true)
+}
+
+/// A small, fully usable demo catalog so a fresh container can show the QR menu
+/// and place an order immediately. Every row has a stable id and is inserted
+/// idempotently; this only runs while bootstrapping a brand-new database.
+async fn seed_demo_catalog(tx: &mut Transaction<'_, Any>, now: &str) -> Result<()> {
+    for (id, key, name_fa, kind) in [
+        ("demo-barista", "barista", "باریستا", "barista"),
+        ("demo-kitchen", "kitchen", "آشپزخانه", "kitchen"),
+    ] {
+        sqlx::query(
+            "INSERT INTO departments (id, key, name_fa, kind, created_at)
+             VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
+        )
+        .bind(id)
+        .bind(key)
+        .bind(name_fa)
+        .bind(kind)
+        .bind(now)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    sqlx::query(
+        "INSERT INTO floors (id, name_fa, sort_order, created_at)
+         VALUES ('demo-floor', 'سالن اصلی', 0, $1) ON CONFLICT DO NOTHING",
+    )
+    .bind(now)
+    .execute(&mut **tx)
+    .await?;
+
+    for (index, (id, code, name_fa)) in [
+        ("demo-table-1", "T1", "میز یک"),
+        ("demo-table-2", "T2", "میز دو"),
+        ("demo-table-3", "T3", "میز سه"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let token = format!("demo-table-{}", index + 1);
+        sqlx::query(
+            "INSERT INTO dining_tables (id, floor_id, code, name_fa, capacity, qr_token, created_at, updated_at)
+             VALUES ($1, 'demo-floor', $2, $3, 4, $4, $5, $5) ON CONFLICT DO NOTHING",
+        )
+        .bind(id)
+        .bind(code)
+        .bind(name_fa)
+        .bind(&token)
+        .bind(now)
+        .execute(&mut **tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO qr_codes (id, kind, token, table_id, label, created_at)
+             VALUES ($1, 'table', $2, $3, $4, $5) ON CONFLICT DO NOTHING",
+        )
+        .bind(format!("demo-qr-{}", index + 1))
+        .bind(&token)
+        .bind(id)
+        .bind(name_fa)
+        .bind(now)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    for (id, name_fa, slug, sort_order) in [
+        ("demo-cat-coffee", "قهوه و نوشیدنی", "coffee", 0),
+        ("demo-cat-food", "کیک و غذا", "food", 1),
+    ] {
+        sqlx::query(
+            "INSERT INTO categories (id, name_fa, slug, sort_order, created_at)
+             VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
+        )
+        .bind(id)
+        .bind(name_fa)
+        .bind(slug)
+        .bind(sort_order)
+        .bind(now)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    for (id, category, name_fa, search_key, price, department, prep, description) in [
+        (
+            "demo-product-espresso",
+            "demo-cat-coffee",
+            "اسپرسو",
+            "espresso",
+            120_000_i64,
+            Some("demo-barista"),
+            4_i64,
+            "اسپرسو تک‌شات با دانهٔ تازه",
+        ),
+        (
+            "demo-product-cappuccino",
+            "demo-cat-coffee",
+            "کاپوچینو",
+            "cappuccino",
+            145_000,
+            Some("demo-barista"),
+            5,
+            "اسپرسو با شیر بخارپز و فوم مخملی",
+        ),
+        (
+            "demo-product-latte",
+            "demo-cat-coffee",
+            "لاته",
+            "latte",
+            150_000,
+            Some("demo-barista"),
+            5,
+            "شیر بیشتر، عطر ملایم قهوه",
+        ),
+        (
+            "demo-product-cake",
+            "demo-cat-food",
+            "چیزکیک",
+            "cheesecake",
+            185_000,
+            Some("demo-kitchen"),
+            3,
+            "چیزکیک نیویورکی با سس تمشک",
+        ),
+        (
+            "demo-product-sandwich",
+            "demo-cat-food",
+            "ساندویچ مرغ",
+            "chicken-sandwich",
+            240_000,
+            Some("demo-kitchen"),
+            12,
+            "مرغ گریل، سبزیجات تازه و نان تست",
+        ),
+    ] {
+        sqlx::query(
+            "INSERT INTO products
+               (id, category_id, name_fa, search_key, description_fa, base_price,
+                department_id, prep_minutes, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) ON CONFLICT DO NOTHING",
+        )
+        .bind(id)
+        .bind(category)
+        .bind(name_fa)
+        .bind(search_key)
+        .bind(description)
+        .bind(price)
+        .bind(department)
+        .bind(prep)
+        .bind(now)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    sqlx::query(
+        "INSERT INTO option_groups (id, product_id, name_fa, min_select, max_select, is_required, sort_order)
+         VALUES ('demo-group-milk', 'demo-product-cappuccino', 'نوع شیر', 1, 1, 1, 0)
+         ON CONFLICT DO NOTHING",
+    )
+    .execute(&mut **tx)
+    .await?;
+    for (id, name_fa, price_delta, sort_order) in [
+        ("demo-option-whole", "شیر کامل", 0_i64, 0_i64),
+        ("demo-option-almond", "شیر بادام", 10_000, 1),
+    ] {
+        sqlx::query(
+            "INSERT INTO product_options (id, option_group_id, name_fa, price_delta, sort_order)
+             VALUES ($1, 'demo-group-milk', $2, $3, $4) ON CONFLICT DO NOTHING",
+        )
+        .bind(id)
+        .bind(name_fa)
+        .bind(price_delta)
+        .bind(sort_order)
+        .execute(&mut **tx)
+        .await?;
+    }
+    sqlx::query(
+        "INSERT INTO extras (id, name_fa, price) VALUES ('demo-extra-shot', 'شات اضافه', 5000)
+         ON CONFLICT DO NOTHING",
+    )
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO product_extras (product_id, extra_id)
+         VALUES ('demo-product-cappuccino', 'demo-extra-shot') ON CONFLICT DO NOTHING",
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
 }
 
 async fn grant_role_subset(

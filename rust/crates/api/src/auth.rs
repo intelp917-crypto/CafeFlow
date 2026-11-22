@@ -632,7 +632,10 @@ pub async fn change_password(
     Ok(Json(json!({"ok": true})))
 }
 
-async fn require_auth(state: &AppState, headers: &HeaderMap) -> Result<AuthSession, AppError> {
+pub(crate) async fn require_auth(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<AuthSession, AppError> {
     let Some(token) = cookie_value(headers, &state.config.session_cookie_name) else {
         return Err(unauthorized(
             "برای دسترسی باید وارد حساب خود شوید.",
@@ -670,7 +673,7 @@ async fn user_dto(state: &AppState, user: &UserRow) -> Result<UserDto, AppError>
     })
 }
 
-async fn session_has_permission(
+pub(crate) async fn session_has_permission(
     state: &AppState,
     user_id: &str,
     permission: &str,

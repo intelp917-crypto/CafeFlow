@@ -14,18 +14,60 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-## وضعیت مهاجرت Rust (موج ۱)
+## وضعیت مهاجرت Rust (موج ۱، ۳، ۴، ۵، ۶ و ۷)
 
 - `cafeflow-domain`: پول ریالی، جلالی، وضعیت سفارش و ماژول‌ها با آزمون برابری.
 - `cafeflow-db`: مهاجرت‌های SQLite/PostgreSQL، `schema_migrations` سازگار با نصب فعلی،
   scrypt سازگار با هش‌های Node، seed نقش/مجوز/مدیر، TOTP و کدهای پشتیبان.
 - `cafeflow-api`: health، login/logout/me، نشست‌ها، تغییر گذرواژه، MFA، هدرهای امنیتی،
   request-id، SPA fallback و ۴۰۴ واقعی برای media؛ آزمون‌های `auth_flow` و `totp`.
+- موج ۳: `GET /public/menu`، `POST /public/orders` با محاسبهٔ قیمت سمت سرور و idempotency،
+  `GET /public/orders/:code` با توکن وضعیت، و `GET /dashboard/overview` برای داشبورد کارکنان؛
+  آزمون `public_flow` شامل replay، رد گزینهٔ نامعتبر و دسترسی محافظت‌شدهٔ داشبورد.
+- موج ۴: `GET /orders` با فیلتر/صفحه‌بندی، `GET /orders/:id` با اقلام/گزینه‌ها/تاریخچه/صورت‌حساب،
+  و `POST /orders/:id/transition` با همان ماشین وضعیت، مجوز `orders.cancel`، دلیل لغو، لغو صف
+  آماده‌سازی، آزادسازی میز و audit؛ آزمون `staff_can_list_inspect_and_transition_orders`.
+- موج ۵: `GET /tables`، `POST /orders` برای سفارش دستی با قیمت‌گذاری سمت سرور،
+  `POST /orders/:id/items`، `PATCH /orders/:id/items/:itemId` با بازمحاسبهٔ کل، و
+  `POST /orders/:id/{tickets,receipt}` با jobKey یکتا؛ آزمون
+  `staff_can_create_edit_and_print_an_order`.
+- موج ۶: `GET /prep/queue` با فیلتر دپارتمان و آیتم‌های پایان‌یافته، و
+  `POST /prep/:id/transition` با همان ماشین وضعیت آماده‌سازی. تغییر هر آیتم، وضعیت قلم و
+  سفارش را از کوتاه‌ترین مسیر مجاز پیش می‌برد (`confirmed → preparing → partially_ready → ready`)،
+  رویداد `order.status_auto` و اعلان `order.ready` می‌سازد و پایان کار را در صف مخفی می‌کند؛
+  آزمون `prep_queue_advances_the_order_along_legal_paths`.
+- موج ۷: `GET /orders/:id/payments`، `POST /orders/:id/payments`، تقسیم مساوی و
+  دلبخواه با `POST/PUT/DELETE /orders/:id/splits`، تخفیف، بازپرداخت و تکمیل درخواست
+  کارت‌خوان. صورتحساب در اولین پرداخت ساخته می‌شود، `paid` فقط از جمع پرداخت‌های تأییدشده
+  مشتق می‌شود، اضافه‌پرداخت رد می‌شود و سهم‌ها ترتیب پایدار `sort_order` دارند؛ آزمون‌های
+  `cashier_records_partial_and_full_payments_then_refunds` و
+  `cashier_splits_bills_and_applies_a_discount`.
+- موج ۸: `GET /service-requests` با فیلتر `pending|all`، `POST /service-requests/:id/status`
+  با پذیرش/انجام/لغو و رد درخواست بسته با `REQUEST_CLOSED`، `GET /terminal-requests` با
+  `pending|all`، ثبت عمومی `POST /public/requests` و `POST /public/terminal-requests` با
+  دستگاه/QR/اعلان نقش، و `POST /tables/:id/close` با شرط تسویهٔ همهٔ سفارش‌ها؛ آزمون‌های
+  `customer_requests_are_created_and_handled_once` و
+  `a_table_closes_only_when_its_orders_are_settled`.
+- موج ۹: کاتالوگ مدیریت با `GET /catalog`، دسته‌ها (ساخت/ویرایش/ترتیب/حذف)، محصولات
+  (ساخت/ویرایش/ترتیب/بایگانی و بازگردانی)، جایگزینی اتمیک گزینه‌ها/افزودنی‌ها/ساعت سرو،
+  ایمپورت CSV با پیش‌نمایش، و آپلود تصویر محصول با بررسی امضا و مسیر امن؛ مهاجرت
+  `017_catalog_child_order.sql` ترتیب پایدار افزودنی/ساعت سرو را برای PostgreSQL هم می‌سازد.
+  آزمون `catalog_manages_categories_products_options_extras_and_images`.
+- seed دمو اکنون کاتالوگ قابل استفاده می‌سازد: ۲ دسته، ۵ محصول، ۳ میز با QR و گزینه/افزودنی؛
+  آزمون `demo_menu_seed_creates_a_ready_to_order_catalog`.
 - `cafeflow-games`: فقط registry اتاق در این موج؛ موتورهای ۳۸ بازی هنوز منتقل نشده‌اند.
 - آزمون دستی انجام‌شده: SQLite تازه، PostgreSQL تازه (`postgres:17-alpine`)، کپی ۵۲۶ ردیف
-  از snapshot موجود، ورود مدیر و `/auth/me` روی هر دو، SPA و deep link روی باینری.
-- **هنوز منتقل نشده:** مسیرهای عمومی/سفارش/پرداخت/کاتالوگ/گزارش/بازی. تا سبز شدن آزمون
-  برابری، cutover انجام نمی‌شود.
+  از snapshot موجود، ورود مدیر و `/auth/me` روی هر دو، SPA و deep link روی باینری؛ در موج ۴
+  فهرست/جزئیات/انتقال سفارش روی PostgreSQL و مرورگر واقعی هم تأیید شد. در موج ۶ صف
+  آماده‌سازی روی PostgreSQL تازه و در مرورگر واقعی (شروع/آماده‌شدن دو دپارتمان) تأیید شد.
+  در موج ۷ پرداخت جزئی/کامل، تقسیم سه‌نفره، پرداخت سهم، بازپرداخت، تخفیف و تکمیل کارت‌خوان
+  روی PostgreSQL و صندوق در مرورگر واقعی تأیید شدند. در موج ۸ ثبت درخواست گارسون و
+  کارت‌خوان از QR، صف درخواست‌ها، پذیرش/انجام و بستن میز روی PostgreSQL و صفحات
+  `/admin/requests` و `/admin/tables` تأیید شدند. در موج ۹ ساخت دسته/محصول، گزینه،
+  افزودنی، ساعت سرو، ترتیب، ایمپورت CSV، تصویر و بایگانی/بازگردانی روی PostgreSQL و
+  صفحهٔ `/admin/catalog` تأیید شدند.
+- **هنوز منتقل نشده:** گزارش، صف چاپ و بازی‌ها. تا سبز شدن آزمون برابری، cutover انجام
+  نمی‌شود.
 
 ## وضعیت فعلی (پایان فاز ۱۰)
 

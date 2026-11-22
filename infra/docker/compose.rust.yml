@@ -19,7 +19,8 @@ services:
       dockerfile: infra/docker/Dockerfile.rust
     image: quay.io/intelp917/cafeflow:0.2.0
     restart: unless-stopped
-    command: ["sh", "-c", "cafeflow db setup && exec cafeflow serve"]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["cafeflow db setup && exec cafeflow serve"]
     environment:
       APP_ENV: production
       PORT: "3000"
