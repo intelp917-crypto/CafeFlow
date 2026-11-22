@@ -201,6 +201,9 @@ docker build -f infra/docker/Dockerfile.rust \
 
 ## ۶. متغیرهای محیطی
 
+فایل آمادهٔ تولید: [`deploy.env.example`](deploy.env.example) — فقط `SEED_ADMIN_PASSWORD` را عوض کنید و با
+`--env-file` به کانتینر بدهید.
+
 | نام | پیش‌فرض | توضیح |
 |---|---|---|
 | `APP_ENV` | `development` | `production` باعث پیش‌فرض `SESSION_COOKIE_SECURE=true` می‌شود. `NODE_ENV` هم خوانده می‌شود. |
@@ -632,6 +635,9 @@ to start with an empty menu. Inventory, finance, CRM and employees modules are d
 enable them under Settings → Modules.
 
 ## 6. Environment variables
+
+A production-ready template lives in [`deploy.env.example`](deploy.env.example): change
+`SEED_ADMIN_PASSWORD` and pass it with `--env-file`.
 
 | Name | Default | Purpose |
 |---|---|---|
