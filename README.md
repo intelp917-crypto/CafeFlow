@@ -396,6 +396,34 @@ docker compose up -d          # یا: docker rm -f cafeflow && docker run ... (�
   از پشتیبان قبل از به‌روزرسانی استفاده کنید.
 - برای دیپلوی قطعی‌تر، ایمیج را با digest پین کنید: `quay.io/intelp917/cafeflow@sha256:...`.
 
+### استقرار خودکار از GitHub (Publish image)
+
+مخزن یک workflow آماده دارد: `.github/workflows/publish-image.yml`.
+
+1. در Quay یک Robot Account بسازید (Organization → Robot Accounts) با دسترسی Write روی
+   `intelp917/cafeflow`؛ نام ربات (مثل `intelp917+github`) و توکنش را بردارید.
+2. در GitHub → Settings → Secrets and variables → Actions دو secret بسازید:
+   `QUAY_USERNAME` = نام ربات و `QUAY_PASSWORD` = توکن ربات (نه گذرواژهٔ سایت Quay).
+3. هر push روی `main` یا `feat/rust-backend` (و تگ‌های `v*`) تست‌ها را اجرا و ایمیج را push می‌کند.
+
+| رویداد | تگ‌های تولیدشده |
+|---|---|
+| push روی `main` | `latest`، `0.2.0`، `main`، `sha-xxxxxxx` |
+| push روی `feat/rust-backend` | `0.2.0`، `feat-rust-backend`، `sha-xxxxxxx` |
+| تگ `v1.2.3` | `1.2.3`، `1.2`، `1`، `0.2.0`، `sha-xxxxxxx` |
+
+`latest` فقط از `main` ساخته می‌شود؛ برای انتشار نهایی تغییرات را merge کنید. اگر secretها ست نشده
+باشند، job ایمیج را فقط build می‌کند و چیزی push نمی‌شود. برای انتشار دستی: Actions → Publish image
+→ Run workflow.
+
+روی هاست، بعد از هر انتشار:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+یا با watchtower/کرون هر چند دقیقه `docker pull` را اجرا کنید.
+
 ## ۱۲. بررسی سلامت و عملیات
 
 ```bash
@@ -764,6 +792,33 @@ docker compose up -d        # or recreate the container with the same volume
 
 New migrations apply on boot; `db setup` does not reseed. To roll back, pin the previous tag (or
 digest) and recreate the container; restore the pre-update backup if a migration is incompatible.
+
+### Deployment from GitHub (Publish image)
+
+`.github/workflows/publish-image.yml` builds and publishes the image.
+
+1. Create a Quay Robot Account (Organization → Robot Accounts) with Write access to
+   `intelp917/cafeflow`; copy its username (`intelp917+github`) and token.
+2. Add repository secrets `QUAY_USERNAME` and `QUAY_PASSWORD` (the robot token, not the web
+   password) under Settings → Secrets and variables → Actions.
+3. Pushes to `main` or `feat/rust-backend` (and `v*` tags) run the tests and publish.
+
+| Event | Tags |
+|---|---|
+| push to `main` | `latest`, `0.2.0`, `main`, `sha-xxxxxxx` |
+| push to `feat/rust-backend` | `0.2.0`, `feat-rust-backend`, `sha-xxxxxxx` |
+| `v1.2.3` tag | `1.2.3`, `1.2`, `1`, `0.2.0`, `sha-xxxxxxx` |
+
+`latest` is built from `main` only. Without the secrets the image is still built but nothing is
+pushed. To publish manually: Actions → Publish image → Run workflow.
+
+On the host after a release:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+or let watchtower/cron run `docker pull`.
 
 ## 12. Health and operations
 

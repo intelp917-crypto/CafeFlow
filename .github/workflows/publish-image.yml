@@ -1,0 +1,118 @@
+name: Publish image
+
+# Builds the single CafeFlow image (API + SPA + WebSocket) and publishes it to
+# Quay. The Docker host then only has to pull the new tag and restart.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   QUAY_USERNAME  Quay robot account, e.g. intelp917+github
+#   QUAY_PASSWORD  the robot account token (not the web password)
+#
+# Tag policy:
+#   main              → latest + version (e.g. 0.2.0) + main + sha-xxxxxxx
+#   feat/rust-backend → version + feat-rust-backend + sha-xxxxxxx (no latest)
+#   v* tag            → semver tags + version + sha-xxxxxxx
+#   workflow_dispatch → same tags as the selected branch
+#
+# If the Quay secrets are missing the image is still built (so Dockerfile
+# regressions fail the run) but nothing is pushed.
+
+on:
+  push:
+    branches: [main, feat/rust-backend]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: quay.io/intelp917/cafeflow
+
+jobs:
+  verify:
+    name: Verify Rust backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lints
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Unit and integration tests
+        run: cargo test --workspace
+
+  publish:
+    name: Build and publish
+    needs: verify
+    runs-on: ubuntu-latest
+    env:
+      QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+      QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read image version
+        id: version
+        run: echo "value=$(sed -n 's/^version = "\(.*\)"/\1/p' rust/Cargo.toml | head -n1)" >> "$GITHUB_OUTPUT"
+
+      - name: Check registry credentials
+        id: gate
+        run: |
+          if [ -n "$QUAY_USERNAME" ] && [ -n "$QUAY_PASSWORD" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::QUAY_USERNAME/QUAY_PASSWORD are not set; building without pushing."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        if: steps.gate.outputs.publish == 'true'
+        with:
+          registry: quay.io
+          username: ${{ env.QUAY_USERNAME }}
+          password: ${{ env.QUAY_PASSWORD }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha,format=short,prefix=sha-
+            type=raw,value=${{ steps.version.outputs.value }}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.rust
+          platforms: linux/amd64
+          push: ${{ steps.gate.outputs.publish == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
