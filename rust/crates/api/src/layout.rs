@@ -1274,6 +1274,11 @@ pub async fn delete_table(
         .execute(&mut *tx)
         .await
         .map_err(db_error)?;
+    sqlx::query("UPDATE qr_codes SET is_active = 0 WHERE table_id = $1")
+        .bind(&table_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_error)?;
     sqlx::query("UPDATE dining_tables SET deleted_at = $1, is_active = 0 WHERE id = $2")
         .bind(now())
         .bind(&table_id)

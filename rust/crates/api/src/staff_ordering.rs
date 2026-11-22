@@ -181,6 +181,37 @@ pub async fn add_items(
             "ORDER_CLOSED",
         ));
     }
+    let paid: i64 = sqlx::query(
+        "SELECT COALESCE(SUM(CASE WHEN status = 'confirmed' THEN amount
+                                  WHEN status = 'refunded' THEN -amount ELSE 0 END), 0) AS net
+           FROM payments WHERE order_id = $1",
+    )
+    .bind(&id)
+    .fetch_one(&state.db.pool)
+    .await
+    .map_err(db_error)?
+    .get("net");
+    if paid > 0 {
+        return Err(conflict(
+            "پس از ثبت پرداخت امکان افزودن قلم نیست؛ ابتدا بازپرداخت کنید.",
+            "ORDER_PAYMENT_STARTED",
+        ));
+    }
+    let splits: i64 = sqlx::query(
+        "SELECT COUNT(*) AS n FROM bill_splits s JOIN bills b ON b.id = s.bill_id
+          WHERE b.order_id = $1 AND b.status = 'open'",
+    )
+    .bind(&id)
+    .fetch_one(&state.db.pool)
+    .await
+    .map_err(db_error)?
+    .get("n");
+    if splits > 0 {
+        return Err(conflict(
+            "فاکتور تقسیم شده است؛ ابتدا تقسیم را لغو کنید.",
+            "SPLITS_EXIST",
+        ));
+    }
     let totals = sqlx::query("SELECT subtotal, discount_total FROM orders WHERE id = $1")
         .bind(&id)
         .fetch_one(&state.db.pool)
@@ -213,6 +244,12 @@ pub async fn add_items(
     .execute(&mut *tx)
     .await
     .map_err(db_error)?;
+    sqlx::query("UPDATE bills SET total = $1 WHERE order_id = $2 AND status = 'open'")
+        .bind(total)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_error)?;
     insert_event(
         &mut tx,
         &id,

@@ -34,6 +34,11 @@ fn config(root: &Path) -> Config {
 }
 
 async fn app_with_catalog() -> (axum::Router, tempfile::TempDir) {
+    let (app, _, directory) = app_with_catalog_and_pool().await;
+    (app, directory)
+}
+
+async fn app_with_catalog_and_pool() -> (axum::Router, sqlx::AnyPool, tempfile::TempDir) {
     let directory = tempfile::tempdir().unwrap();
     let cfg = config(directory.path());
     let database = Database::connect(&cfg.db).await.unwrap();
@@ -65,8 +70,9 @@ async fn app_with_catalog() -> (axum::Router, tempfile::TempDir) {
         sqlx::query(statement).execute(pool).await.unwrap();
     }
 
+    let pool = database.pool.clone();
     let state = AppState::new(database, cfg);
-    (build_router(state), directory)
+    (build_router(state), pool, directory)
 }
 
 async fn body_of(response: axum::response::Response) -> (StatusCode, String, String) {
@@ -296,6 +302,32 @@ async fn invalid_qr_is_a_real_404() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
     assert!(String::from_utf8_lossy(&bytes).contains("QR_NOT_FOUND"));
+}
+
+#[tokio::test]
+async fn qr_of_a_deleted_table_stops_working() {
+    let (app, pool, _directory) = app_with_catalog_and_pool().await;
+    sqlx::query(
+        "UPDATE dining_tables
+            SET deleted_at = '2026-01-01T00:00:00.000Z', is_active = 0
+          WHERE id = 'table-1'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/public/menu?qr=table-token-123")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _, body) = body_of(response).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert!(body.contains("QR_TABLE_INACTIVE"), "{body}");
 }
 
 #[tokio::test]

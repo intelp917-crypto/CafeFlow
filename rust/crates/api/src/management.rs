@@ -143,8 +143,7 @@ pub async fn list_reservations(
     let mut clauses = Vec::new();
     let mut values: Vec<String> = Vec::new();
     if let Some(date) = query.get("date").filter(|value| !value.is_empty()) {
-        let start = format!("{date}T00:00:00+03:30");
-        let end = offset_day(&start, 1)?;
+        let (start, end) = crate::dates::day_bounds(crate::dates::parse_day(date, "تاریخ")?)?;
         values.push(start);
         clauses.push(format!("r.reserved_for >= ${}", values.len()));
         values.push(end);
@@ -201,14 +200,6 @@ pub async fn list_reservations(
         summary[&status] = json!(row.get::<i64, _>("n"));
     }
     Ok(Json(json!({ "items": items, "summary": summary })))
-}
-
-fn offset_day(value: &str, days: i64) -> Result<String, AppError> {
-    let parsed = parse_time(value)
-        .ok_or_else(|| bad_request("تاریخ انتخابی معتبر نیست.", "INVALID_DATE"))?;
-    (parsed + time::Duration::days(days))
-        .format(&Rfc3339)
-        .map_err(|_| AppError::internal("تاریخ"))
 }
 
 #[derive(Debug, Deserialize)]
@@ -883,34 +874,27 @@ fn day_range(
     query: &HashMap<String, String>,
     default_days: i64,
 ) -> Result<(String, String, String, String), AppError> {
-    let today = (OffsetDateTime::now_utc() + time::Duration::minutes(210))
-        .date()
-        .to_string();
-    let from = query.get("from").cloned().unwrap_or_else(|| today.clone());
+    let today = crate::dates::tehran_today();
+    let from = query
+        .get("from")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| crate::dates::parse_day(value, "تاریخ شروع"))
+        .transpose()?
+        .unwrap_or(today);
     let to = query
         .get("to")
-        .cloned()
-        .unwrap_or_else(|| add_days(&from, default_days));
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| crate::dates::parse_day(value, "تاریخ پایان"))
+        .transpose()?
+        .unwrap_or(crate::dates::add_days(from, default_days)?);
     if from > to {
         return Err(bad_request(
             "تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد.",
             "INVALID_DATE_RANGE",
         ));
     }
-    Ok((
-        from.clone(),
-        to.clone(),
-        format!("{from}T00:00:00+03:30"),
-        format!("{}T00:00:00+03:30", add_days(&to, 1)),
-    ))
-}
-
-fn add_days(date: &str, days: i64) -> String {
-    let parsed = parse_time(&format!("{date}T00:00:00+03:30"));
-    match parsed {
-        Some(value) => (value + time::Duration::days(days)).date().to_string(),
-        None => date.to_string(),
-    }
+    let (start_iso, end_iso) = crate::dates::range_bounds(from, to)?;
+    Ok((from.to_string(), to.to_string(), start_iso, end_iso))
 }
 
 pub async fn list_shifts(

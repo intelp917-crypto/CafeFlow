@@ -85,10 +85,10 @@ pub async fn overview(
         .await
         .map_err(db_error)?
         .get("n");
-    let today = (OffsetDateTime::now_utc() + time::Duration::minutes(210)).date();
+    let (today_start, _) = crate::dates::day_bounds(crate::dates::tehran_today())?;
     let movements_today: i64 =
         sqlx::query("SELECT COUNT(*) AS n FROM stock_movements WHERE created_at >= $1")
-            .bind(format!("{today}T00:00:00+03:30"))
+            .bind(today_start)
             .fetch_one(&state.db.pool)
             .await
             .map_err(db_error)?

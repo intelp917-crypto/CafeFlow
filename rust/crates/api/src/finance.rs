@@ -46,7 +46,14 @@ const SESSION_SELECT: &str = "SELECT s.id, s.cash_register_id, c.name_fa AS regi
   JOIN cash_registers c ON c.id = s.cash_register_id
   LEFT JOIN users u ON u.id = s.opened_by_user_id";
 
-async fn totals(state: &AppState, from: &str, to: &str) -> Result<Value, AppError> {
+/// Payment totals inside a window. When `register` is set the totals belong to
+/// that cash register only, so two open drawers never share each other's cash.
+async fn totals(
+    state: &AppState,
+    from: &str,
+    to: &str,
+    register: Option<&str>,
+) -> Result<Value, AppError> {
     let row = sqlx::query(
         "SELECT
            COALESCE(SUM(CASE WHEN method = 'cash' AND status = 'confirmed' THEN amount
@@ -55,10 +62,13 @@ async fn totals(state: &AppState, from: &str, to: &str) -> Result<Value, AppErro
                              WHEN method <> 'cash' AND status = 'refunded' THEN -amount ELSE 0 END), 0) AS card_total,
            COALESCE(SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END), 0) AS payments_count,
            COALESCE(SUM(CASE WHEN status = 'refunded' THEN amount ELSE 0 END), 0) AS refunds_total
-         FROM payments WHERE paid_at >= $1 AND paid_at < $2",
+         FROM payments
+          WHERE paid_at >= $1 AND paid_at < $2
+            AND ($3 = '' OR cash_register_id = $3)",
     )
     .bind(from)
     .bind(to)
+    .bind(register.unwrap_or_default())
     .fetch_one(&state.db.pool)
     .await
     .map_err(db_error)?;
@@ -73,8 +83,9 @@ async fn totals(state: &AppState, from: &str, to: &str) -> Result<Value, AppErro
 async fn session_json(state: &AppState, row: &sqlx::any::AnyRow) -> Result<Value, AppError> {
     let opened_at: String = row.get("opened_at");
     let closed_at: Option<String> = row.get("closed_at");
+    let register_id: String = row.get("cash_register_id");
     let to = closed_at.clone().unwrap_or_else(now);
-    let totals = totals(state, &opened_at, &to).await?;
+    let totals = totals(state, &opened_at, &to, Some(&register_id)).await?;
     let opening: i64 = row.get("opening_float");
     let expected_stored: Option<i64> = row.get("expected_amount");
     let expected = expected_stored.unwrap_or(opening + totals["cashTotal"].as_i64().unwrap_or(0));
@@ -256,13 +267,15 @@ pub async fn close_cash_session(
     if !(0..=10_000_000_000).contains(&input.closing_amount) {
         return Err(validation_failed("مبلغ شمارش‌شده معتبر نیست."));
     }
-    let existing =
-        sqlx::query("SELECT status, opened_at, opening_float FROM cash_sessions WHERE id = $1")
-            .bind(&id)
-            .fetch_optional(&state.db.pool)
-            .await
-            .map_err(db_error)?
-            .ok_or_else(|| not_found("جلسه صندوق یافت نشد.", "CASH_SESSION_NOT_FOUND"))?;
+    let existing = sqlx::query(
+        "SELECT status, opened_at, opening_float, cash_register_id
+           FROM cash_sessions WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.db.pool)
+    .await
+    .map_err(db_error)?
+    .ok_or_else(|| not_found("جلسه صندوق یافت نشد.", "CASH_SESSION_NOT_FOUND"))?;
     if existing.get::<String, _>("status") == "closed" {
         return Err(conflict(
             "این جلسه قبلاً بسته شده است.",
@@ -270,7 +283,13 @@ pub async fn close_cash_session(
         ));
     }
     let closed_at = now();
-    let totals = totals(&state, &existing.get::<String, _>("opened_at"), &closed_at).await?;
+    let totals = totals(
+        &state,
+        &existing.get::<String, _>("opened_at"),
+        &closed_at,
+        Some(&existing.get::<String, _>("cash_register_id")),
+    )
+    .await?;
     let opening: i64 = existing.get("opening_float");
     let expected = opening + totals["cashTotal"].as_i64().unwrap_or(0);
     let difference = input.closing_amount - expected;
@@ -474,34 +493,29 @@ pub async fn create_expense(
 fn day_range(
     query: &HashMap<String, String>,
 ) -> Result<(String, String, String, String), AppError> {
-    let today = (OffsetDateTime::now_utc() + time::Duration::minutes(210))
-        .date()
-        .to_string();
-    let from = query.get("from").cloned().unwrap_or_else(|| {
-        (OffsetDateTime::now_utc() + time::Duration::minutes(210) - time::Duration::days(29))
-            .date()
-            .to_string()
-    });
-    let to = query.get("to").cloned().unwrap_or_else(|| today.clone());
+    let now_local = OffsetDateTime::now_utc().to_offset(crate::dates::tehran_offset());
+    let default_to = now_local.date();
+    let default_from = (now_local - time::Duration::days(29)).date();
+    let from = query
+        .get("from")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| crate::dates::parse_day(value, "تاریخ شروع"))
+        .transpose()?
+        .unwrap_or(default_from);
+    let to = query
+        .get("to")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| crate::dates::parse_day(value, "تاریخ پایان"))
+        .transpose()?
+        .unwrap_or(default_to);
     if from > to {
         return Err(bad_request(
             "تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد.",
             "INVALID_DATE_RANGE",
         ));
     }
-    Ok((
-        from.clone(),
-        to.clone(),
-        format!("{from}T00:00:00+03:30"),
-        format!("{}T00:00:00+03:30", add_day(&to)),
-    ))
-}
-
-fn add_day(value: &str) -> String {
-    let parsed = OffsetDateTime::parse(&format!("{value}T00:00:00+03:30"), &Rfc3339);
-    parsed
-        .map(|date| (date + time::Duration::days(1)).date().to_string())
-        .unwrap_or_else(|_| value.to_string())
+    let (start, end) = crate::dates::range_bounds(from, to)?;
+    Ok((from.to_string(), to.to_string(), start, end))
 }
 
 fn tehran_date(value: &str) -> String {

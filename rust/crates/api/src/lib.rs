@@ -6,6 +6,7 @@ pub mod catalog_import;
 pub mod config;
 pub mod crm;
 pub mod dashboard;
+pub mod dates;
 pub mod error;
 pub mod finance;
 pub mod games;
