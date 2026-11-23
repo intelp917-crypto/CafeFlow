@@ -35,6 +35,7 @@ use crate::static_files::static_router;
 pub fn build_router(state: AppState) -> Router {
     let api = Router::new()
         .route("/health", get(health::health))
+        .route("/auth/setup", get(auth::setup_status).post(auth::setup))
         .route("/auth/login", post(auth::login))
         .route("/auth/logout", post(auth::logout))
         .route("/auth/me", get(auth::me))
@@ -255,6 +256,14 @@ pub fn build_router(state: AppState) -> Router {
         .route("/public/games/join", post(games::join))
         .route("/public/orders", post(public_orders::create_order))
         .route("/public/orders/{code}", get(public_orders::order_status))
+        .route(
+            "/public/orders/{code}/items",
+            post(public_orders::add_order_items),
+        )
+        .route(
+            "/public/table/{qr_token}",
+            get(public_orders::table_overview),
+        )
         .fallback(api_not_found)
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
         .layer(middleware::from_fn_with_state(state.clone(), api_headers));

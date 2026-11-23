@@ -53,4 +53,26 @@ export const customerApi = {
     ),
   createRequest: (input: PublicRequestInput) =>
     api.post<{ id: string; type: string }>('/public/requests', input),
+  tableOverview: (qrToken: string) =>
+    api.get<PublicTableOverviewResponse>(`/public/table/${encodeURIComponent(qrToken)}`),
 };
+
+export interface PublicTableOverviewOrderItem {
+  nameFa: string;
+  quantity: number;
+  status: string;
+}
+
+export interface PublicTableOverviewOrder {
+  code: string;
+  status: string;
+  statusLabelFa: string;
+  total: number;
+  createdAt: string;
+  items: PublicTableOverviewOrderItem[];
+}
+
+export interface PublicTableOverviewResponse {
+  tableNameFa: string;
+  orders: PublicTableOverviewOrder[];
+}

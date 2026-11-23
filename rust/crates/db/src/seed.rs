@@ -126,9 +126,17 @@ pub async fn seed_database(database: &Database, options: &SeedOptions) -> Result
         return Ok(false);
     }
 
-    let admin_hash = hash_password(&options.admin_password)
-        .map_err(anyhow::Error::msg)
-        .context("hash گذرواژه مدیر")?;
+    // An empty password means "no env-created admin": the first admin is then
+    // created through the install-key wizard on /staff/login.
+    let admin_hash = if options.admin_password.trim().is_empty() {
+        None
+    } else {
+        Some(
+            hash_password(&options.admin_password)
+                .map_err(anyhow::Error::msg)
+                .context("hash گذرواژه مدیر")?,
+        )
+    };
     let now = now_iso();
     let mut tx = database.pool.begin().await?;
 
@@ -274,29 +282,33 @@ pub async fn seed_database(database: &Database, options: &SeedOptions) -> Result
     )
     .await?;
 
-    let admin_id = Uuid::new_v4().to_string();
-    sqlx::query(
-        "INSERT INTO users (id, username, full_name, password_hash, is_active, must_change_password, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, 1, 0, $5, $5)
-         ON CONFLICT DO NOTHING",
-    )
-    .bind(&admin_id)
-    .bind(options.admin_username.trim().to_lowercase())
-    .bind("مدیر سیستم")
-    .bind(&admin_hash)
-    .bind(&now)
-    .execute(&mut *tx)
-    .await?;
-    let admin_row = sqlx::query("SELECT id FROM users WHERE username = $1")
+    if let Some(admin_hash) = &admin_hash {
+        let admin_id = Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO users (id, username, full_name, password_hash, is_active, must_change_password, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, 1, 0, $5, $5)
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(&admin_id)
         .bind(options.admin_username.trim().to_lowercase())
-        .fetch_one(&mut *tx)
+        .bind("مدیر سیستم")
+        .bind(admin_hash)
+        .bind(&now)
+        .execute(&mut *tx)
         .await?;
-    let admin_id: String = admin_row.get("id");
-    sqlx::query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        let admin_row = sqlx::query("SELECT id FROM users WHERE username = $1")
+            .bind(options.admin_username.trim().to_lowercase())
+            .fetch_one(&mut *tx)
+            .await?;
+        let admin_id: String = admin_row.get("id");
+        sqlx::query(
+            "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        )
         .bind(&admin_id)
         .bind(admin_role)
         .execute(&mut *tx)
         .await?;
+    }
 
     if options.demo_staff {
         let demo_hash = hash_password("CafeFlow@1404").map_err(anyhow::Error::msg)?;

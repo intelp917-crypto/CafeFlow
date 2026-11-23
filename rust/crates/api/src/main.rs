@@ -172,8 +172,9 @@ async fn seed(database: &Database) -> Result<bool> {
     let options = SeedOptions {
         admin_username: std::env::var("SEED_ADMIN_USERNAME")
             .unwrap_or_else(|_| "admin".to_string()),
-        admin_password: std::env::var("SEED_ADMIN_PASSWORD")
-            .unwrap_or_else(|_| "CafeFlow@1404".to_string()),
+        // Optional: without it the first admin is created through the
+        // install-key wizard on /staff/login.
+        admin_password: std::env::var("SEED_ADMIN_PASSWORD").unwrap_or_default(),
         demo_staff: env_bool("SEED_DEMO_STAFF", true),
         demo_menu: env_bool("SEED_DEMO_MENU", true),
     };

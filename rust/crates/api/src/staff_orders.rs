@@ -341,8 +341,42 @@ pub async fn transition(
         release_table_if_idle(&current, &mut tx).await?;
     }
 
+    if target == OrderStatus::Confirmed {
+        let body = format!("سفارش {} تأیید شد؛ آماده‌سازی را شروع کنید.", current.code);
+        for role in ["kitchen", "barista"] {
+            push_notification(
+                &mut tx,
+                role,
+                "order.confirmed",
+                "سفارش تأیید شد",
+                &body,
+                &id,
+                &current.code,
+            )
+            .await?;
+        }
+    }
+    if target == OrderStatus::Cancelled {
+        let body = format!(
+            "سفارش {} لغو شد — {}",
+            current.code,
+            reason.unwrap_or("دلیل ثبت نشده")
+        );
+        for role in ["waiter", "kitchen"] {
+            push_notification(
+                &mut tx,
+                role,
+                "order.cancelled",
+                "سفارش لغو شد",
+                &body,
+                &id,
+                &current.code,
+            )
+            .await?;
+        }
+    }
     if target == OrderStatus::Ready {
-        insert_notification(
+        push_notification(
             &mut tx,
             "waiter",
             "order.ready",
@@ -362,7 +396,7 @@ pub async fn transition(
                 .await
                 .map_err(db_error)?;
         }
-        insert_notification(
+        push_notification(
             &mut tx,
             "cashier",
             "order.awaiting_payment",
@@ -698,7 +732,10 @@ async fn release_table_if_idle(
     Ok(())
 }
 
-async fn insert_notification(
+/// Queues one staff event for a workflow stage. The same stage is not
+/// announced twice for an order within two minutes, so the manual path and the
+/// automatic prep path cannot both fire "ready" for the same order.
+pub(crate) async fn push_notification(
     tx: &mut sqlx::Transaction<'_, sqlx::Any>,
     role_key: &str,
     kind: &str,
@@ -707,6 +744,21 @@ async fn insert_notification(
     order_id: &str,
     code: &str,
 ) -> Result<(), AppError> {
+    let since = cafeflow_db::now_iso_after_minutes(-2);
+    let recent = sqlx::query(
+        "SELECT COUNT(*) AS n FROM notifications
+          WHERE type = $1 AND role_key = $2 AND created_at >= $3 AND data_json LIKE $4",
+    )
+    .bind(kind)
+    .bind(role_key)
+    .bind(&since)
+    .bind(format!("%\"orderId\":\"{order_id}\"%"))
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(db_error)?;
+    if recent.get::<i64, _>("n") > 0 {
+        return Ok(());
+    }
     sqlx::query(
         "INSERT INTO notifications (id, role_key, type, title_fa, body_fa, data_json)
          VALUES ($1, $2, $3, $4, $5, $6)",

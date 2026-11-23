@@ -8,6 +8,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { AuthProvider } from './lib/auth';
 import { BrandingProvider } from './lib/branding';
+import { NotificationProvider } from './lib/notifications';
 
 const container = document.getElementById('root');
 if (!container) throw new Error('Root container missing');
@@ -17,7 +18,9 @@ createRoot(container).render(
     <BrowserRouter>
       <AuthProvider>
         <BrandingProvider>
-          <App />
+          <NotificationProvider>
+            <App />
+          </NotificationProvider>
         </BrandingProvider>
       </AuthProvider>
     </BrowserRouter>

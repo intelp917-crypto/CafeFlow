@@ -5,6 +5,7 @@ import type { ModuleKey } from '@cafeflow/shared';
 import { useAuth } from '../lib/auth';
 import { useBranding } from '../lib/branding';
 import { DeveloperCredit } from '../components/DeveloperCredit';
+import { NotificationBell } from '../components/NotificationBell';
 
 interface NavItem {
   to: string;
@@ -122,8 +123,8 @@ export function AdminLayout() {
       </div>
 
       <div className="mt-3 shrink-0 rounded-2xl border border-white/10 bg-white/5 p-3.5 text-[10px] leading-5 text-cream/55">
-        <p className="font-semibold text-cream/85">نسخه ۰.۹</p>
-        <p>طراح سالن، شیفت و عملکرد، مالی و مرکز پیام.</p>
+        <p className="font-semibold text-cream/85">نسخه ۰.۲.۴</p>
+        <p>وضعیت میز، سفارش‌های قبلی و اعلان مرحله‌ای تیم.</p>
       </div>
     </nav>
   );
@@ -164,6 +165,7 @@ export function AdminLayout() {
               </div>
 
               <div className="flex items-center gap-2">
+                <NotificationBell />
                 <Button size="sm" variant="ghost" onClick={() => navigate('/admin/security')}>
                   امنیت
                 </Button>

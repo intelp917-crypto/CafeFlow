@@ -1,3 +1,17 @@
+## اجرای بک‌اند Rust با CMD (ویندوز)
+
+```bat
+cd /d C:\Projects\CafeFlow\rust
+set APP_ENV=development
+cargo run --release -- db setup
+cargo run --release -- serve
+```
+
+سپس `http://localhost:3000/staff/login` را باز کنید؛ بار اول ویزارد راه‌اندازی با کلید نصب می‌آید. داده‌ها در
+`rust/data` و روی SQLite ذخیره می‌شوند؛ برای بستن سرور در همان پنجره `Ctrl+C` بزنید.
+
+---
+
 # CafeFlow ☕ — کافه‌فلو
 
 **سامانه یکپارچه مدیریت کافه و رستوران — یک ایمیج، یک کانتینر، کل سایت.**
@@ -7,8 +21,8 @@
 |---|---|
 | [راهنمای فارسی](#فارسی) | [English guide](#english) |
 
-- ایمیج منتشرشده: `quay.io/intelp917/cafeflow:0.2.0` (و تگ کوتاه `latest`)
-- digest برای پین‌کردن: `sha256:cd6ff66e47df8ffd28c690aa6135064e94596b428bfaf86b36ff2ee4ad30febf`
+- ایمیج منتشرشده: `quay.io/intelp917/cafeflow:0.2.4` (و تگ کوتاه `latest`)
+- digest برای پین‌کردن: `sha256:89b3824bdb9b195b71b09c86fb6205059b588c1749774c16a7db788fa7ce8af6`
 - پورت پیش‌فرض: `3000` (فقط یک پورت برای API + SPA + WebSocket + رسانه)
 - پایگاه داده پیش‌فرض: SQLite روی `/app/data` — بدون سرویس جانبی
 - گزینهٔ جایگزین: PostgreSQL ۱۷+ با `DB_DRIVER=postgres`
@@ -50,7 +64,7 @@ CafeFlow کل چرخهٔ یک کافه/رستوران را در یک برنام�
                     └──────────────────────────────────────────────────────────────────┘
                                         │
                                         ▼
-                              quay.io/intelp917/cafeflow:0.2.0
+                              quay.io/intelp917/cafeflow:0.2.4
 ```
 
 - ایمیج نهایی بر پایهٔ Wolfi است و **Node و nginx ندارد**؛ فقط باینری، فایل‌های SPA و ابزارهای پایهٔ Wolfi
@@ -92,19 +106,15 @@ docker run -d --name cafeflow \
   --restart unless-stopped \
   -p 8080:3000 \
   -e APP_ENV=production \
-  -e SEED_ADMIN_USERNAME=admin \
-  -e SEED_ADMIN_PASSWORD='یک-گذرواژه-قوی-بگذارید' \
   -e SEED_DEMO_STAFF=false \
   -e SEED_DEMO_MENU=true \
   -e SESSION_COOKIE_SECURE=false \
   -v cafeflow_data:/app/data \
-  --entrypoint /bin/sh \
-  quay.io/intelp917/cafeflow:0.2.0 \
-  -c 'cafeflow db setup && exec cafeflow serve'
+  quay.io/intelp917/cafeflow:0.2.4
 
 # ۳) بررسی
 curl -s http://127.0.0.1:8080/api/v1/health
-# {"status":"ok","database":"ok","databaseDriver":"sqlite","version":"0.2.0",...}
+# {"status":"ok","database":"ok","databaseDriver":"sqlite","version":"0.2.4",...}
 ```
 
 سپس `http://SERVER-IP:8080/staff/login` را باز کنید.
@@ -119,11 +129,9 @@ curl -s http://127.0.0.1:8080/api/v1/health
 ```yaml
 services:
   cafeflow:
-    image: quay.io/intelp917/cafeflow:0.2.0
+    image: quay.io/intelp917/cafeflow:0.2.4
     container_name: cafeflow
     restart: unless-stopped
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["cafeflow db setup && exec cafeflow serve"]
     environment:
       APP_ENV: production
       PORT: "3000"
@@ -133,8 +141,6 @@ services:
       DB_AUTO_MIGRATE: "true"
       SESSION_COOKIE_SECURE: "true"     # HTTPS اجباری؛ برای آزمایش HTTP موقتاً false
       SESSION_TTL_HOURS: "168"
-      SEED_ADMIN_USERNAME: admin
-      SEED_ADMIN_PASSWORD: "یک-گذرواژه-قوی-بگذارید"
       SEED_DEMO_STAFF: "false"
       SEED_DEMO_MENU: "true"
     ports:
@@ -177,31 +183,34 @@ CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -p cafeflow-api --
 # یا ساخت همان ایمیج تولیدی:
 cd ..
 docker build -f infra/docker/Dockerfile.rust \
-  -t cafeflow:0.2.0 -t quay.io/intelp917/cafeflow:0.2.0 .
+  -t cafeflow:0.2.4 -t quay.io/intelp917/cafeflow:0.2.4 .
 ```
 
 ## ۵. اولین ورود
 
+اولین بار که `/staff/login` را باز کنید، به‌جای فرم ورود **ویزارد راه‌اندازی** نمایش داده می‌شود: نام کاربری و
+گذرواژهٔ مدیر اصلی را می‌سازید و **کلید نصب** را وارد می‌کنید. هیچ `SEED_ADMIN_*` لازم نیست.
+
 | مورد | مقدار |
 |---|---|
-| آدرس ورود | `/staff/login` |
-| کاربر مدیر | `SEED_ADMIN_USERNAME` (پیش‌فرض `admin`) |
-| گذرواژهٔ مدیر | `SEED_ADMIN_PASSWORD` — **قبل از اولین بوت تعیین کنید** |
-| گذرواژهٔ پیش‌فرض اگر تنظیم نشود | `CafeFlow@1404` (فقط برای توسعه؛ هرگز در تولید) |
+| آدرس | `/staff/login` |
+| کلید نصب | `P70w4EslWwiFvmay6Bs1` (قابل تغییر با `CAFEFLOW_INSTALL_KEY`) |
+| بعد از ساخت | ورود خودکار به `/admin` |
 | کارکنان نمونه (اگر `SEED_DEMO_STAFF=true`) | `manager`, `cashier`, `waiter`, `barista`, `kitchen` — گذرواژه `CafeFlow@1404` |
 
 نکات:
 
-1. seed فقط زمانی اجرا می‌شود که جدول کاربران خالی باشد؛ تغییر `SEED_ADMIN_PASSWORD` بعد از اولین بوت اثری ندارد.
-   برای تغییر گذرواژه از «امنیت حساب» در پنل استفاده کنید.
-2. در تولید `SEED_DEMO_STAFF=false` بگذارید؛ حساب‌های نمونه گذرواژهٔ شناخته‌شده دارند.
-3. `SEED_DEMO_MENU=true` منوی نمونه با دسته/محصول و چند میز نمایشی (`demo-table-1`، …) می‌سازد.
+1. ویزارد فقط وقتی نمایش داده می‌شود که هیچ کاربر فعالی با نقش `super_admin` وجود نداشته باشد؛ بعد از ساخت
+   دوباره اجرا نمی‌شود (`409`). برای تغییر گذرواژه بعداً از «امنیت حساب» در پنل استفاده کنید.
+2. اگر مدیر را از env می‌خواهید، `SEED_ADMIN_USERNAME` و `SEED_ADMIN_PASSWORD` را ست کنید (سازگاری با نصب قبلی).
+3. در تولید `SEED_DEMO_STAFF=false` بگذارید؛ حساب‌های نمونه گذرواژهٔ شناخته‌شده دارند.
+4. `SEED_DEMO_MENU=true` منوی نمونه با دسته/محصول و چند میز نمایشی (`demo-table-1`، …) می‌سازد.
    برای شروع با منوی خالی `false` بگذارید.
 4. ماژول‌های انبار، مالی، CRM و کارکنان به‌صورت پیش‌فرض خاموش‌اند؛ از **تنظیمات ← ماژول‌ها** روشن کنید.
 
 ## ۶. متغیرهای محیطی
 
-فایل آمادهٔ تولید: [`deploy.env.example`](deploy.env.example) — فقط `SEED_ADMIN_PASSWORD` را عوض کنید و با
+فایل آمادهٔ تولید: [`deploy.env.example`](deploy.env.example) — بدون تغییر هم کار می‌کند و با
 `--env-file` به کانتینر بدهید.
 
 | نام | پیش‌فرض | توضیح |
@@ -223,15 +232,19 @@ docker build -f infra/docker/Dockerfile.rust \
 | `SESSION_COOKIE_SECURE` | `true` در production | روی HTTPS `true`؛ برای HTTP آزمایشی `false`. |
 | `LOGIN_MAX_ATTEMPTS` | `5` | تلاش ناموفق پیش از قفل حساب. |
 | `LOGIN_LOCK_MINUTES` | `15` | مدت قفل. |
-| `SEED_ADMIN_USERNAME` | `admin` | فقط اولین seed. |
-| `SEED_ADMIN_PASSWORD` | `CafeFlow@1404` | فقط اولین seed — تغییر دهید. |
+| `CAFEFLOW_INSTALL_KEY` | `P70w4EslWwiFvmay6Bs1` | کلید ساخت اولین مدیر در `/staff/login`. |
+| `SEED_ADMIN_USERNAME` | — | اختیاری؛ مدیر را از env می‌سازد (بدون ویزارد). |
+| `SEED_ADMIN_PASSWORD` | — | اختیاری؛ خالی یعنی ساخت مدیر با ویزارد. |
 | `SEED_DEMO_STAFF` | در Compose: `false` · در CLI: `true` | ساخت کارکنان نمونه. |
 | `SEED_DEMO_MENU` | `true` | منوی نمونه و میزهای نمایشی. |
 | `PUBLIC_APP_URL` | — | آدرس عمومی سایت (مثل `https://cafe.example.com`) برای لینک داخل QR وقتی هدر `Origin` در دسترس نیست. |
 | `RUST_LOG` | `cafeflow_api=info,tower_http=info,sqlx=warn` | سطح لاگ. |
 
-متغیرهای `SMS_*`، `VAPID_*` و `PRINT_BRIDGE_TOKEN` در این نسخه برای ارسال پیامک/پوش خارجی استفاده نمی‌شوند؛
-پل چاپ یک اسکریپت جداگانه روی رایانهٔ کافه است و وجودش برای اجرای سایت لازم نیست.
+اعلان‌ها روی خود دستگاه نمایش داده می‌شوند: توست درون‌برنامه‌ای در همهٔ صفحه‌ها (پنل کارکنان، منوی مشتری و صفحهٔ
+وضعیت سفارش) و اعلان موبایلی مرورگر پس از لمس دکمهٔ «فعال‌سازی اعلان». این قابلیت به `VAPID_*` یا سرویس پوش بیرونی
+نیازی ندارد؛ اگر تب مرورگر کامل بسته باشد اعلانی نمی‌رسد.
+متغیرهای `SMS_*` و `PRINT_BRIDGE_TOKEN` در این نسخه برای پیامک/چاپ خارجی استفاده نمی‌شوند؛ پل چاپ یک اسکریپت
+جداگانه روی رایانهٔ کافه است و وجودش برای اجرای سایت لازم نیست.
 
 ## ۷. دادهٔ پایدار، پشتیبان و بازیابی
 
@@ -356,13 +369,13 @@ environment:
 docker run --rm -v cafeflow_data:/app/data --network host \
   -e DB_DRIVER=sqlite -e CAFEFLOW_DATA_DIR=/app/data \
   -e POSTGRES_URL='postgres://cafeflow:pass@127.0.0.1:5432/cafeflow' \
-  quay.io/intelp917/cafeflow:0.2.0 db migrate-to-postgres --dry-run
+  quay.io/intelp917/cafeflow:0.2.4 db migrate-to-postgres --dry-run
 
 # اجرای واقعی (مقصد باید خالی باشد)
 docker run --rm -v cafeflow_data:/app/data --network host \
   -e DB_DRIVER=sqlite -e CAFEFLOW_DATA_DIR=/app/data \
   -e POSTGRES_URL='postgres://cafeflow:pass@127.0.0.1:5432/cafeflow' \
-  quay.io/intelp917/cafeflow:0.2.0 db migrate-to-postgres
+  quay.io/intelp917/cafeflow:0.2.4 db migrate-to-postgres
 ```
 
 ## ۱۰. دستورهای باینری داخل ایمیج
@@ -386,7 +399,7 @@ docker exec cafeflow cafeflow --help
 # ۱) پشتیبان
 docker exec cafeflow cafeflow backup
 # ۲) دریافت نسخهٔ تازه (تگ دقیق را پین کنید)
-docker pull quay.io/intelp917/cafeflow:0.2.0
+docker pull quay.io/intelp917/cafeflow:0.2.4
 # ۳) بازسازی کانتینر با همان volume
 docker compose up -d          # یا: docker rm -f cafeflow && docker run ... (راه ۱)
 ```
@@ -395,6 +408,47 @@ docker compose up -d          # یا: docker rm -f cafeflow && docker run ... (�
 - برای بازگشت، تگ قبلی (مثلاً `0.1.0`) را در compose بگذارید و `up -d` کنید. اگر مهاجرت ناسازگار باشد،
   از پشتیبان قبل از به‌روزرسانی استفاده کنید.
 - برای دیپلوی قطعی‌تر، ایمیج را با digest پین کنید: `quay.io/intelp917/cafeflow@sha256:...`.
+
+### استقرار خودکار از GitHub (Publish image)
+
+مخزن یک workflow آماده دارد: `.github/workflows/publish-image.yml`.
+
+1. در Quay یک Robot Account بسازید (Organization → Robot Accounts) با دسترسی Write روی
+   `intelp917/cafeflow`؛ نام ربات (مثل `intelp917+github`) و توکنش را بردارید.
+2. در GitHub → Settings → Secrets and variables → Actions دو secret بسازید:
+   `QUAY_USERNAME` = نام ربات و `QUAY_PASSWORD` = توکن ربات (نه گذرواژهٔ سایت Quay).
+3. هر push روی `main` یا `feat/rust-backend` (و تگ‌های `v*`) تست‌ها را اجرا و ایمیج را push می‌کند.
+
+| رویداد | تگ‌های تولیدشده |
+|---|---|
+| push روی `main` | `latest`، `0.2.4`، `main`، `sha-xxxxxxx` |
+| push روی `feat/rust-backend` | `0.2.4`، `feat-rust-backend`، `sha-xxxxxxx` |
+| تگ `v1.2.3` | `1.2.3`، `1.2`، `1`، `0.2.4`، `sha-xxxxxxx` |
+
+`latest` فقط از `main` ساخته می‌شود؛ برای انتشار نهایی تغییرات را merge کنید. اگر secretها ست نشده
+باشند، job ایمیج را فقط build می‌کند و چیزی push نمی‌شود. برای انتشار دستی: Actions → Publish image
+→ Run workflow.
+
+روی هاست، بعد از هر انتشار:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+یا با watchtower/کرون هر چند دقیقه `docker pull` را اجرا کنید.
+
+### استقرار روی لیارا (Git)
+
+فایل `liara.json` در ریشه اضافه شده و Dockerfile را از `infra/docker/Dockerfile.rust` می‌شناسد:
+
+- در پنل، پلتفرم برنامه **Docker** و پورت `3000` باشد؛ دیسک `data` روی `/app/data` سوار شود.
+- موقعیت build آلمان (`germany`) است تا دانلود پکیج محدودیت نداشته باشد.
+- در استقرار از GitHub فیلدهای `app` و `platform` را در `liara.json` نگذارید؛ لیارا خودش آن‌ها را
+  تشخیص می‌دهد (فایل نمونهٔ پنل این دو را دارد و همان باعث خطا می‌شود).
+- متغیرها را در Environment Variables پنل ست کنید: `APP_ENV=production`، `SESSION_COOKIE_SECURE=true` و
+  `PUBLIC_APP_URL=https://<دامنه>`؛ مدیر اصلی را از ویزارد `/staff/login` بسازید.
+- اولین بوت خودکار `cafeflow db setup` را اجرا می‌کند (مهاجرت + seed فقط روی دیتابیس خالی)؛ برای
+  خاموش کردنش `CAFEFLOW_AUTO_SETUP=0` بگذارید.
 
 ## ۱۲. بررسی سلامت و عملیات
 
@@ -496,8 +550,8 @@ calendar and the UI is RTL with Vazirmatn.
 
 ## 2. Image architecture
 
-Published image: `quay.io/intelp917/cafeflow:0.2.0` (also `:latest`), digest
-`sha256:cd6ff66e47df8ffd28c690aa6135064e94596b428bfaf86b36ff2ee4ad30febf`.
+Published image: `quay.io/intelp917/cafeflow:0.2.4` (also `:latest`), digest
+`sha256:89b3824bdb9b195b71b09c86fb6205059b588c1749774c16a7db788fa7ce8af6`.
 
 One container runs one Rust/Axum process on port `3000` that serves the REST API (`/api/v1`), the
 game WebSocket (`/ws/games`), the built SPA (with history fallback) and uploaded media. The final
@@ -539,15 +593,11 @@ docker run -d --name cafeflow \
   --restart unless-stopped \
   -p 8080:3000 \
   -e APP_ENV=production \
-  -e SEED_ADMIN_USERNAME=admin \
-  -e SEED_ADMIN_PASSWORD='choose-a-strong-password' \
   -e SEED_DEMO_STAFF=false \
   -e SEED_DEMO_MENU=true \
   -e SESSION_COOKIE_SECURE=false \
   -v cafeflow_data:/app/data \
-  --entrypoint /bin/sh \
-  quay.io/intelp917/cafeflow:0.2.0 \
-  -c 'cafeflow db setup && exec cafeflow serve'
+  quay.io/intelp917/cafeflow:0.2.4
 
 curl -s http://127.0.0.1:8080/api/v1/health
 ```
@@ -562,11 +612,9 @@ Create `docker-compose.yml`:
 ```yaml
 services:
   cafeflow:
-    image: quay.io/intelp917/cafeflow:0.2.0
+    image: quay.io/intelp917/cafeflow:0.2.4
     container_name: cafeflow
     restart: unless-stopped
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["cafeflow db setup && exec cafeflow serve"]
     environment:
       APP_ENV: production
       PORT: "3000"
@@ -576,8 +624,6 @@ services:
       DB_AUTO_MIGRATE: "true"
       SESSION_COOKIE_SECURE: "true"     # requires HTTPS; set false only for an HTTP trial
       SESSION_TTL_HOURS: "168"
-      SEED_ADMIN_USERNAME: admin
-      SEED_ADMIN_PASSWORD: "choose-a-strong-password"
       SEED_DEMO_STAFF: "false"
       SEED_DEMO_MENU: "true"
     ports:
@@ -615,7 +661,7 @@ CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -p cafeflow-api --
 Or build the production image yourself:
 
 ```bash
-docker build -f infra/docker/Dockerfile.rust -t cafeflow:0.2.0 .
+docker build -f infra/docker/Dockerfile.rust -t cafeflow:0.2.4 .
 ```
 
 ## 5. First login and seeding
@@ -623,21 +669,30 @@ docker build -f infra/docker/Dockerfile.rust -t cafeflow:0.2.0 .
 | Item | Value |
 |---|---|
 | Login URL | `/staff/login` |
-| Admin user | `SEED_ADMIN_USERNAME` (default `admin`) |
-| Admin password | `SEED_ADMIN_PASSWORD` — set it before the first boot |
-| Fallback if unset | `CafeFlow@1404` (development only) |
+The first visit to `/staff/login` shows a **setup wizard** instead of the login form: you choose the
+super admin username and password and enter the **install key**. No `SEED_ADMIN_*` variable is needed.
+
+| Item | Value |
+|---|---|
+| URL | `/staff/login` |
+| Install key | `P70w4EslWwiFvmay6Bs1` (override with `CAFEFLOW_INSTALL_KEY`) |
+| After creating | signed in automatically and redirected to `/admin` |
 | Demo staff (`SEED_DEMO_STAFF=true`) | `manager`, `cashier`, `waiter`, `barista`, `kitchen` with `CafeFlow@1404` |
 
-Seeding only runs while the user table is empty; changing `SEED_ADMIN_PASSWORD` after the first boot
-has no effect (use the in-app password change instead). Keep `SEED_DEMO_STAFF=false` in production.
+Notes:
+
+1. The wizard only appears while no active user holds the `super_admin` role; afterwards it returns
+   `409`. Change the password later under Account security in the panel.
+2. To keep creating the admin from env, set `SEED_ADMIN_USERNAME` and `SEED_ADMIN_PASSWORD`.
+3. Keep `SEED_DEMO_STAFF=false` in production.
 `SEED_DEMO_MENU=true` creates a demo catalog and demo tables (`demo-table-1`, …); set it to `false`
 to start with an empty menu. Inventory, finance, CRM and employees modules are disabled by default —
 enable them under Settings → Modules.
 
 ## 6. Environment variables
 
-A production-ready template lives in [`deploy.env.example`](deploy.env.example): change
-`SEED_ADMIN_PASSWORD` and pass it with `--env-file`.
+A production-ready template lives in [`deploy.env.example`](deploy.env.example): it works unchanged,
+and you pass it with `--env-file`.
 
 | Name | Default | Purpose |
 |---|---|---|
@@ -658,15 +713,19 @@ A production-ready template lives in [`deploy.env.example`](deploy.env.example):
 | `SESSION_COOKIE_SECURE` | `true` in production | Must be `true` behind HTTPS |
 | `LOGIN_MAX_ATTEMPTS` | `5` | Failed logins before lockout |
 | `LOGIN_LOCK_MINUTES` | `15` | Lockout duration |
-| `SEED_ADMIN_USERNAME` | `admin` | First-boot admin |
-| `SEED_ADMIN_PASSWORD` | `CafeFlow@1404` | First-boot password — change it |
+| `CAFEFLOW_INSTALL_KEY` | `P70w4EslWwiFvmay6Bs1` | Key for the first-admin wizard on `/staff/login` |
+| `SEED_ADMIN_USERNAME` | — | Optional; creates the admin from env instead of the wizard |
+| `SEED_ADMIN_PASSWORD` | — | Optional; empty means the wizard creates the admin |
 | `SEED_DEMO_STAFF` | compose `false`, CLI `true` | Create demo staff |
 | `SEED_DEMO_MENU` | `true` | Create demo catalog and tables |
 | `PUBLIC_APP_URL` | — | Public origin (e.g. `https://cafe.example.com`) used in QR links when `Origin` is unavailable |
 | `RUST_LOG` | `cafeflow_api=info,tower_http=info,sqlx=warn` | Log filter |
 
-`SMS_*`, `VAPID_*` and `PRINT_BRIDGE_TOKEN` are not used for outbound SMS/push in this release. The
-print bridge is an optional script that runs on a cafe PC; the site does not need it.
+Notifications are delivered on the device itself: an in-app toast on every page (staff panel, guest
+menu and order status) plus a browser/mobile notification after the user taps “Enable notifications”.
+No `VAPID_*` keys or external push service are needed; a fully closed tab receives nothing.
+`SMS_*` and `PRINT_BRIDGE_TOKEN` are not used for outbound SMS/print in this release; the print
+bridge is an optional script that runs on a cafe PC.
 
 ## 7. Persistent data, backup and restore
 
@@ -739,7 +798,7 @@ Copy an existing SQLite database into an empty PostgreSQL database:
 docker run --rm -v cafeflow_data:/app/data --network host \
   -e DB_DRIVER=sqlite -e CAFEFLOW_DATA_DIR=/app/data \
   -e POSTGRES_URL='postgres://cafeflow:pass@127.0.0.1:5432/cafeflow' \
-  quay.io/intelp917/cafeflow:0.2.0 db migrate-to-postgres --dry-run
+  quay.io/intelp917/cafeflow:0.2.4 db migrate-to-postgres --dry-run
 # then run the same command without --dry-run
 ```
 
@@ -758,12 +817,54 @@ docker run --rm -v cafeflow_data:/app/data --network host \
 
 ```bash
 docker exec cafeflow cafeflow backup
-docker pull quay.io/intelp917/cafeflow:0.2.0
+docker pull quay.io/intelp917/cafeflow:0.2.4
 docker compose up -d        # or recreate the container with the same volume
 ```
 
 New migrations apply on boot; `db setup` does not reseed. To roll back, pin the previous tag (or
 digest) and recreate the container; restore the pre-update backup if a migration is incompatible.
+
+### Deployment from GitHub (Publish image)
+
+`.github/workflows/publish-image.yml` builds and publishes the image.
+
+1. Create a Quay Robot Account (Organization → Robot Accounts) with Write access to
+   `intelp917/cafeflow`; copy its username (`intelp917+github`) and token.
+2. Add repository secrets `QUAY_USERNAME` and `QUAY_PASSWORD` (the robot token, not the web
+   password) under Settings → Secrets and variables → Actions.
+3. Pushes to `main` or `feat/rust-backend` (and `v*` tags) run the tests and publish.
+
+| Event | Tags |
+|---|---|
+| push to `main` | `latest`, `0.2.4`, `main`, `sha-xxxxxxx` |
+| push to `feat/rust-backend` | `0.2.4`, `feat-rust-backend`, `sha-xxxxxxx` |
+| `v1.2.3` tag | `1.2.3`, `1.2`, `1`, `0.2.4`, `sha-xxxxxxx` |
+
+`latest` is built from `main` only. Without the secrets the image is still built but nothing is
+pushed. To publish manually: Actions → Publish image → Run workflow.
+
+On the host after a release:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+or let watchtower/cron run `docker pull`.
+
+### Deploying on Liara (Git)
+
+`liara.json` points Liara at the monorepo Dockerfile (`infra/docker/Dockerfile.rust`).
+
+- In the panel the app platform must be **Docker** with port `3000`, and the `data` disk mounted at
+  `/app/data`.
+- Build location is `germany` so package downloads are unrestricted.
+- For GitHub deploys do not put `app` or `platform` in `liara.json`; Liara detects both (the file
+  the panel offers contains them, and that is what breaks the Git deploy).
+- Set the variables in the panel's Environment Variables: `APP_ENV=production`,
+  `SESSION_COOKIE_SECURE=true` and `PUBLIC_APP_URL=https://<domain>`; create the first admin
+  through the `/staff/login` wizard.
+- The first boot runs `cafeflow db setup` automatically (migrations + seed only for an empty
+  database); set `CAFEFLOW_AUTO_SETUP=0` to turn it off.
 
 ## 12. Health and operations
 

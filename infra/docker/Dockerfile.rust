@@ -1,7 +1,7 @@
 # CafeFlow single-image runtime: one Rust binary serves API, WebSocket
 # endpoints, uploaded media and the built SPA on one port.
 #
-# Build:  docker build -f infra/docker/Dockerfile.rust -t cafeflow:0.2.0 .
+# Build:  docker build -f infra/docker/Dockerfile.rust -t cafeflow:0.2.4 .
 # Run:    docker compose -f infra/docker/compose.rust.yml up -d
 #
 # Node is used only in the web build stage. The final image contains no Node,
@@ -49,10 +49,13 @@ RUN apk add --no-cache ca-certificates curl \
 WORKDIR /app
 COPY --from=rust-build /app/rust/target/release/cafeflow /usr/local/bin/cafeflow
 COPY --from=web-build /app/apps/web/dist /app/public
+COPY infra/docker/entrypoint.sh /usr/local/bin/cafeflow-entrypoint
 
 # The old Node image used uid 1000 for its `node` user, so an existing named
 # volume mounted at /app/data keeps the same ownership when it is upgraded.
 RUN mkdir -p /app/data/backups /app/data/print-output \
+    && sed -i 's/\r$//' /usr/local/bin/cafeflow-entrypoint \
+    && chmod 755 /usr/local/bin/cafeflow-entrypoint \
     && chown -R 1000:1000 /app
 
 USER 1000
@@ -69,5 +72,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:3000/api/v1/health" >/dev/null || exit 1
 
-ENTRYPOINT ["cafeflow"]
+# The entrypoint runs `cafeflow db setup` once per container start (idempotent)
+# so git-based hosts such as Liara need no custom start command.
+ENTRYPOINT ["/usr/local/bin/cafeflow-entrypoint"]
 CMD ["serve"]

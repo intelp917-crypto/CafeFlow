@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::auth::{require_auth, session_has_permission};
 use crate::error::{AppError, conflict, forbidden, not_found, validation_failed};
-use crate::staff_orders::build_detail;
+use crate::staff_orders::{build_detail, push_notification};
 use crate::state::AppState;
 
 const DEPARTMENT_KINDS: [&str; 4] = ["barista", "kitchen", "bar", "other"];
@@ -215,6 +215,26 @@ pub async fn transition(
     .execute(&mut *tx)
     .await
     .map_err(db_error)?;
+    if target == PrepStatus::Delayed {
+        let code: Option<String> = sqlx::query("SELECT code FROM orders WHERE id = $1")
+            .bind(&task.order_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(db_error)?
+            .map(|row| row.get("code"));
+        if let Some(code) = code {
+            push_notification(
+                &mut tx,
+                "waiter",
+                "prep.delayed",
+                "آماده‌سازی با تأخیر",
+                &format!("آماده‌سازی یکی از آیتم‌های سفارش {code} به تأخیر افتاد."),
+                &task.order_id,
+                &code,
+            )
+            .await?;
+        }
+    }
     sync_order_progress(&mut tx, &task.order_id, &now).await?;
     tx.commit().await.map_err(db_error)?;
     Ok(Json(build_detail(&state, &task.order_id).await?))
@@ -349,16 +369,29 @@ async fn sync_order_progress(
         .map_err(db_error)?;
         if next == OrderStatus::Ready {
             let code: String = row.get("code");
-            sqlx::query(
-                "INSERT INTO notifications (id, role_key, type, title_fa, body_fa, data_json)
-                 VALUES ($1, 'waiter', 'order.ready', 'سفارش آماده تحویل است', $2, $3)",
+            push_notification(
+                &mut *tx,
+                "waiter",
+                "order.ready",
+                "سفارش آماده تحویل است",
+                &format!("سفارش {code} آماده سرو است."),
+                order_id,
+                &code,
             )
-            .bind(Uuid::new_v4().to_string())
-            .bind(format!("سفارش {code} آماده سرو است."))
-            .bind(json!({"orderId": order_id, "code": code}).to_string())
-            .execute(&mut **tx)
-            .await
-            .map_err(db_error)?;
+            .await?;
+        }
+        if next == OrderStatus::PartiallyReady {
+            let code: String = row.get("code");
+            push_notification(
+                &mut *tx,
+                "waiter",
+                "order.partially_ready",
+                "بخشی از سفارش آماده است",
+                &format!("بخشی از سفارش {code} آماده است."),
+                order_id,
+                &code,
+            )
+            .await?;
         }
         if next == OrderStatus::Cancelled {
             sqlx::query(
