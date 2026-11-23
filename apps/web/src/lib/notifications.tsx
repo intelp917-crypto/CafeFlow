@@ -68,7 +68,10 @@ const SEEN_LIMIT = 300;
 /** Server notification types get a matching colour and destination. */
 const TYPE_TONES: Record<string, NotificationTone> = {
   'order.submitted': 'brand',
+  'order.confirmed': 'brand',
+  'order.partially_ready': 'success',
   'order.ready': 'success',
+  'prep.delayed': 'warning',
   'order.awaiting_payment': 'warning',
   'order.cancelled': 'danger',
   'service.request': 'warning',

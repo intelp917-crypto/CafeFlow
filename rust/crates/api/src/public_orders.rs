@@ -415,6 +415,110 @@ pub async fn order_status(
     }))
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableOverviewItem {
+    name_fa: String,
+    quantity: i64,
+    status: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableOverviewOrder {
+    code: String,
+    status: String,
+    status_label_fa: String,
+    total: i64,
+    created_at: String,
+    items: Vec<TableOverviewItem>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableOverviewResponse {
+    table_name_fa: Option<String>,
+    orders: Vec<TableOverviewOrder>,
+}
+
+/// Every order placed at this table's open session, so guests can see the
+/// whole table's activity. Contains no customer identity or status tokens.
+pub async fn table_overview(
+    State(state): State<AppState>,
+    Path(qr_token): Path<String>,
+) -> Result<Json<TableOverviewResponse>, AppError> {
+    let qr = find_qr(&state, qr_token.trim()).await?;
+    if qr.is_active != 1 {
+        return Err(not_found(
+            "این کد QR معتبر نیست یا غیرفعال شده است.",
+            "QR_NOT_FOUND",
+        ));
+    }
+    let Some(table_id) = qr.table_id.clone() else {
+        return Err(not_found(
+            "میز مربوط به این کد QR دیگر فعال نیست.",
+            "QR_TABLE_INACTIVE",
+        ));
+    };
+    let table_name_fa = qr.table_name_fa.clone();
+
+    let session =
+        sqlx::query("SELECT id FROM table_sessions WHERE table_id = $1 AND status = 'open'")
+            .bind(&table_id)
+            .fetch_optional(&state.db.pool)
+            .await
+            .map_err(db_error)?;
+    let Some(session) = session else {
+        return Ok(Json(TableOverviewResponse {
+            table_name_fa,
+            orders: Vec::new(),
+        }));
+    };
+    let session_id: String = session.get("id");
+
+    let order_rows = sqlx::query(
+        "SELECT id, code, status, total, created_at FROM orders
+          WHERE table_session_id = $1 ORDER BY created_at ASC",
+    )
+    .bind(&session_id)
+    .fetch_all(&state.db.pool)
+    .await
+    .map_err(db_error)?;
+
+    let mut orders = Vec::with_capacity(order_rows.len());
+    for row in order_rows {
+        let order_id: String = row.get("id");
+        let status: String = row.get("status");
+        let items = sqlx::query(
+            "SELECT product_name_snapshot, quantity, status FROM order_items
+              WHERE order_id = $1 ORDER BY created_at ASC",
+        )
+        .bind(&order_id)
+        .fetch_all(&state.db.pool)
+        .await
+        .map_err(db_error)?
+        .into_iter()
+        .map(|item| TableOverviewItem {
+            name_fa: item.get("product_name_snapshot"),
+            quantity: item.get("quantity"),
+            status: item.get("status"),
+        })
+        .collect();
+        orders.push(TableOverviewOrder {
+            code: row.get("code"),
+            status_label_fa: status_label(&status),
+            status,
+            total: row.get("total"),
+            created_at: row.get("created_at"),
+            items,
+        });
+    }
+    Ok(Json(TableOverviewResponse {
+        table_name_fa,
+        orders,
+    }))
+}
+
 pub(crate) async fn price_lines(
     state: &AppState,
     lines: &[LineInput],

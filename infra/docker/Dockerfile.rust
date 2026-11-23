@@ -1,7 +1,7 @@
 # CafeFlow single-image runtime: one Rust binary serves API, WebSocket
 # endpoints, uploaded media and the built SPA on one port.
 #
-# Build:  docker build -f infra/docker/Dockerfile.rust -t cafeflow:0.2.0 .
+# Build:  docker build -f infra/docker/Dockerfile.rust -t cafeflow:0.2.3 .
 # Run:    docker compose -f infra/docker/compose.rust.yml up -d
 #
 # Node is used only in the web build stage. The final image contains no Node,
