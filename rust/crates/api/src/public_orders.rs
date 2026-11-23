@@ -21,6 +21,7 @@ use crate::error::{AppError, bad_request, conflict, not_found, validation_failed
 use crate::public_menu::{
     SettingsRow, db_error, find_qr, resolve_device, settings, with_device_cookie,
 };
+use crate::staff_orders::push_notification;
 use crate::state::AppState;
 
 const MAX_ITEMS: usize = 30;
@@ -353,6 +354,227 @@ pub async fn create_order(
         &device,
         &state,
     ))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddItemsInput {
+    client_request_id: String,
+    items: Vec<LineInput>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddItemsResponse {
+    code: String,
+    status: String,
+    total: i64,
+    added_subtotal: i64,
+    item_count: i64,
+    replayed: bool,
+}
+
+/// Another round on an open order from the QR status page. The status token
+/// authorises the change and `order_item_rounds` keeps a retried submission
+/// from adding the same items twice.
+#[axum::debug_handler]
+pub async fn add_order_items(
+    State(state): State<AppState>,
+    Path(code): Path<String>,
+    Query(query): Query<StatusQuery>,
+    body: Bytes,
+) -> Result<Json<AddItemsResponse>, AppError> {
+    let input: AddItemsInput =
+        serde_json::from_slice(&body).map_err(|_| validation_failed("اطلاعات سفارش معتبر نیست."))?;
+    validate_round(&input)?;
+    let code = code.trim().to_uppercase();
+    let row = sqlx::query("SELECT id, status, status_token_hash FROM orders WHERE code = $1")
+        .bind(&code)
+        .fetch_optional(&state.db.pool)
+        .await
+        .map_err(db_error)?;
+    let Some(row) = row else {
+        return Err(order_not_found());
+    };
+    let token_hash: Option<String> = row.get("status_token_hash");
+    if let Some(expected) = token_hash
+        && query.token.as_deref().map(sha256_hex).as_deref() != Some(expected.as_str())
+    {
+        return Err(order_not_found());
+    }
+    let order_id: String = row.get("id");
+    let status: String = row.get("status");
+    let request_id = input.client_request_id.trim().to_string();
+    if let Some(replayed) = replay_round(&state, &order_id, &code, &request_id).await? {
+        return Ok(Json(replayed));
+    }
+    if !matches!(
+        status.as_str(),
+        "submitted" | "awaiting_confirmation" | "confirmed" | "preparing" | "partially_ready"
+    ) {
+        return Err(conflict(
+            "این سفارش دیگر قابل تغییر نیست؛ لطفاً سفارش جدید ثبت کنید.",
+            "ORDER_LOCKED",
+        ));
+    }
+
+    let priced = price_lines(&state, &input.items).await?;
+    let now = now_iso_after_minutes(0);
+    let added_count = priced.items.iter().map(|item| item.quantity).sum::<i64>();
+    let mut tx = state.db.pool.begin().await.map_err(db_error)?;
+    let inserted = sqlx::query(
+        "INSERT INTO order_item_rounds
+           (id, order_id, client_request_id, item_count, subtotal, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (order_id, client_request_id) DO NOTHING",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(&order_id)
+    .bind(&request_id)
+    .bind(added_count)
+    .bind(priced.subtotal)
+    .bind(&now)
+    .execute(&mut *tx)
+    .await
+    .map_err(db_error)?;
+    if inserted.rows_affected() == 0 {
+        tx.rollback().await.map_err(db_error)?;
+        if let Some(replayed) = replay_round(&state, &order_id, &code, &request_id).await? {
+            return Ok(Json(replayed));
+        }
+        return Err(conflict(
+            "این درخواست قبلاً ثبت شده است؛ لطفاً وضعیت سفارش را دوباره بارگذاری کنید.",
+            "ORDER_REPLAY_RACE",
+        ));
+    }
+
+    insert_priced_items(&mut tx, &order_id, &priced).await?;
+    sqlx::query(
+        "UPDATE orders
+            SET subtotal = subtotal + $2, service_charge = service_charge + $3,
+                tax_total = tax_total + $4, total = total + $5, updated_at = $6
+          WHERE id = $1",
+    )
+    .bind(&order_id)
+    .bind(priced.subtotal)
+    .bind(priced.service_charge)
+    .bind(priced.tax_total)
+    .bind(priced.total)
+    .bind(&now)
+    .execute(&mut *tx)
+    .await
+    .map_err(db_error)?;
+    sqlx::query(
+        "INSERT INTO order_events
+           (id, order_id, type, from_status, to_status, payload_json, created_at)
+         VALUES ($1, $2, 'order.items_added', $3, $3, $4, $5)",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(&order_id)
+    .bind(&status)
+    .bind(
+        json!({
+            "itemCount": added_count,
+            "subtotal": priced.subtotal,
+            "total": priced.total,
+            "clientRequestId": request_id,
+            "source": "qr",
+        })
+        .to_string(),
+    )
+    .bind(&now)
+    .execute(&mut *tx)
+    .await
+    .map_err(db_error)?;
+    for role in ["waiter", "kitchen"] {
+        push_notification(
+            &mut tx,
+            role,
+            "order.items_added",
+            "اقلام تازه به سفارش اضافه شد",
+            &format!("سفارش {code} — {added_count} قلم جدید"),
+            &order_id,
+            &code,
+        )
+        .await?;
+    }
+    tx.commit().await.map_err(db_error)?;
+
+    let summary = find_summary(&state, &code)
+        .await?
+        .ok_or_else(|| AppError::internal("اقلام اضافه شد اما خلاصه سفارش خوانده نشد."))?;
+    let item_count = item_count(&state, &summary.id).await?;
+    Ok(Json(AddItemsResponse {
+        code: summary.code,
+        status: summary.status,
+        total: summary.total,
+        added_subtotal: priced.subtotal,
+        item_count,
+        replayed: false,
+    }))
+}
+
+async fn replay_round(
+    state: &AppState,
+    order_id: &str,
+    code: &str,
+    request_id: &str,
+) -> Result<Option<AddItemsResponse>, AppError> {
+    let row = sqlx::query(
+        "SELECT subtotal FROM order_item_rounds
+          WHERE order_id = $1 AND client_request_id = $2",
+    )
+    .bind(order_id)
+    .bind(request_id)
+    .fetch_optional(&state.db.pool)
+    .await
+    .map_err(db_error)?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let summary = find_summary(state, code)
+        .await?
+        .ok_or_else(|| AppError::internal("سفارش تکراری پیدا شد اما خلاصه آن خوانده نشد."))?;
+    let item_count = item_count(state, &summary.id).await?;
+    Ok(Some(AddItemsResponse {
+        code: summary.code,
+        status: summary.status,
+        total: summary.total,
+        added_subtotal: row.get("subtotal"),
+        item_count,
+        replayed: true,
+    }))
+}
+
+fn validate_round(input: &AddItemsInput) -> Result<(), AppError> {
+    let request_id = input.client_request_id.trim();
+    if request_id.len() < 8 || request_id.len() > 64 {
+        return Err(validation_failed("شناسه درخواست نامعتبر است."));
+    }
+    if input.items.is_empty() || input.items.len() > MAX_ITEMS {
+        return Err(validation_failed("سبد خرید خالی یا بیش از حد بزرگ است."));
+    }
+    for line in &input.items {
+        if line.product_id.trim().is_empty()
+            || line.quantity < 1
+            || line.quantity > MAX_LINE_QUANTITY
+        {
+            return Err(validation_failed("یکی از اقلام سفارش معتبر نیست."));
+        }
+        if line.option_ids.len() > 20 || line.extra_ids.len() > 20 {
+            return Err(validation_failed(
+                "تعداد گزینه‌های یک قلم بیش از حد مجاز است.",
+            ));
+        }
+        if line
+            .note
+            .as_ref()
+            .is_some_and(|note| note.trim().len() > 200)
+        {
+            return Err(validation_failed("یادداشت آیتم بیش از حد طولانی است."));
+        }
+    }
+    Ok(())
 }
 
 pub async fn order_status(

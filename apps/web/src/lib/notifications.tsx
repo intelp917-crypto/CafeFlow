@@ -69,6 +69,7 @@ const SEEN_LIMIT = 300;
 const TYPE_TONES: Record<string, NotificationTone> = {
   'order.submitted': 'brand',
   'order.confirmed': 'brand',
+  'order.items_added': 'brand',
   'order.partially_ready': 'success',
   'order.ready': 'success',
   'prep.delayed': 'warning',

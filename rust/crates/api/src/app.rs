@@ -257,6 +257,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/public/orders", post(public_orders::create_order))
         .route("/public/orders/{code}", get(public_orders::order_status))
         .route(
+            "/public/orders/{code}/items",
+            post(public_orders::add_order_items),
+        )
+        .route(
             "/public/table/{qr_token}",
             get(public_orders::table_overview),
         )
