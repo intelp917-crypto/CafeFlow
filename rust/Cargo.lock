@@ -447,7 +447,7 @@ checksum = "776dfebd015e2d8732c684a2c71003674ccb49457b539b9e82151ba38e96dd7c"
 
 [[package]]
 name = "cafeflow-api"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "anyhow",
  "axum",
@@ -488,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "cafeflow-db"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "anyhow",
  "base64",
@@ -510,7 +510,7 @@ dependencies = [
 
 [[package]]
 name = "cafeflow-domain"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "serde",
  "time",
@@ -519,7 +519,7 @@ dependencies = [
 
 [[package]]
 name = "cafeflow-games"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "boa_engine",
  "hex",
