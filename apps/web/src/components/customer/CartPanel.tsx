@@ -144,7 +144,9 @@ export function CartPanel({
           ) : null}
         </div>
 
-        <footer className="border-t border-line px-5 py-4">
+        {/* iOS puts the home indicator over the bottom of the screen; the submit
+            button must stay above it. */}
+        <footer className="border-t border-line px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
           {error ? (
             <div className="mb-3">
               <Alert tone="danger">{error}</Alert>

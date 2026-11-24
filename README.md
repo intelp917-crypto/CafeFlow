@@ -22,7 +22,7 @@ cargo run --release -- serve
 | [راهنمای فارسی](#فارسی) | [English guide](#english) |
 
 - ایمیج منتشرشده: `quay.io/intelp917/cafeflow:0.2.5` (و تگ کوتاه `latest`)
-- digest برای پین‌کردن: `sha256:89b3824bdb9b195b71b09c86fb6205059b588c1749774c16a7db788fa7ce8af6`
+- digest برای پین‌کردن: `sha256:f5a02cce0098f2a4a7ff03114724d144f3dbedfbfbf0d08e1588fb65eb87bf28`
 - پورت پیش‌فرض: `3000` (فقط یک پورت برای API + SPA + WebSocket + رسانه)
 - پایگاه داده پیش‌فرض: SQLite روی `/app/data` — بدون سرویس جانبی
 - گزینهٔ جایگزین: PostgreSQL ۱۷+ با `DB_DRIVER=postgres`
@@ -551,7 +551,7 @@ calendar and the UI is RTL with Vazirmatn.
 ## 2. Image architecture
 
 Published image: `quay.io/intelp917/cafeflow:0.2.5` (also `:latest`), digest
-`sha256:89b3824bdb9b195b71b09c86fb6205059b588c1749774c16a7db788fa7ce8af6`.
+`sha256:f5a02cce0098f2a4a7ff03114724d144f3dbedfbfbf0d08e1588fb65eb87bf28`.
 
 One container runs one Rust/Axum process on port `3000` that serves the REST API (`/api/v1`), the
 game WebSocket (`/ws/games`), the built SPA (with history fallback) and uploaded media. The final

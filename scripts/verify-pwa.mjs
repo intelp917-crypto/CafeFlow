@@ -3,7 +3,8 @@
  * Verifies the production PWA shell for real:
  *   1. the service worker registers and activates,
  *   2. with the network emulated as offline, a reload is answered by the
- *      service worker with the Persian offline page,
+ *      service worker with the cached app shell (so the app explains itself),
+ *      and the Persian offline page is still cached as the last resort,
  *   3. the manifest is linked and parsed by the browser.
  *
  * Requires the production build to be served, e.g.:
@@ -49,12 +50,17 @@ try {
   check(Boolean(scope), 'service worker active', scope ?? 'no scope');
 
   // The worker takes control of this client (clients.claim), then must answer a
-  // navigation while the network is down with the offline page.
+  // navigation while the network is down without a browser error page: the
+  // cached shell boots the app, and the offline page remains cached behind it.
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, { timeout: 20_000 });
   await context.setOffline(true);
   await page.reload({ waitUntil: 'load' });
-  const body = (await page.textContent('body')) ?? '';
-  check(body.includes('اتصال اینترنت قطع است'), 'offline navigation served by the worker');
+  const title = await page.title();
+  check(Boolean(title) && !title.includes('ERR_INTERNET'), 'offline navigation served by the worker', title);
+  check(
+    await page.evaluate(async () => Boolean(await caches.match('/offline.html'))),
+    'offline page cached as the last resort',
+  );
   await context.setOffline(false);
 } catch (error) {
   failed = true;

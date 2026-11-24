@@ -695,7 +695,7 @@ export function MenuPage() {
       </div>
 
       {cart.length > 0 && canOrder ? (
-        <div className="fixed inset-x-3 bottom-3 z-30 sm:inset-x-6 lg:inset-x-auto lg:end-8 lg:w-[24rem]">
+        <div className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 sm:inset-x-6 lg:inset-x-auto lg:end-8 lg:w-[24rem]">
           <button
             type="button"
             onClick={() => setCartOpen(true)}
