@@ -1,6 +1,6 @@
 -- The café pin for the menu, landing and status pages. Kept nullable so an
 -- installation without a location never renders a false map marker; the
--- «ناوبری» button only appears once both coordinates exist.
+-- «مسیریابی» button only appears once both coordinates exist.
 ALTER TABLE settings ADD COLUMN latitude REAL;
 ALTER TABLE settings ADD COLUMN longitude REAL;
 

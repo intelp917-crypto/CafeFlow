@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { PublicMenuCategory } from '@cafeflow/shared';
 import { cn } from '@cafeflow/ui';
@@ -126,102 +126,8 @@ function useWideLayout(): boolean {
   return wide;
 }
 
-/**
- * Dragging on the rail scrolls the page itself, not the rail's own list.
- *
- * The rail is a fixed overlay, so a finger put on it would normally be eaten by
- * its inner list: the menu underneath would not move. These handlers hand the
- * vertical drag to the window, with a short momentum tail so a flick feels like
- * the rest of the app. React's touch listeners are passive, hence the native
- * non-passive subscription here.
- */
-function useRailScrollDrag(nodeRef: RefObject<HTMLElement | null>) {
-  useEffect(() => {
-    const node = nodeRef.current;
-    if (!node) return;
-
-    let lastY = 0;
-    let lastTime = 0;
-    let velocity = 0;
-    let dragging = false;
-    let frame = 0;
-
-    const stopMomentum = () => {
-      if (frame) cancelAnimationFrame(frame);
-      frame = 0;
-    };
-
-    const onTouchStart = (event: TouchEvent) => {
-      stopMomentum();
-      const touch = event.touches[0];
-      if (!touch || event.touches.length > 1) {
-        dragging = false;
-        return;
-      }
-      dragging = true;
-      lastY = touch.clientY;
-      lastTime = event.timeStamp;
-      velocity = 0;
-    };
-
-    const onTouchMove = (event: TouchEvent) => {
-      if (!dragging) return;
-      const touch = event.touches[0];
-      if (!touch) return;
-
-      // The page moves instead of the rail's list.
-      event.preventDefault();
-
-      const now = event.timeStamp;
-      const delta = lastY - touch.clientY;
-      const elapsed = Math.max(1, now - lastTime);
-      velocity = delta / elapsed;
-      lastY = touch.clientY;
-      lastTime = now;
-
-      window.scrollBy(0, delta);
-    };
-
-    const onTouchEnd = () => {
-      if (!dragging) return;
-      dragging = false;
-
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-      let speed = velocity * 16;
-      if (Math.abs(speed) < 1.5) return;
-
-      const glide = () => {
-        speed *= 0.94;
-        if (Math.abs(speed) < 0.6) {
-          frame = 0;
-          return;
-        }
-        window.scrollBy(0, speed);
-        frame = requestAnimationFrame(glide);
-      };
-      frame = requestAnimationFrame(glide);
-    };
-
-    node.addEventListener('touchstart', onTouchStart, { passive: true });
-    node.addEventListener('touchmove', onTouchMove, { passive: false });
-    node.addEventListener('touchend', onTouchEnd, { passive: true });
-    node.addEventListener('touchcancel', onTouchEnd, { passive: true });
-
-    return () => {
-      stopMomentum();
-      node.removeEventListener('touchstart', onTouchStart);
-      node.removeEventListener('touchmove', onTouchMove);
-      node.removeEventListener('touchend', onTouchEnd);
-      node.removeEventListener('touchcancel', onTouchEnd);
-    };
-  }, [nodeRef]);
-}
-
 export function CategoryRail({ categories, activeCategory, onSelect }: CategoryRailProps) {
   const wide = useWideLayout();
-  const railRef = useRef<HTMLElement>(null);
-  useRailScrollDrag(railRef);
   const [pinned, setPinned] = useState(readPinned);
   const [hovered, setHovered] = useState(false);
   const [awake, setAwake] = useState(false);
@@ -272,15 +178,15 @@ export function CategoryRail({ categories, activeCategory, onSelect }: CategoryR
 
   return (
     <aside
-      ref={railRef}
+      // No touch-action override and no preventDefault on touchmove here: on
+      // iOS those swallow the tap that should reach a category button and stop
+      // the list from scrolling at all, which leaves lower categories
+      // unreachable. The browser's own touch handling is the correct one.
       aria-label="دسته‌بندی‌های منو"
       onMouseEnter={expandSoon}
       onMouseLeave={collapseSoon}
       onPointerDown={wake}
       onFocusCapture={wake}
-      // The rail drives the page scroll itself, so the browser must not claim
-      // the gesture for the rail's own list.
-      style={{ touchAction: 'none' }}
       className="fixed left-1.5 top-1/2 z-40 -translate-y-1/2 md:left-3"
     >
       <div

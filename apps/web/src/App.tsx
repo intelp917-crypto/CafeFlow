@@ -1,5 +1,5 @@
-import { Suspense, lazy, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { Spinner } from '@cafeflow/ui';
 import { useAuth } from './lib/auth';
 import { AdminLayout } from './layouts/AdminLayout';
@@ -63,6 +63,26 @@ function RootRoute() {
   return introSeen ? <HomePage /> : <Navigate to="/intro" replace />;
 }
 
+/**
+ * Route changes start at the top of the new page.
+ *
+ * A client-side navigation keeps the document, so the browser keeps the old
+ * scroll offset: on a phone the reader lands halfway down a page they have
+ * never seen. Back/forward is left alone — there the browser's own restore is
+ * exactly what people expect.
+ */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  const navigationType = useNavigationType();
+
+  useEffect(() => {
+    if (navigationType === 'POP') return;
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [pathname, navigationType]);
+
+  return null;
+}
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <FullPageLoader />;
@@ -75,8 +95,10 @@ export function App() {
   const { user, loading } = useAuth();
 
   return (
-    <Routes>
-      <Route path="/" element={<RootRoute />} />
+    <>
+      <ScrollToTop />
+      <Routes>
+        <Route path="/" element={<RootRoute />} />
       <Route
         path="/intro"
         element={
@@ -129,7 +151,8 @@ export function App() {
         <Route path="security" element={<SecurityPage />} />
       </Route>
 
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </>
   );
 }

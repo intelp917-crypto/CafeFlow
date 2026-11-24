@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Modal, PageHeader, Spinner, cn } from '@cafeflow/ui';
 import { Breadcrumb } from '../lib/branding';
 import type {
@@ -67,6 +68,7 @@ function ToggleButton({
 
 export function LayoutPage() {
   const { hasPermission } = useAuth();
+  const navigate = useNavigate();
   const canWrite = hasPermission('layout.write');
 
   const [data, setData] = useState<LayoutResponse | null>(null);
@@ -855,7 +857,7 @@ export function LayoutPage() {
         breadcrumb={<Breadcrumb page="طراحی سالن" />}
         actions={
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="ghost" onClick={() => window.location.assign('/admin/tables')}>
+            <Button size="sm" variant="ghost" onClick={() => navigate('/admin/tables')}>
               فهرست میزها
             </Button>
             <Button size="sm" variant="outline" onClick={() => setPreview((value) => !value)}>

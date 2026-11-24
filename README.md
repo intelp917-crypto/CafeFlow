@@ -21,7 +21,7 @@ cargo run --release -- serve
 |---|---|
 | [راهنمای فارسی](#فارسی) | [English guide](#english) |
 
-- ایمیج منتشرشده: `quay.io/intelp917/cafeflow:0.2.4` (و تگ کوتاه `latest`)
+- ایمیج منتشرشده: `quay.io/intelp917/cafeflow:0.2.5` (و تگ کوتاه `latest`)
 - digest برای پین‌کردن: `sha256:89b3824bdb9b195b71b09c86fb6205059b588c1749774c16a7db788fa7ce8af6`
 - پورت پیش‌فرض: `3000` (فقط یک پورت برای API + SPA + WebSocket + رسانه)
 - پایگاه داده پیش‌فرض: SQLite روی `/app/data` — بدون سرویس جانبی
@@ -64,7 +64,7 @@ CafeFlow کل چرخهٔ یک کافه/رستوران را در یک برنام�
                     └──────────────────────────────────────────────────────────────────┘
                                         │
                                         ▼
-                              quay.io/intelp917/cafeflow:0.2.4
+                              quay.io/intelp917/cafeflow:0.2.5
 ```
 
 - ایمیج نهایی بر پایهٔ Wolfi است و **Node و nginx ندارد**؛ فقط باینری، فایل‌های SPA و ابزارهای پایهٔ Wolfi
@@ -110,11 +110,11 @@ docker run -d --name cafeflow \
   -e SEED_DEMO_MENU=true \
   -e SESSION_COOKIE_SECURE=false \
   -v cafeflow_data:/app/data \
-  quay.io/intelp917/cafeflow:0.2.4
+  quay.io/intelp917/cafeflow:0.2.5
 
 # ۳) بررسی
 curl -s http://127.0.0.1:8080/api/v1/health
-# {"status":"ok","database":"ok","databaseDriver":"sqlite","version":"0.2.4",...}
+# {"status":"ok","database":"ok","databaseDriver":"sqlite","version":"0.2.5",...}
 ```
 
 سپس `http://SERVER-IP:8080/staff/login` را باز کنید.
@@ -129,7 +129,7 @@ curl -s http://127.0.0.1:8080/api/v1/health
 ```yaml
 services:
   cafeflow:
-    image: quay.io/intelp917/cafeflow:0.2.4
+    image: quay.io/intelp917/cafeflow:0.2.5
     container_name: cafeflow
     restart: unless-stopped
     environment:
@@ -183,7 +183,7 @@ CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -p cafeflow-api --
 # یا ساخت همان ایمیج تولیدی:
 cd ..
 docker build -f infra/docker/Dockerfile.rust \
-  -t cafeflow:0.2.4 -t quay.io/intelp917/cafeflow:0.2.4 .
+  -t cafeflow:0.2.5 -t quay.io/intelp917/cafeflow:0.2.5 .
 ```
 
 ## ۵. اولین ورود
@@ -369,13 +369,13 @@ environment:
 docker run --rm -v cafeflow_data:/app/data --network host \
   -e DB_DRIVER=sqlite -e CAFEFLOW_DATA_DIR=/app/data \
   -e POSTGRES_URL='postgres://cafeflow:pass@127.0.0.1:5432/cafeflow' \
-  quay.io/intelp917/cafeflow:0.2.4 db migrate-to-postgres --dry-run
+  quay.io/intelp917/cafeflow:0.2.5 db migrate-to-postgres --dry-run
 
 # اجرای واقعی (مقصد باید خالی باشد)
 docker run --rm -v cafeflow_data:/app/data --network host \
   -e DB_DRIVER=sqlite -e CAFEFLOW_DATA_DIR=/app/data \
   -e POSTGRES_URL='postgres://cafeflow:pass@127.0.0.1:5432/cafeflow' \
-  quay.io/intelp917/cafeflow:0.2.4 db migrate-to-postgres
+  quay.io/intelp917/cafeflow:0.2.5 db migrate-to-postgres
 ```
 
 ## ۱۰. دستورهای باینری داخل ایمیج
@@ -399,7 +399,7 @@ docker exec cafeflow cafeflow --help
 # ۱) پشتیبان
 docker exec cafeflow cafeflow backup
 # ۲) دریافت نسخهٔ تازه (تگ دقیق را پین کنید)
-docker pull quay.io/intelp917/cafeflow:0.2.4
+docker pull quay.io/intelp917/cafeflow:0.2.5
 # ۳) بازسازی کانتینر با همان volume
 docker compose up -d          # یا: docker rm -f cafeflow && docker run ... (راه ۱)
 ```
@@ -421,9 +421,9 @@ docker compose up -d          # یا: docker rm -f cafeflow && docker run ... (�
 
 | رویداد | تگ‌های تولیدشده |
 |---|---|
-| push روی `main` | `latest`، `0.2.4`، `main`، `sha-xxxxxxx` |
-| push روی `feat/rust-backend` | `0.2.4`، `feat-rust-backend`، `sha-xxxxxxx` |
-| تگ `v1.2.3` | `1.2.3`، `1.2`، `1`، `0.2.4`، `sha-xxxxxxx` |
+| push روی `main` | `latest`، `0.2.5`، `main`، `sha-xxxxxxx` |
+| push روی `feat/rust-backend` | `0.2.5`، `feat-rust-backend`، `sha-xxxxxxx` |
+| تگ `v1.2.3` | `1.2.3`، `1.2`، `1`، `0.2.5`، `sha-xxxxxxx` |
 
 `latest` فقط از `main` ساخته می‌شود؛ برای انتشار نهایی تغییرات را merge کنید. اگر secretها ست نشده
 باشند، job ایمیج را فقط build می‌کند و چیزی push نمی‌شود. برای انتشار دستی: Actions → Publish image
@@ -550,7 +550,7 @@ calendar and the UI is RTL with Vazirmatn.
 
 ## 2. Image architecture
 
-Published image: `quay.io/intelp917/cafeflow:0.2.4` (also `:latest`), digest
+Published image: `quay.io/intelp917/cafeflow:0.2.5` (also `:latest`), digest
 `sha256:89b3824bdb9b195b71b09c86fb6205059b588c1749774c16a7db788fa7ce8af6`.
 
 One container runs one Rust/Axum process on port `3000` that serves the REST API (`/api/v1`), the
@@ -597,7 +597,7 @@ docker run -d --name cafeflow \
   -e SEED_DEMO_MENU=true \
   -e SESSION_COOKIE_SECURE=false \
   -v cafeflow_data:/app/data \
-  quay.io/intelp917/cafeflow:0.2.4
+  quay.io/intelp917/cafeflow:0.2.5
 
 curl -s http://127.0.0.1:8080/api/v1/health
 ```
@@ -612,7 +612,7 @@ Create `docker-compose.yml`:
 ```yaml
 services:
   cafeflow:
-    image: quay.io/intelp917/cafeflow:0.2.4
+    image: quay.io/intelp917/cafeflow:0.2.5
     container_name: cafeflow
     restart: unless-stopped
     environment:
@@ -661,7 +661,7 @@ CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -p cafeflow-api --
 Or build the production image yourself:
 
 ```bash
-docker build -f infra/docker/Dockerfile.rust -t cafeflow:0.2.4 .
+docker build -f infra/docker/Dockerfile.rust -t cafeflow:0.2.5 .
 ```
 
 ## 5. First login and seeding
@@ -798,7 +798,7 @@ Copy an existing SQLite database into an empty PostgreSQL database:
 docker run --rm -v cafeflow_data:/app/data --network host \
   -e DB_DRIVER=sqlite -e CAFEFLOW_DATA_DIR=/app/data \
   -e POSTGRES_URL='postgres://cafeflow:pass@127.0.0.1:5432/cafeflow' \
-  quay.io/intelp917/cafeflow:0.2.4 db migrate-to-postgres --dry-run
+  quay.io/intelp917/cafeflow:0.2.5 db migrate-to-postgres --dry-run
 # then run the same command without --dry-run
 ```
 
@@ -817,7 +817,7 @@ docker run --rm -v cafeflow_data:/app/data --network host \
 
 ```bash
 docker exec cafeflow cafeflow backup
-docker pull quay.io/intelp917/cafeflow:0.2.4
+docker pull quay.io/intelp917/cafeflow:0.2.5
 docker compose up -d        # or recreate the container with the same volume
 ```
 
@@ -836,9 +836,9 @@ digest) and recreate the container; restore the pre-update backup if a migration
 
 | Event | Tags |
 |---|---|
-| push to `main` | `latest`, `0.2.4`, `main`, `sha-xxxxxxx` |
-| push to `feat/rust-backend` | `0.2.4`, `feat-rust-backend`, `sha-xxxxxxx` |
-| `v1.2.3` tag | `1.2.3`, `1.2`, `1`, `0.2.4`, `sha-xxxxxxx` |
+| push to `main` | `latest`, `0.2.5`, `main`, `sha-xxxxxxx` |
+| push to `feat/rust-backend` | `0.2.5`, `feat-rust-backend`, `sha-xxxxxxx` |
+| `v1.2.3` tag | `1.2.3`, `1.2`, `1`, `0.2.5`, `sha-xxxxxxx` |
 
 `latest` is built from `main` only. Without the secrets the image is still built but nothing is
 pushed. To publish manually: Actions → Publish image → Run workflow.

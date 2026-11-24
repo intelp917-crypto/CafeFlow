@@ -151,7 +151,7 @@ BACKUP_DIR=/mnt/backup npm run backup           # پشتیبان روی دیسک
 ## PWA و آزمون E2E
 
 - بیلد وب شامل `manifest.webmanifest`، `sw.js`، `offline.html` و `icon-192/512.png` است. سرویس‌ورکر فقط
-  در بیلد تولیدی ثبت می‌شود و پاسخ‌های `/api` را هرگز کش نمی‌کند؛ صفحه آفلاین فقط برای ناوبری است.
+  در بیلد تولیدی ثبت می‌شود و پاسخ‌های `/api` را هرگز کش نمی‌کند؛ صفحه آفلاین فقط برای مسیریابی است.
 - آیکون‌ها با `node scripts/make-icons.mjs` بازتولید می‌شوند.
 - آزمون دود مرورگر (روی Edge نصب‌شده):
 
@@ -202,9 +202,9 @@ DB_DRIVER=sqlite CAFEFLOW_DATA_DIR=../data WEB_ROOT=../apps/web/dist cargo run -
   Wolfi بدون Node/nginx). پایه‌ها به‌صورت پیش‌فرض از `cgr.dev/chainguard` هستند تا به Docker Hub
   وابسته نباشند؛ با `--build-arg NODE_IMAGE=...`، `RUST_IMAGE=...` یا `RUNTIME_IMAGE=...`
   می‌توان آن‌ها را عوض کرد.
-- ایمیج ساخته‌شده و منتشرشده: `quay.io/intelp917/cafeflow:0.2.4` (و `:latest`)؛ برای دیپلوی
+- ایمیج ساخته‌شده و منتشرشده: `quay.io/intelp917/cafeflow:0.2.5` (و `:latest`)؛ برای دیپلوی
   نیازی به build نیست. با SQLite داخل همان کانتینر بالا می‌آید:
-  `docker run ... --entrypoint /bin/sh quay.io/intelp917/cafeflow:0.2.4 -c 'cafeflow db setup && exec cafeflow serve'`.
+  `docker run ... --entrypoint /bin/sh quay.io/intelp917/cafeflow:0.2.5 -c 'cafeflow db setup && exec cafeflow serve'`.
   راهنمای کامل اجرا، HTTPS، پشتیبان/بازیابی، به‌روزرسانی و اندازهٔ هاست در `README.md` است.
 - Compose تک‌سرویسی: `infra/docker/compose.rust.yml`؛ SQLite پیش‌فرض است. در اولین اجرا
   `cafeflow db setup` مهاجرت و seed را انجام می‌دهد. برای PostgreSQL

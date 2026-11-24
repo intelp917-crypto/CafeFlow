@@ -83,7 +83,7 @@ export function AdminLayout() {
   };
 
   const sidebar = (
-    <nav aria-label="ناوبری اصلی" className="flex h-full flex-col gap-1 p-3.5">
+    <nav aria-label="مسیریابی اصلی" className="flex h-full flex-col gap-1 p-3.5">
       <div className="mb-4 flex shrink-0 items-center gap-2.5 px-2 py-1">
         <span className="flex size-10 items-center justify-center rounded-full border border-brand-300/30 bg-brand-500/15 text-cream">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="size-5">
@@ -123,7 +123,7 @@ export function AdminLayout() {
       </div>
 
       <div className="mt-3 shrink-0 rounded-2xl border border-white/10 bg-white/5 p-3.5 text-[10px] leading-5 text-cream/55">
-        <p className="font-semibold text-cream/85">نسخه ۰.۲.۴</p>
+        <p className="font-semibold text-cream/85">نسخه ۰.۲.۵</p>
         <p>وضعیت میز، سفارش‌های قبلی و اعلان مرحله‌ای تیم.</p>
       </div>
     </nav>

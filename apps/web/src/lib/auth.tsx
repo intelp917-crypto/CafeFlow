@@ -55,6 +55,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void loadSession();
   }, [loadSession]);
 
+  // iOS restores a page from the back-forward cache, or brings the app back from
+  // the background, without re-running the mount effect. The session is
+  // re-read then so an expired session lands on the login page instead of a
+  // screen whose every action will fail. Offline it is skipped: a failed check
+  // must not look like a logout.
+  useEffect(() => {
+    const refresh = () => {
+      if (navigator.onLine === false) return;
+      void loadSession();
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) refresh();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    window.addEventListener('pageshow', onPageShow);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pageshow', onPageShow);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [loadSession]);
+
   const login = useCallback(
     async (username: string, password: string, code?: string) => {
       await api.post<{ user: AuthUser; modules: ModuleKey[] }>('/auth/login', {

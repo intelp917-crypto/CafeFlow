@@ -120,7 +120,7 @@ function NavigateLink({
         )}
       >
         <Navigation aria-hidden="true" className="size-4" />
-        {children ?? 'ناوبری'}
+        {children ?? 'مسیریابی'}
       </a>
     </>
   );

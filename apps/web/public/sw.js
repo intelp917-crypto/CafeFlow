@@ -3,26 +3,27 @@
  * Rules that matter:
  *  - API responses are never cached: money and order state must always come
  *    from the server, and a stale 200 would be worse than an error.
- *  - Navigations are network-first with an offline page fallback, so a staff
- *    member who loses connectivity sees an honest Persian page instead of the
- *    browser's error.
- *  - Hashed build assets are cache-first; they are immutable by filename.
+ *  - Navigations are network-first with the cached shell as fallback, so a
+ *    guest who loses connectivity still gets the app (which explains itself)
+ *    instead of a browser error page or a dead end.
+ *  - Hashed build assets are cache-first; they are immutable by filename, and a
+ *    response that is actually the SPA fallback is never stored in their place.
+ *  - A new version never calls skipWaiting(): on iOS an installed web app has
+ *    no reload button, and a worker that takes over mid-session leaves the open
+ *    page running old chunks against a cache that no longer holds them. The new
+ *    version activates on the next launch, which is what the reader expects.
  */
 // Bump this whenever a cached response shape changes: activation deletes every
 // cache that does not start with the new version.
-const VERSION = 'cafeflow-v3';
+const VERSION = 'cafeflow-v4';
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const OFFLINE_URL = '/offline.html';
-const PRECACHE = [OFFLINE_URL, '/manifest.webmanifest', '/icon.svg'];
+const SHELL_URL = '/';
+const PRECACHE = [OFFLINE_URL, SHELL_URL, '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches
-      .open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE))
-      .then(() => self.skipWaiting()),
-  );
+  event.waitUntil(caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE)));
 });
 
 self.addEventListener('activate', (event) => {
@@ -58,6 +59,13 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
+/** Never store a document in the place of a file: that is what blanks the app. */
+function isUsableFile(response) {
+  if (!response || !response.ok) return false;
+  const type = response.headers.get('content-type') || '';
+  return !type.startsWith('text/html');
+}
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
@@ -68,27 +76,43 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(async () => {
-        const cached = await caches.match(OFFLINE_URL);
-        return cached ?? new Response('آفلاین هستید.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
-      }),
+      (async () => {
+        try {
+          return await fetch(request);
+        } catch {
+          // Offline: hand back the app itself when it is cached, so the page can
+          // show its own state and the reader keeps their in-app back trail.
+          const shell = await caches.match(SHELL_URL);
+          if (shell) return shell;
+          const offline = await caches.match(OFFLINE_URL);
+          return (
+            offline ??
+            new Response('آفلاین هستید.', {
+              status: 503,
+              headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+            })
+          );
+        }
+      })(),
     );
     return;
   }
 
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
-      caches.match(request).then(
-        (cached) =>
-          cached ??
-          fetch(request).then((response) => {
-            if (response.ok) {
-              const copy = response.clone();
-              void caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy));
-            }
-            return response;
-          }),
-      ),
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request).then((response) => {
+          if (!isUsableFile(response)) {
+            // The server answered a missing chunk with index.html; failing here
+            // is honest and, above all, keeps the bad response out of the cache.
+            return new Response('', { status: 504 });
+          }
+          const copy = response.clone();
+          void caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy));
+          return response;
+        });
+      }),
     );
     return;
   }
@@ -120,7 +144,7 @@ self.addEventListener('fetch', (event) => {
     caches.match(request).then((cached) => {
       const network = fetch(request)
         .then((response) => {
-          if (response.ok) {
+          if (isUsableFile(response)) {
             const copy = response.clone();
             void caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy));
           }

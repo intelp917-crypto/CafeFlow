@@ -32,7 +32,7 @@ const ROLE_CASES = [
 for (const role of ROLE_CASES) {
   test(`${role.username} sees only the navigation their role allows`, async ({ page }) => {
     await login(page, role.username, DEMO_PASSWORD);
-    const nav = page.getByRole('navigation', { name: 'ناوبری اصلی' });
+    const nav = page.getByRole('navigation', { name: 'مسیریابی اصلی' });
 
     for (const label of role.visible) {
       await expect(nav.getByRole('link', { name: label })).toBeVisible();
